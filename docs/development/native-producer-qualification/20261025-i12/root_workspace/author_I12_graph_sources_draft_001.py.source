@@ -1,0 +1,20 @@
+"""Own new Source assembly/AST metadata author only; no target import/call."""
+import ast
+import hashlib
+import json
+from pathlib import Path
+ROOT=Path(__file__).parent
+OUT=ROOT/'receipt_caller_integration_015'/'i12'
+format_path=OUT/'receipt_contract_formats_001.py'
+format_raw=format_path.read_bytes()
+tree=ast.parse(format_raw)
+entry=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='encode_receipt_contract_record')
+prefix=b''.join(format_raw.splitlines(keepends=True)[:entry.lineno-1])
+prefix=prefix.replace(b'I12 pure owner-v2 receipt FORMAT contracts.',b'I12 pure owner-v2 receipt metadata graph contracts.')
+shared=(ROOT/'i12_graph_shared_draft_001.txt').read_bytes()
+for name,tail in (('validate_generic_single_receipt_metadata_001.py','i12_single_tail_draft_001.txt'),('validate_selected_peer_receipt_metadata_001.py','i12_peer_tail_draft_001.txt')):
+    raw=prefix+shared+(ROOT/tail).read_bytes()
+    assert len(raw)<=65536
+    ast.parse(raw);compile(raw,str(OUT/name),'exec',dont_inherit=True)
+    with (OUT/name).open('xb') as f:f.write(raw)
+    print(json.dumps(dict(path=str(OUT/name),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest()),sort_keys=True))

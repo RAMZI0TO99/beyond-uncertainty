@@ -1,0 +1,201 @@
+"""Static final fixture005 author. Data-only AST/compile; no target execution.
+Preserve Source003 exactly, all prior fixtures/APIs and the full review table.
+"""
+import ast
+import base64
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+
+HERE=Path(__file__).parent
+OUT=HERE/'i11'
+CAP=2097152
+def pin(path):
+    raw=path.read_bytes();return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+def create(path,raw):
+    assert 0<len(raw)<=CAP,(path,len(raw))
+    with path.open('xb') as handle:handle.write(raw)
+    return pin(path)
+def assignment(text,name):
+    node=next(n for n in ast.parse(text).body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id==name for t in n.targets))
+    return node,ast.literal_eval(node.value)
+def replace_assignment(text,name,value):
+    node,_=assignment(text,name);lines=text.splitlines(keepends=True)
+    return ''.join(lines[:node.lineno-1])+name+' = '+repr(value)+'\n'+''.join(lines[node.end_lineno:])
+def replace(text,old,new):
+    assert text.count(old)==1,(old[:80],text.count(old));return text.replace(old,new,1)
+
+source=OUT/'validate_finite8_canonical_receipt_metadata_003.py'
+old_fixture=OUT/'test_finite8_canonical_receipt_metadata_memory_only_004.py'
+old_api=OUT/'CURRENT_OWNER_FINITE8_CANONICAL_RECEIPT_METADATA_INERT_API_004.json'
+gap_path=HERE/'source_review_002'/'INDEPENDENT_I11_FIXTURE004_FINAL_FINITE_VARIANT_GAP_TABLE_001.json'
+gap=json.loads(gap_path.read_bytes())
+fixture=old_fixture.read_text(encoding='utf8')
+fixture=replace(fixture,"else actor.upper()", "else '/root/'+actor[6:].upper()")
+_,cases=assignment(fixture,'CASE_CATALOGUE')
+_,mapping=assignment(fixture,'PROTOCOL_VARIANT_CASE_MAPPING')
+_,reach=assignment(fixture,'SOURCE_ONLY_REACHABILITY')
+new_cases=[];covered={}
+def add(group,name,kind,args,error,note=None):
+    match=next((c for c in cases+new_cases if c[1:]==(kind,args,error)),None)
+    actual=match[0] if match else name
+    if match is None:new_cases.append((name,kind,args,error))
+    if actual not in mapping[group]['case_names']:mapping[group]['case_names'].append(actual)
+    covered[name]=dict(case_names=[actual],expected_error=error,first_guard_note=note or next((r['intended_first_guard'] for r in gap['rows'] if r['proposed_case_name']==name),''))
+    return actual
+role='WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_template'
+receipt='receipt:'+role;facts='facts:'+role
+for name,mark in [('open_capsule_extra_metadata','producer_capsule'),('open_adoption_extra_metadata','producer_adoption')]:
+    add('P06',name,'record',[mark,['inert_bounded_extra_metadata'],{'label':'fresh synthetic open proof extra'}],None)
+add('N01','outside8_binding','dependency',['role','binding'],'E_UNSUPPORTED_ROLE')
+for name,mark in [('selection13_v2','selection'),('publisher_actual45_catalogue11','catalogue'),('reconciliation26_v2','reconciliation'),('generated_M3_receipt22_v2',receipt),('M3_facts21_v2',facts)]:
+    add('N03','wrong_record_type_'+name,'record',[mark,['record_type'],'UNKNOWN_SYNTHETIC_RECORD_TYPE'],'E_SCHEMA')
+add('N03','stage_purpose_bool_version','record',[receipt,['steps','metadata_Source_provenance','stage_purpose','schema_version'],True],'E_STAGE_PURPOSE')
+add('N04','custom_mapping_input','custom_mapping',[],'E_TYPE')
+add('N06','path_reserved_CON','expected',[['selected_canonical','path'],r'D:\CON\a.ps1'],'E_PATH')
+add('N07','store_string_body','store_string',[],'E_RECORD_STORE')
+add('N07','undeclared_designated_reference','expected',[['selected_canonical','path'],r'D:\I11SyntheticMemoryOnly\absent\undeclared.ps1'],'E_RECORD_STORE')
+add('N09','request_publication_path_mismatch','record',['request',['publication_receipt_path'],r'D:\I11SyntheticMemoryOnly\different-publication.json'],'E_REQUEST_JOIN')
+add('N09','request_selection_support_mismatch','join_refs',[[['request',['Root_future_path_selection_support','subject'],['expected','selected_draft']]][0]],'E_REQUEST_JOIN')
+for key,value in [('source_cap',65537),('preparation_Source_author','/root/different_preparer'),('retained_semantic_Source_author','/root/different_retained')]:
+    add('N11','selection_wrong_'+key,'selected_row',[key,value],'E_SELECTION')
+add('N11','selection_wrong_predecessor','selected_predecessor',[],'E_SELECTION')
+add('N12','ordinal_string','selected_row',['selected_ordinal','19'],'E_SELECTION')
+for key in ('physical_Source_editor','metadata_Source_worker','retained_semantic_Source_author'):
+    add('N15','published_wrong_'+key,'record',['publication',['published',0,key],'/root/wrong_published_actor'],'E_ROW_JOIN')
+for key,ref in [('author_receipt',['expected','selected_draft']),('exact_Source_review',['expected','producer_support','different_review']),('Root_Source_review_adoption',['expected','producer_support','Root_adoption'])]:
+    add('N15','published_wrong_'+key,'join_refs',[['publication',['published',0,key],ref]],'E_ROW_JOIN')
+for key in ('author','retained_semantic_Source_author'):
+    add('N16','receipt_wrong_'+key,'record',[receipt,[key],'/root/wrong_receipt_actor'],'E_RECEIPT')
+for key,ref in [('draft','selected_predecessor'),('predecessor','selected_draft')]:
+    add('N16','receipt_wrong_'+key,'join_refs',[[receipt,[key],['expected',ref]]],'E_RECEIPT')
+add('N16','receipt_wrong_facts_pin','facts_clone',[],'E_STAGE_PURPOSE')
+add('N16','receipt_wrong_diff_pin','join_refs',[[receipt,['diff'],['expected','selected_draft']]],'E_STAGE_PURPOSE',
+    'Earlier _purpose exact derived diff path guard dominates draft proof coverage for the supplied different-path raw pin. Typed E_STAGE_PURPOSE is the truthful first refusal; no claim of reaching E_REVIEW.')
+for key,error in [('canonical_publication','E_RECEIPT'),('target_execution','E_AUTHORITY'),('operational_authority','E_AUTHORITY')]:
+    add('N16','receipt_true_'+key,'record',[receipt,[key],True],error)
+for key,ref in [('selection_support','selected_draft'),('current_owner_scope','selected_draft')]:
+    path=['selection_support','selection'] if key=='selection_support' else [key]
+    proposed='facts_wrong_selection' if key=='selection_support' else 'facts_wrong_scope'
+    add('N17',proposed,'join_refs',[[facts,path,['expected',ref]]],'E_FACTS')
+for name,path,value in [('role',['role'],'wrong_template_role'),('author',['author'],'/root/wrong_facts_actor'),('dependencies_container',['dependencies'],{}),('operational_choices_container',['operational_choices'],[]),('binding_supports_nonempty',['binding_supports'],{'extra':False}),('role_selections_nonempty',['role_selections'],{'extra':False})]:
+    add('N17','facts_wrong_'+name,'record',[facts,path,value],'E_FACTS')
+add('N17','facts_wrong_BOUND_operational_choices_nonempty','multi_record',[[4],[['facts:WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_bound',['operational_choices'],{'extra':False},False]]],'E_FACTS')
+for key,value,error in [('source_only',False,'E_FACTS'),('canonical_publication',True,'E_FACTS'),('target_execution',True,'E_AUTHORITY'),('operational_authority',True,'E_AUTHORITY')]:
+    add('N17','facts_bad_'+key,'record',[facts,[key],value],error)
+existing=['facts_tool_mismatch','facts_lease_mismatch','facts_inventory_mismatch']
+assert set(existing)<={c[0] for c in cases}
+for name in existing:
+    if name not in mapping['N17']['case_names']:mapping['N17']['case_names'].append(name)
+covered['map_existing_facts_joins']=dict(case_names=existing,expected_error='per literal existing E_FACTS',first_guard_note='Existing exact tool4/lease5/M3 inventory pin joins explicitly mapped; no duplicate cases.')
+for suffix in ('capsule','full','adoption'):
+    add('N18','stage_purpose_mismatch_'+suffix,'record',['stage-templates_'+suffix,['exact_M3_Source_stage_purpose','stage'],'wrong_stage'],'E_STAGE_PURPOSE')
+for key in ('target_execution','operational_authority'):
+    add('N21','adoption_true_'+key,'record',['producer_adoption',[key],True],'E_AUTHORITY')
+add('N21','adoption_pointer_only_subjects','adoption_pointer',[],'E_ADOPTION')
+add('N22','request_after_canonical_birth','record',['request',['created_utc'],'2026-10-25T08:00:21.500000+00:00'],'E_CHRONOLOGY')
+add('N23','recon_operational_true','record',['reconciliation',['operational_authority'],True],'E_AUTHORITY')
+add('N25','coherent_wrong_observed_size','coherent_size',[],'E_OBSERVATION')
+for key in ('qualified','admitted','physical_ready','human_ready','environment'):
+    add('N27','extra_expected_'+key,'expected',[[key],{'attempted':True}],'E_SCHEMA')
+add('N30','successor_null_retained_actor','selected_row',['retained_semantic_Source_author',None],'E_SELECTION')
+covered['outside8_actor_case_prefix_bug']=dict(case_names=['outside8_omitted_actor_case'],expected_error='E_REVIEWER',first_guard_note='Keep literal /root/; uppercase only actor child components so canonical actor syntax passes and independent excluded-union casefold equality refuses.')
+cases+=new_cases
+
+extra=r'''
+        elif kind=='custom_mapping':
+            def custom_mapping_case():
+                bundle=make_bundle();touched=[]
+                class NeverReadMapping:
+                    def keys(self):touched.append('keys');raise AssertionError('validator invoked custom mapping')
+                    def __iter__(self):touched.append('iter');raise AssertionError('validator iterated custom mapping')
+                    def __getitem__(self,key):touched.append('getitem');raise AssertionError('validator indexed custom mapping')
+                bundle['dependency']=NeverReadMapping()
+                try:return invoke(component,bundle)
+                finally:assert touched==[],'custom mapping methods must remain uncalled'
+            check(name,custom_mapping_case,error)
+        elif kind=='store_string':
+            def string_body_case():
+                bundle=make_bundle();before=bundle['records'][0]['body'];bundle['records'][0]['body']=repr(before)
+                assert type(before) is bytes and type(bundle['records'][0]['body']) is str
+                return invoke(component,bundle)
+            check(name,string_body_case,error)
+        elif kind in ('selected_row','selected_predecessor'):
+            def selected_row_case(which=kind):
+                bundle=make_bundle();store={r['pin']['path']:r for r in bundle['records']}
+                selection=json.loads(store[bundle['_marks']['selection']]['body'])
+                pos=next(i for i,r in enumerate(selection['rows']) if r['role']==ROLES[0])
+                field,value=args if which=='selected_row' else ('predecessor',bundle['expected']['producer_support']['Source'])
+                return invoke(component,change(bundle,'selection',['rows',pos,field],value))
+            check(name,selected_row_case,error)
+        elif kind=='facts_clone':
+            def facts_clone_case():
+                bundle=make_bundle();role=ROLES[0];store={r['pin']['path']:r for r in bundle['records']}
+                original=bundle['expected']['stage_supports'][role]['facts'];body=store[original['path']]['body']
+                path=HOME+'\facts-fresh-clone.json';clone=_pin(path,body)
+                assert path not in store and clone!=original
+                bundle['records'].append(dict(pin=clone,body=body));bundle['_json_paths'].append(path)
+                return invoke(component,change(bundle,'receipt:'+role,['actual_Source_packet'],clone))
+            check(name,facts_clone_case,error)
+        elif kind=='adoption_pointer':
+            def pointer_adoption_case():
+                bundle=make_bundle();support=bundle['expected']['producer_support']
+                pointers=[support['different_review'],support['Root_adoption']]
+                # Self pointer would create a synthetic cycle; use full proof
+                # and capsule only, each retaining Source/API body data elsewhere.
+                store={r['pin']['path']:r for r in bundle['records']}
+                capsule=json.loads(store[bundle['_marks']['producer_capsule']]['body'])
+                pointers=[support['different_review'],capsule['full_proof']]
+                assert all(p not in (support['Source'],support['API']) for p in pointers)
+                return invoke(component,change(bundle,'producer_adoption',['subjects'],pointers))
+            check(name,pointer_adoption_case,error)
+        elif kind=='coherent_size':
+            def coherent_size_case():
+                bundle=make_bundle();store={r['pin']['path']:r for r in bundle['records']}
+                pair=json.loads(store[bundle['_marks']['publication']]['body'])['published'][0]['actual_publication_metadata_APIs']
+                canonical=copy.deepcopy(pair['canonical'])
+                for key in ('path9','raw9','descriptor9'):canonical[key][2]+=1
+                canonical['shared_descriptor7']=[canonical['descriptor9'][i] for i in C['literals']['SHARED7']]
+                assert canonical['raw9']==canonical['path9']
+                assert all(canonical['path9'][i]==canonical['descriptor9'][i] for i in C['literals']['SHARED7'])
+                assert canonical['path9'][2]!=canonical['bytes']
+                return invoke(component,change(bundle,'publication',['published',0,'actual_publication_metadata_APIs','canonical'],canonical))
+            check(name,coherent_size_case,error)
+'''
+fixture=replace(fixture,"        elif kind=='arg':",extra+"\n        elif kind=='arg':")
+fixture=replace_assignment(fixture,'CASE_CATALOGUE',cases)
+fixture=replace_assignment(fixture,'PROTOCOL_VARIANT_CASE_MAPPING',mapping)
+reach.update(receipt_wrong_diff_pin=covered['receipt_wrong_diff_pin']['first_guard_note'],outside8_omitted_actor_case='Literal /root/ is preserved; only child components are uppercased, satisfying actor syntax before E_REVIEWER casefold exclusion.',coherent_wrong_observed_size='All canonical path9/raw9/descriptor9 size slots and shared7 size are changed coherently; exact fact3 bytes remain unchanged, so observation size equality refuses.',proof_pointer_coverage='Proof pointer pins are references only. Source/API body coverage in referenced proof documents does not satisfy direct occurrence in adoption.')
+fixture=replace_assignment(fixture,'SOURCE_ONLY_REACHABILITY',reach)
+fixture+='\nFINAL_VARIANT_GAP_TABLE_COVERAGE = '+repr(covered)+'\n'
+assert set(covered)=={r['proposed_case_name'] for r in gap['rows']},({r['proposed_case_name'] for r in gap['rows']}-set(covered),set(covered)-{r['proposed_case_name'] for r in gap['rows']})
+raw=fixture.encode();compile(raw,'<fixture005 data compile>','exec')
+_,literal=assignment(fixture,'CASE_CATALOGUE');assert literal==cases and len({c[0] for c in cases})==len(cases)
+all_names={c[0] for c in cases}
+for key,value in mapping.items():assert value['case_names'] and set(value['case_names'])<=all_names,(key,set(value['case_names'])-all_names)
+for key,value in covered.items():assert set(value['case_names'])<=all_names,(key,value)
+sp=pin(source);assert sp['sha256']=='51f71572b21d76063300a33eeaddc578d19892721ff59cb027faeee335a44f3f'
+fp=create(OUT/'test_finite8_canonical_receipt_metadata_memory_only_005.py',raw)
+api=json.loads(old_api.read_bytes())
+api.update(Source=sp,fixture_Source=fp,created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),literal_case_catalogue=cases,literal_case_count=len(cases),protocol_variant_case_mapping=mapping,Source_only_guard_reachability=reach,
+           final_variant_gap_table=pin(gap_path),final_variant_gap_table_coverage=covered,validator003_preserved_byteexact=sp,fixture004_preserved=pin(old_fixture),API004_preserved=pin(old_api),
+           correction_author_tool=pin(Path(__file__)),fixture005_correction='Final complete literal-variant audit alternatives, exact map reuse, canonical actor case-prefix fix; Source003 unchanged; all targets unrun.')
+ap=create(OUT/'CURRENT_OWNER_FINITE8_CANONICAL_RECEIPT_METADATA_INERT_API_005.json',(json.dumps(api,sort_keys=True,indent=2)+'\n').encode())
+regions=[]
+for path,body in ((source,source.read_bytes()),(Path(fp['path']),raw)):
+    lines=body.splitlines(keepends=True)
+    for n in ast.parse(body).body:
+        if isinstance(n,(ast.FunctionDef,ast.ClassDef)):
+            part=b''.join(lines[n.lineno-1:n.end_lineno]);regions.append(dict(path=str(path),name=n.name,first_line=n.lineno,last_line=n.end_lineno,bytes=len(part),sha256=hashlib.sha256(part).hexdigest()))
+inv=dict(schema_version=1,record_type='I11_fixture005_complete_predecessor_inverse_and_exact_regions',author='/root/i2_resume_gap',Source=sp,fixture=fp,API=ap,
+         complete_predecessors=[dict(pin=pin(p),complete_bytes_base64=base64.b64encode(p.read_bytes()).decode()) for p in (old_fixture,old_api)],
+         regions=regions,case_catalogue=cases,literal_case_count=len(cases),new_cases=new_cases,exact_variant_mapping=mapping,final_variant_gap_table=pin(gap_path),final_variant_gap_table_coverage=covered,
+         Source_only_guard_reachability=reach,author_tool=pin(Path(__file__)),tests_executed=False,target_execution=False,validator003_preserved=sp,old_targets_changed=False)
+ip=create(OUT/'I11_EXACT_SOURCE_REGION_AND_NO_OLD_TARGET_CHANGE_INVENTORY_005.json',(json.dumps(inv,sort_keys=True,indent=2)+'\n').encode())
+receipt_value=dict(schema_version=1,record_type='I11_fixture005_static_final_literal_variant_author_receipt',author='/root/i2_resume_gap',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),
+             Source=sp,fixture=fp,API=ap,inventory=ip,author_tool=pin(Path(__file__)),predecessors=[pin(old_fixture),pin(old_api)],literal_case_count=len(cases),final_variant_gap_table=pin(gap_path),
+             final_variant_gap_table_rows=len(covered),AST_literal_catalogue_verified=True,exact_P01_P10_N01_N31_mapping_verified=True,all_created_artifacts_below_2MiB=True,
+             target_imports=0,target_calls=0,tests_executed=False,target_execution=False,old_target_changes=False,operational_authority=False,scientific_authority=False,full_G01_closed=False)
+rp=create(OUT/'I11_FINITE8_CANONICAL_RECEIPT_METADATA_SOURCE_AUTHOR_RECEIPT_005.json',(json.dumps(receipt_value,sort_keys=True,indent=2)+'\n').encode())
+print(json.dumps(dict(Source=sp,fixture=fp,API=ap,inventory=ip,receipt=rp,literal_cases=len(cases),new_cases=len(new_cases),tests_executed=False),sort_keys=True))

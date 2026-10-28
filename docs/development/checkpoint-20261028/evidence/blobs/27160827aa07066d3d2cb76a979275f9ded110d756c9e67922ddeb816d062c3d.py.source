@@ -1,0 +1,82 @@
+"""Source-only exact catalogue-pin successor; never imports target Source."""
+import ast
+import base64
+import datetime
+import hashlib
+import json
+from pathlib import Path
+
+ROOT = Path(r'D:\Aenv\pro2\WORK\resume-20261025-003')
+OUT = ROOT / 'm3_peer_contracts_016' / 'i13'
+OLD = OUT / 'validate_selected_peer_author_packet_metadata_006.py'
+NEW = OUT / 'validate_selected_peer_author_packet_metadata_007.py'
+OLD_API = OUT / 'CURRENT_OWNER_SELECTED_PEER_CANONICAL_AUTHOR_METADATA_INERT_API_006.json'
+NEW_API = OUT / 'CURRENT_OWNER_SELECTED_PEER_CANONICAL_AUTHOR_METADATA_INERT_API_007.json'
+RECEIPT = OUT / 'I13_PEER_CANONICAL_AUTHOR_SOURCE_AUTHOR_RECEIPT_007.json'
+CATALOGUE = ROOT / 'm3_peer_contracts_016' / 'm3_protocol_audit_001' / 'I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_007.json'
+ADOPTION = ROOT / 'ROOT_I13_FINAL_PROTOCOL007_RECORDED_CONTEXT_DIFFERENT_REVIEW_ADOPTION_004.json'
+
+def pin(path, raw=None):
+    raw = path.read_bytes() if raw is None else raw
+    return dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+
+def save_raw(path, raw):
+    assert not path.exists(), path
+    with path.open('xb') as f:
+        f.write(raw)
+    assert path.read_bytes() == raw
+
+old = OLD.read_bytes()
+assert len(old) == 56967 and hashlib.sha256(old).hexdigest() == '51be5119b0557fde0aea065503ec242d35a4292e286285915372548ba4b2c973'
+catalogue_pin = pin(CATALOGUE)
+assert catalogue_pin['bytes'] == 219028 and catalogue_pin['sha256'] == 'd565de0ef802629303403570437e951247c0bc6b16d2a9c8276d56aa2aa3b9ea'
+adoption_pin = pin(ADOPTION)
+assert adoption_pin['bytes'] == 11986 and adoption_pin['sha256'] == '94d6a2b06272b0d3342bcae462b020bf108bae252de0506537dc252803cf4c1c'
+tree = ast.parse(old)
+assignment = next(n for n in tree.body if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'COMMON_CATALOGUE_PIN' for t in n.targets))
+lines = old.splitlines(keepends=True)
+before_region = b''.join(lines[assignment.lineno-1:assignment.end_lineno])
+after_region = ('COMMON_CATALOGUE_PIN = ' + repr(catalogue_pin) + '\n').encode()
+assert old.count(before_region) == 1
+new = old.replace(before_region, after_region, 1)
+assert len(new) <= 65536 and new.replace(after_region, before_region, 1) == old
+newtree = ast.parse(new)
+compile(new, str(NEW), 'exec', dont_inherit=True)
+old_regions = {n.name: n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))}
+new_regions = {n.name: n for n in newtree.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))}
+assert old_regions.keys() == new_regions.keys()
+assert all(ast.dump(old_regions[k], include_attributes=False) == ast.dump(new_regions[k], include_attributes=False) for k in old_regions)
+newlines = new.splitlines(keepends=True)
+assert all(b''.join(lines[n.lineno-1:n.end_lineno]) == b''.join(newlines[new_regions[k].lineno-1:new_regions[k].end_lineno]) for k,n in old_regions.items())
+save_raw(NEW, new)
+api_before = OLD_API.read_bytes()
+api = json.loads(api_before)
+assert len(api) == 14
+api['Source'] = pin(NEW, new)
+api_raw = (json.dumps(api, ensure_ascii=True, sort_keys=True, indent=2) + '\n').encode()
+save_raw(NEW_API, api_raw)
+regions = []
+for key,node in new_regions.items():
+    raw = b''.join(newlines[node.lineno-1:node.end_lineno])
+    regions.append(dict(name=key, first_line=node.lineno, last_line=node.end_lineno, bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest(), AST_sha256=hashlib.sha256(ast.dump(node, include_attributes=False).encode()).hexdigest()))
+catalogue = json.loads(CATALOGUE.read_bytes())
+assert catalogue['schemas']['selected_peer_author_wrapper14']['field_count'] == 14
+assert catalogue['schemas']['result54']['field_count'] == 54
+assert catalogue['schemas']['I13_peer_held_API14']['field_count'] == 14
+receipt = dict(schema_version=2, record_type='I13_actual_peer007_commoncatalogue007_pin_only_Source_successor',
+    author='/root/i2_resume_gap', actual_Source_editor='/root/i2_resume_gap',
+    created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds'),
+    Source=pin(NEW,new), API=pin(NEW_API,api_raw), common_catalogue=catalogue_pin, Root_narrow_adoption=adoption_pin,
+    before_Source=pin(OLD,old), before_Source_bytes_base64=base64.b64encode(old).decode(),
+    before_API=pin(OLD_API,api_before), before_API_bytes_base64=base64.b64encode(api_before).decode(),
+    prior_receipt=pin(OUT/'I13_PEER_CANONICAL_AUTHOR_SOURCE_AUTHOR_RECEIPT_006.json'),
+    inverse_assignment_before_utf8=before_region.decode(), inverse_assignment_after_utf8=after_region.decode(),
+    exact_delta='Only COMMON_CATALOGUE_PIN actual007 path/size/SHA; API.Source updated. All function/class raw bodies and ASTs are exact006. Whole006 Source/API before bytes retained; replacing the exact assignment restores whole006.',
+    own_conformance_review='Peer entry consumes author-wrapper14, original innerraw20, roledata, result54, producerAPI14 and new producer check3; these schemas and all role/counter/actor/falseguard requirements remain exact006. New prewrite15/publication32/recorded-evaluation/strict owner Source interval are publisher-context responsibilities, absent from this peer entry. No additional peer functional correction found. Header common004 wording is preserved dated ancestry; executable fixed catalogue assignment and this adopted receipt identify current007.',
+    regions=regions, whole_before_inverse_verified=True, every_function_raw_and_AST_unchanged=True,
+    target_execution=False, tests_executed=False, operational_authority=False, scientific_authority=False,
+    native_Parser_executed=False, actual_producer_issued=False, actual_family_publication=False)
+receipt_raw = (json.dumps(receipt, ensure_ascii=True, sort_keys=True, indent=2)+'\n').encode()
+assert len(receipt_raw) <= 2097152
+save_raw(RECEIPT,receipt_raw)
+print(json.dumps(dict(Source=pin(NEW), API=pin(NEW_API), receipt=pin(RECEIPT)), sort_keys=True))

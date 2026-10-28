@@ -1,0 +1,30 @@
+"""Two separate Root metadata adoptions; no bundle creation or target execution."""
+import datetime as dt,hashlib,json
+from pathlib import Path
+R=Path(__file__).parent
+def pin(p):
+ p=Path(p);b=p.read_bytes();assert len(b)<=2097152
+ return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def load(p):return json.loads(Path(p).read_bytes())
+def occurs(v,p):return v==p or(type(v)is dict and any(occurs(x,p)for x in v.values()))or(type(v)is list and any(occurs(x,p)for x in v))
+def reviewed(path,sha,reviewer,count):
+ c=load(path);assert pin(path)['sha256']==sha;link=c.get('full_proof',c.get('full_review'));fp=Path(link['path']);f=load(fp);assert pin(fp)==link
+ for v in(c,f):
+  assert v['reviewer']==reviewer and v['verdict'].startswith('PASS_') and v['checks_passed']==count and v['checks_failed']==0
+  assert all(v[k] is False for k in('tests_executed','target_execution','operational_authority','scientific_authority'))
+ assert len(f['checks'])==len({x['name']for x in f['checks']})==count and all(x['passed']is True for x in f['checks'])
+ return c,f,fp
+scope=R/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_003.json';sv=load(scope);now=dt.datetime.now(dt.timezone.utc)
+assert pin(scope)['sha256']=='726c201dd6349aca56122129acf71b259b821a667c0720a3a4838ffb8aefe1ad' and(dt.datetime.fromisoformat(sv['interval_end'])-now).total_seconds()>60
+cp=R/'Source_scope003_different_review_001/INDEPENDENT_I13_SOURCE_SCOPE003_SOURCE_CAPSULE_001.json';c,f,fp=reviewed(cp,'730a7fc16b94dfc1e2df5a14b2c9a98ea6e568a502db8b072600de42b8b37076','/root/project_architecture',118)
+assert occurs(c,pin(scope)) and occurs(f,pin(scope))
+v=dict(schema_version=1,record_type='Root_I13_current_Source_scope003_different_review_adoption',author='/root',created_utc=now.isoformat(),verdict='ACCEPT_EXACT_I13_SOURCE_SCOPE003_ONLY',Source_scope=pin(scope),different_Source_review=pin(cp),full_review=pin(fp),checks_passed=118,checks_failed=0,end_unchanged=sv['interval_end'],same_local3_shared5=True,Source_scope002_remains_unchanged=True,extra_synthetic_calls_admitted=0,target_execution=False,tests_executed=False,actual_family_publication=False,operational_authority=False,scientific_authority=False)
+sp=R/'ROOT_I13_CURRENT_SOURCE_SCOPE003_DIFFERENT_REVIEW_ADOPTION_001.json'
+with sp.open('xb')as h:h.write((json.dumps(v,sort_keys=True,indent=2)+'\n').encode())
+cp=R/'Root_bundle_publication_helpers_Source_review_001/ROOT_DIFFERENT_I13_BUNDLE_PUBLICATION_HELPERS_SOURCE_CAPSULE_001.json';c,f,fp=reviewed(cp,'721559743c4e182f11d4a903c09ab87c5c1de9989cf4f1f536c339e74835eb4f','/root',139)
+subjects=[pin(R/'prepare_I13_metadata_helper_source_bundles_001.py'),pin(R/'prepare_I13_managed_candidate_003.py')]
+assert all(occurs(c,p)and occurs(f,p)for p in subjects)
+v=dict(schema_version=1,record_type='Root_I13_exact_bundle_publication_helpers_different_Source_review_adoption',author='/root',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),verdict='ACCEPT_EXACT_I13_BUNDLE_PUBLICATION_HELPERS_SOURCE_ONLY',Source_scope=pin(scope),different_Source_review=pin(cp),full_proof=pin(fp),subjects=subjects,checks_passed=139,checks_failed=0,actual_bundle_reconstruction_candidate_and_creation_reviews_required=True,actual_bundles_created=False,target_execution=False,tests_executed=False,actual_family_publication=False,operational_authority=False,scientific_authority=False)
+hp=R/'ROOT_I13_BUNDLE_PUBLICATION_HELPERS_DIFFERENT_SOURCE_REVIEW_ADOPTION_001.json'
+with hp.open('xb')as h:h.write((json.dumps(v,sort_keys=True,indent=2)+'\n').encode())
+print(json.dumps(dict(scope003_adoption=pin(sp),helpers_adoption=pin(hp),targets_called=0,bundles_created=False)))

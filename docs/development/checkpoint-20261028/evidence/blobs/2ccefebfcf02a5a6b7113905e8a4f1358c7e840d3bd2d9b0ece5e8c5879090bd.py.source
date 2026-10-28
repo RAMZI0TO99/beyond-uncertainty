@@ -1,0 +1,224 @@
+"""Independent metadata Source review only. Never imports or invokes subjects."""
+from pathlib import Path
+import ast, base64, copy, datetime as dt, hashlib, json
+
+R = Path(r'D:\Aenv\pro2\WORK\resume-20261025-003')
+P = R / 'm3_peer_contracts_016'
+I = P / 'i13'
+O = R / 'partition_fixtures_supervisor_Source_review_001'
+checks, subjects, excerpts, inventory = [], {}, {}, {}
+
+def sha(b): return hashlib.sha256(b).hexdigest()
+def fact(p, b=None):
+    p = Path(p)
+    b = p.read_bytes() if b is None else b
+    return dict(path=str(p), bytes=len(b), sha256=sha(b))
+def ck(name, passed, evidence):
+    checks.append(dict(name=name, passed=bool(passed), evidence=evidence))
+def pairs(rows):
+    out = {}
+    for k, v in rows:
+        if k in out: raise ValueError('duplicate key ' + k)
+        out[k] = v
+    return out
+def bad(value): raise ValueError('noninteger JSON ' + value)
+def decode(b): return json.loads(b.decode('utf8'), object_pairs_hook=pairs, parse_float=bad, parse_constant=bad)
+def read(label, p, expected=None):
+    p = Path(p)
+    b = p.read_bytes()
+    f = fact(p, b)
+    subjects[label] = f
+    ck(label + '_ordinary_absolute', p.is_absolute() and p.is_file() and not p.is_symlink(), str(p))
+    if expected:
+        ck(label + '_exact_pin', f == expected if isinstance(expected, dict) else (len(b), sha(b)) == expected, f)
+    ck(label + '_original_2MiB_cap', len(b) <= 2097152, len(b))
+    return b
+def js(label, p, expected=None):
+    value = decode(read(label, p, expected))
+    ck(label + '_strict_JSON', type(value) is dict, 'UTF8 unique-key object; no floats/nonfinite values')
+    return value
+def dump(n): return ast.dump(n, include_attributes=False)
+def defs(t): return {n.name:n for n in t.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))}
+def assignments(t):
+    return {n.targets[0].id:n.value for n in t.body if isinstance(n, ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0], ast.Name)}
+
+freeze = js('freeze002', I/'I13_FIXTURES010_008_BOUNDED_PARTITION_SOURCE_FREEZE_002.json', (4783,'c661b2b42f2bf11ee7f2df6e99e030f30042efed201e2a5ed4958c8c962e80d3'))
+plan_b = read('plan002', freeze['partition_plan']['path'], (198073,'3b196c5fa1d98195c21ef8690ea46efef5fbfe32942d7274db2a95c4b19526e9'))
+plan = decode(plan_b)
+ck('plan002_strict_consumer_compatible', type(plan) is dict, 'Reviewer strict JSON policy; no subject decoder called')
+pr = js('plan002_inverse', I/'I13_PARTITION_PLAN002_STRICT_JSON_SCALAR_AND_WHOLE001_INVERSE_AUTHOR_RECEIPT_001.json', (272457,'8bdb1f608bc6506417fdd18ec127ec6383f09f49770d7bafdb06728617cca0ed'))
+old_plan = read('retained_plan001', pr['predecessor_plan']['path'], pr['predecessor_plan'])
+old_freeze = read('retained_freeze001', pr['predecessor_freeze']['path'], pr['predecessor_freeze'])
+ck('whole_plan001_inverse', base64.b64decode(pr['whole_predecessor_plan_bytes_base64'], validate=True)==old_plan, subjects['retained_plan001'])
+ck('whole_freeze001_inverse', base64.b64decode(pr['whole_predecessor_freeze_bytes_base64'], validate=True)==old_freeze, subjects['retained_freeze001'])
+a = b'"planning_arithmetic_only_seconds_for32_at_prefix_average": 9.148343'
+b = b'"planning_arithmetic_only_seconds_for32_at_prefix_average": "9.148343"'
+ck('plan002_exact_one_decimal_string_repair', old_plan.count(a)==1 and old_plan.replace(a,b)==plan_b, 'Two quotation bytes only; every other plan byte retained')
+expected_freeze = decode(old_freeze)
+expected_freeze['partition_plan'] = subjects['plan002']
+ck('freeze002_only_exact_plan_pin', expected_freeze==freeze, 'All fixture/kernel/API/helper/catalogue products exact')
+ck('planning_scalar_text_not_measurement', type(plan['runtime_policy']['planning_arithmetic_only_seconds_for32_at_prefix_average']) is str and plan['runtime_policy']['planning_arithmetic_only_seconds_for32_at_prefix_average']=='9.148343', 'Planning arithmetic text only')
+ss = js('Source_scope002', freeze['Source_scope']['path'], freeze['Source_scope'])
+js('Source_scope002_adoption', freeze['Source_scope_adoption']['path'], freeze['Source_scope_adoption'])
+ck('current_Source_reserve', (dt.datetime.fromisoformat(ss['interval_end'])-dt.datetime.now(dt.timezone.utc)).total_seconds()>60 and ss['publication_reserve_seconds']==60, ss['interval_end'])
+ck('Source_scope_no_automatic_test_or_lease', ss['new_pure_I13_tests_automatically_admitted'] is False and ss['new_operational_execution_lease_issued'] is False and ss['target_execution'] is ss['operational_authority'] is False, 'Fresh separately adopted once scope required')
+for j, pin in enumerate(freeze['kernel_and_API_inputs_unchanged']):
+    body = read('kernel_API_'+str(j+1), pin['path'], pin)
+    if j%2==0: ck('kernel_'+str(j//2+1)+'_65536_cap', len(body)<=65536, len(body))
+
+products = {Path(p['path']).name:p for p in freeze['products']}
+fixtures, cats = {}, {}
+rowspec = [
+ ('M3','exercise_M3_guard_and_publisher_metadata_memory_010.py','exercise_M3_guard_and_publisher_metadata_memory_009.py','I13_M3_FIXTURE_LITERAL_CASE_CATALOGUE_010.json','I13_M3_FIXTURE_SOURCE010_BOUNDED_PARTITION_EXPORT_AND_WHOLE_PREDECESSOR_AUTHOR_RECEIPT_001.json'),
+ ('peer','exercise_selected_peer_author_metadata_memory_008.py','exercise_selected_peer_author_metadata_memory_007.py','I13_PEER_FIXTURE_LITERAL_CASE_CATALOGUE_008.json','I13_PEER_FIXTURE_SOURCE008_BOUNDED_PARTITION_EXPORT_AND_WHOLE_PREDECESSOR_AUTHOR_RECEIPT_001.json')]
+for key, name, oldname, catname, recname in rowspec:
+    body = read('fixture_'+key, I/name, products[name])
+    old = read('predecessor_fixture_'+key, I/oldname)
+    text = body.decode('utf8'); tree = ast.parse(text); compile(tree, '<review fixture Source only>', 'exec')
+    otree = ast.parse(old.decode('utf8')); ds = defs(tree); ods = defs(otree)
+    cat = js('catalogue_'+key, I/catname, products[catname]); cats[key] = cat
+    rec = js('inverse_'+key, I/recname, products[recname])
+    ck(key+'_whole_old_byte_prefix', body.startswith(old), dict(old_bytes=len(old), new_bytes=len(body)))
+    ck(key+'_exact_whole_inverse', base64.b64decode(rec['whole_predecessor_Source_bytes_base64'],validate=True)==old and rec['predecessor_Source']==subjects['predecessor_fixture_'+key], subjects['predecessor_fixture_'+key])
+    ck(key+'_only_appended_function_AST', len(tree.body)==len(otree.body)+1 and all(dump(x)==dump(y) for x,y in zip(tree.body[:-1],otree.body)) and isinstance(tree.body[-1],ast.FunctionDef) and tree.body[-1].name=='run_diagnostic_cases', 'All previous module AST nodes unchanged')
+    for name0 in ('run','_diagnostic_one','run_diagnostic'):
+        ck(key+'_'+name0+'_UTF8_AST_exact', dump(ds[name0])==dump(ods[name0]), sha(dump(ds[name0]).encode()))
+    rows = ast.literal_eval(assignments(tree)['CASE_CATALOGUE']); names = [r['name'] for r in rows]
+    fixtures[key] = dict(names=names, rows=rows, source=subjects['fixture_'+key])
+    ck(key+'_literal_rows_names_counts_exact', rows==cat['literal_cases'] and names==cat['case_names'] and len(rows)==cat['case_count']==(247 if key=='M3' else 689), len(rows))
+    ck(key+'_literal_LF_hash', sha(('\n'.join(names)+'\n').encode())==cat['case_names_LF_sha256'], cat['case_names_LF_sha256'])
+    ck(key+'_whole_Source_catalogue_join', cat['Source']==rec['Source']==subjects['fixture_'+key] and rec['catalogue']==subjects['catalogue_'+key], subjects['fixture_'+key])
+    ck(key+'_no_result_or_new_case_claim', cat['case_results'] is cat['diagnostic_case_results'] is cat['partition_case_results'] is None and cat['added_control_count']==0 and cat['new_helpers_builders_fixtures_called'] is False, 'Original247/689 cases; unmeasured appended export')
+    fun=ds['run_diagnostic_cases']; ar=fun.args
+    ck(key+'_exact_fixed_five_kwonly', not ar.posonlyargs and not ar.args and ar.vararg is ar.kwarg is None and [x.arg for x in ar.kwonlyargs]==['m3','publisher','peer','catalogue_bytes','case_names'] and ar.kw_defaults==[None]*5, 'No positional/optional/arbitrary callback/export parameters')
+    at=next(i for i,n in enumerate(fun.body) if isinstance(n,ast.Assign) and isinstance(n.targets[0],ast.Name) and n.targets[0].id=='cases')
+    selector=ast.Module(body=fun.body[:at], type_ignores=[]); st=ast.unparse(selector); excerpts[key+'_selector']=st
+    selection_guards=[('builtin_sequence','type(case_names) not in (tuple, list)'),('bounded','not 1 <= len(case_names) <= 32'),('builtin_strings','type(name) is not str'),('local_tuple','requested = tuple(case_names)'),('unique','len(set(requested)) != len(requested)'),('known','name not in positions'),('original_order','positions[left] >= positions[right]'),('fixed_rows','CASE_CATALOGUE[positions[name]]')]
+    for label, needle in selection_guards: ck(key+'_selection_'+label, needle in st, needle)
+    ck(key+'_selection_precedes_case_evaluation', not any(isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id=='_diagnostic_one' for n in ast.walk(selector)), 'Input guards run before any case')
+    ck(key+'_no_global_monkeypatch', not any(isinstance(n,(ast.Global,ast.Nonlocal)) for n in ast.walk(fun)) and not any(isinstance(n,ast.Name) and isinstance(n.ctx,(ast.Store,ast.Del)) and n.id in ('CASE_CATALOGUE','FIXED') for n in ast.walk(fun)), 'Catalogue/fixed data never assigned or deleted')
+    loop=next(n for n in fun.body if isinstance(n,ast.For)); oldloop=next(n for n in ds['run_diagnostic'].body if isinstance(n,ast.For))
+    ck(key+'_case_body_and_finally_exact_old', dump(ast.Module(body=loop.body[:-2],type_ignores=[]))==dump(ast.Module(body=oldloop.body[:-1],type_ignores=[])), 'Only old final event print replaced; case implementation/error handling/seals exact')
+    ck(key+'_iterates_only_local_selected', isinstance(loop.iter,ast.Name) and loop.iter.id=='selected', 'At most32 exact selected literals')
+    ck(key+'_truthful_counts_and_closed9_return_exact', dump(ast.Module(body=fun.body[at+4:],type_ignores=[]))==dump(ast.Module(body=ds['run_diagnostic'].body[4:],type_ignores=[])), 'Original honest pass/fail counters and literal-false authority flags')
+    tr=next(n for n in loop.body if isinstance(n,ast.Try))
+    ck(key+'_MemoryError_rethrow_only_Exception_caught', [ast.unparse(n.type) for n in tr.handlers]==['MemoryError','Exception'] and isinstance(tr.handlers[0].body[0],ast.Raise), 'BaseException not captured')
+    ck(key+'_global_and_three_heldflag_finally', len(tr.finalbody)==2 and all(isinstance(n,ast.Assert) for n in tr.finalbody) and 'ACTUAL_ENTRY_QUALIFIED' in ast.unparse(tr.finalbody[1]), 'Corruption aborts before next case; no normalization')
+    app=next(n for n in ast.walk(tr.handlers[1]) if isinstance(n,ast.Call) and ast.unparse(n.func)=='failures.append'); detail=app.args[0]
+    ck(key+'_bounded_five_failure_details', [x.arg for x in detail.keywords]==['name','exception_type','expected_code','actual_code','message'] and '[:128]' in ast.unparse(detail) and '[:512]' in ast.unparse(detail), ast.unparse(detail))
+    et=ast.unparse(ast.Module(body=loop.body[-2:],type_ignores=[])); excerpts[key+'_immediate_event']=et
+    ck(key+'_immediate_fail_event_closed6', "event='CASE_FAIL', **failures[-1]" in et and "event='CASE_PASS', name=name" in et and 'print(json.dumps(event, sort_keys=True), flush=True)' in et, 'Event + exact5 bounded failure fields, flushed after finally before next case')
+    ck(key+'_catalogue_selection_event_contract_exact', cat['partition_kwonly_arguments']==[x.arg for x in ar.kwonlyargs] and cat['partition_failure_event_keys']==['event','name','exception_type','expected_code','actual_code','message'] and cat['partition_minimum_cases']==1 and cat['partition_maximum_cases']==32, 'Fixed selection schema and fail6 event')
+    nodes={(n.name,n.lineno,n.end_lineno):n for n in ast.walk(tree) if isinstance(n,(ast.FunctionDef,ast.ClassDef))}; lines=text.splitlines(keepends=True)
+    for j,reg in enumerate(rec['regions']):
+        n=nodes.get((reg['name'],reg['start_line'],reg['end_line'])); b0=''.join(lines[reg['start_line']-1:reg['end_line']]).encode('utf8')
+        ck(key+'_UTF8_region_'+str(j+1), n is not None and sha(dump(n).encode())==reg['AST_sha256'] and sha(b0)==reg['utf8_sha256'], dict(name=reg['name'],start=reg['start_line'],end=reg['end_line']))
+    for field,fn in [('added_definition_actual_UTF8_AST_sha256','run_diagnostic_cases'),('strict_run_actual_UTF8_AST_sha256','run'),('full_diagnostic_actual_UTF8_AST_sha256','run_diagnostic'),('diagnostic_one_actual_UTF8_AST_sha256','_diagnostic_one')]: ck(key+'_'+field, sha(dump(ds[fn]).encode())==rec[field], rec[field])
+    read(key+'_unchanged_helper007',cat['helper']['path'],cat['helper'])
+    inventory[key]=dict(prior_top_level_definitions=len(ods),literal_count=len(rows),UTF8_regions=len(rec['regions']),new_export_AST_sha256=sha(dump(fun).encode()))
+
+allnames=fixtures['M3']['names']+fixtures['peer']['names']; lf=sha(('\n'.join(allnames)+'\n').encode())
+ck('whole936_exact_names_and_LF_digest', len(allnames)==len(set(allnames))==936 and allnames==plan['original_case_names'] and lf==plan['original_case_names_LF_sha256']=='995ee1ae8d18c2b3093d4f6ff6e9835321ce5da9cff4c6a388a94d5018250f72', lf)
+ck('exact30_size_vector', plan['partition_count']==len(plan['partitions'])==30 and plan['partition_maximum_case_count']==32 and plan['partition_sizes']==[32]*29+[8], '29x32+8')
+flat=[]
+for j,row in enumerate(plan['partitions']):
+    start=j*32; expected=allnames[start:start+32]; groups=row['fixture_selections']; flat+=row['case_names']
+    ck('partition_'+str(j+1)+'_exact_slice', row['partition_id']=='I13_PARTITION_%03d'%(j+1) and row['case_names']==expected and row['case_count']==len(expected) and row['first_ordinal']==start+1 and row['last_ordinal']==start+len(expected) and sha(('\n'.join(expected)+'\n').encode())==row['case_names_LF_sha256'], dict(id=row['partition_id'],first=row['first_ordinal'],last=row['last_ordinal'],count=row['case_count']))
+    ck('partition_'+str(j+1)+'_fixed_nonempty_group_closure', 1<=len(groups)<=2 and [g['kind'] for g in groups] in (['M3'],['PEER'],['M3','PEER']) and sum((g['case_names'] for g in groups),[])==expected and all(g['Source']==fixtures['M3' if g['kind']=='M3' else 'peer']['source'] and 1<=len(g['case_names'])<=32 and g['case_names']==[n for n in expected if n in fixtures['M3' if g['kind']=='M3' else 'peer']['names']] for g in groups), dict(kinds=[g['kind'] for g in groups],counts=[len(g['case_names']) for g in groups]))
+    ck('partition_'+str(j+1)+'_unadmitted_unexecuted', row['admitted'] is row['executed'] is False and row['case_results'] is None, 'No case authority or result')
+ck('all30_disjoint_complete_original_order', flat==allnames and len(set(flat))==936, 'No repeats, gaps, reordering, or added case')
+ck('cross008_exact23plus9', plan['cross_fixture_boundary_partition']=='I13_PARTITION_008' and [len(g['case_names']) for g in plan['partitions'][7]['fixture_selections']]==[23,9], 'M3 last23 then peer first9; absent empty groups skipped')
+ck('plan_no_runtime_guarantee_or_budget_extension', plan['runtime_policy']['elapsed_not_guaranteed'] is plan['runtime_policy']['distribution_cold_start_and_later_case_costs_unmeasured'] is True and [plan['runtime_policy'][k] for k in ('total_seconds','wait_seconds','cleanup_seconds','reap_seconds')]==[60,50,10,5], 'Original60/50/10/5; planning scalar not measured elapsed')
+ck('plan_no_automatic_next_scope_or_replay', 'No automatic next-partition launch' in plan['admission_policy'] and plan['retained_attempt003']['current_scope_replay_permitted'] is False, 'Separate exact Source review/adoption/fresh scope/resources/reported release each launch')
+ck('plan_retains_saved003_incomplete_failure', plan['retained_attempt003']['case_pass_events']==153 and plan['retained_attempt003']['case_fail_events']==22 and plan['retained_attempt003']['all936_qualified'] is False and plan['retained_attempt003']['child_result_absent'] is True, 'Consumed003 timeout, no full936 or failure-cause qualification')
+
+s7b=read('Supervisor007',P/'ROOT_I13_ONCE_MEMORY_SUPERVISOR_007.py',(79249,'20246dd269f9809e2c82ca0ab8c972416f878bfcc649887f21c75fd92835f552'))
+s7=ast.parse(s7b.decode('utf8')); compile(s7,'<review Supervisor Source only>','exec'); ds=defs(s7); aa=assignments(s7)
+s6b=read('retained_Supervisor006',P/'ROOT_I13_ONCE_MEMORY_SUPERVISOR_006.py',(79249,'cb704ccc4a34628e9ae7de2d7cfb838618c22ec4956998dfd69600680fcddb53')); s6=ast.parse(s6b.decode('utf8'))
+s5b=read('retained_Supervisor005',P/'ROOT_I13_ONCE_MEMORY_SUPERVISOR_005.py',(77142,'90b57f22149518ae6bd5850482f3779d0fb213b8b50a84e07334604cd0077222')); s5=ast.parse(s5b.decode('utf8')); olddefs=defs(s5)
+rec7=js('Supervisor007_inverse',P/'ROOT_I13_SUPERVISOR007_FLOAT_FREE_PLAN_PIN_SOURCE_AUTHOR_RECEIPT_001.json',(106885,'f7f7688b1dbab1b2fa2a1d3a9ba186c8901e731df1c889667ddd2b8ae7643423'))
+rec6=js('Supervisor006_inverse',P/'ROOT_I13_SUPERVISOR006_BOUNDED_PARTITION_SOURCE_AUTHOR_RECEIPT_001.json',(105406,'6e4e62cfd2ddc36046b759d6177c0d39163d4ae4b13315c9105f9e201e018625'))
+ck('Sup007_complete006_inverse',base64.b64decode(rec7['before_complete_base64'],validate=True)==s6b and rec7['before']==subjects['retained_Supervisor006'] and rec7['after']==subjects['Supervisor007'],'Complete refused006 retained')
+ck('Sup006_complete005_inverse',base64.b64decode(rec6['before_complete_base64'],validate=True)==s5b and rec6['before']==subjects['retained_Supervisor005'],'Complete005 retained')
+normalized=copy.deepcopy(s7)
+for n in normalized.body:
+    if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id=='PARTITION_PLAN': n.value=copy.deepcopy(assignments(s6)['PARTITION_PLAN'])
+ck('Sup007_only_plan_pin_module_AST_change',dump(normalized)==dump(s6),'Every other node/function exact006')
+ck('Sup007_exact_plan002_pin',ast.literal_eval(aa['PARTITION_PLAN'])==subjects['plan002'],subjects['plan002'])
+changed=[n for n in olddefs if dump(olddefs[n])!=dump(ds[n])]
+ck('Sup_only_scope_child_parent_changed_from005',changed==['scope','child','parent'] and set(ds)-set(olddefs)=={'selected_partition'},changed)
+for name in olddefs:
+    if name not in changed: ck('Sup_'+name+'_exact005',dump(ds[name])==dump(olddefs[name]),sha(dump(ds[name]).encode()))
+for name in ('SOURCES','APIS','CATALOGUE','BUDGETS','OUTPUT_KEYS','DIAGNOSTIC_PART_KEYS','EXPECTED_CASE_NAMES_BY_FIXTURE','EXPECTED_CASE_NAMES_SHA256','EXPECTED_CASE_COUNT'):
+    ck('Sup_'+name+'_constant_exact005',dump(aa[name])==dump(assignments(s5)[name]),'Original constraints/data exact')
+ck('Sup_closed_scope_only_adds_plan_and_identity',ast.literal_eval(aa['SCOPE_KEYS'])==ast.literal_eval(assignments(s5)['SCOPE_KEYS'])+('partition_plan','partition_id'),'Closed scope keyset')
+ck('Sup_fixed_fixtures_exact_new',ast.literal_eval(aa['FIXTURES'])==dict(m3_publisher=fixtures['M3']['source'],peer=fixtures['peer']['source']),ast.literal_eval(aa['FIXTURES']))
+cat=ast.literal_eval(aa['CATALOGUE']); read('shared_catalogue007',cat['path'],cat)
+sel=ast.unparse(ds['selected_partition']); excerpts['selected_partition']=sel
+for label,needle in [('exact_plan',"value['partition_plan'] == PARTITION_PLAN"),('strict_read','decode(read_pin(PARTITION_PLAN))'),('typed_identity',"type(value['partition_id']) is str"),('unique_row','len(rows) == 1'),('bounded_count',"1 <= row['case_count'] <= 32"),('unique_names','len(set(names)) == len(names)'),('digest',"row['case_names_LF_sha256']"),('nonempty_order',"(['M3'], ['PEER'], ['M3', 'PEER'])"),('closure',"sum((g['case_names'] for g in groups), []) == names"),('exact_fixture',"group['Source'] == FIXTURES[key]")]: ck('Sup_selected_'+label,needle in sel,needle)
+sc=ast.unparse(ds['scope']); child=ast.unparse(ds['child']); parent=ast.unparse(ds['parent'])
+ck('Sup_scope_exact_plan_and_Root_adoption_join', 'selected_partition(value)' in sc and "('catalogue', 'supervisor', 'partition_plan')" in sc and 'occurs(adoption, value[k])' in sc,'Plan plus exact Sources/APIs/fixtures/catalogue/Supervisor required in Root adoption')
+ck('Sup_child_fixed_five_kw_selected_dispatch', "fixtures[key].run_diagnostic_cases(m3=m3, publisher=publisher, peer=peer, catalogue_bytes=catalogue_bytes, case_names=tuple(group['case_names']))" in child and "for group in partition['fixture_selections']:" in child,'Only fixed export for fixed nonempty groups')
+ck('Sup_child_validates_exact_group', "validate_diagnostic_part(part, group['case_names'])" in child,'Closed9 part/closed5 failure/details/count/order validation exact005')
+ck('Sup_child_no_full_or_empty_fixture_export',not any(isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr in ('run','run_diagnostic') for n in ast.walk(ds['child'])),'Only plan-listed groups execute')
+ck('Sup_entry_truthful_selected_count_identity',"case_count=partition['case_count'], partition_id=partition['partition_id']" in child,'No936 claim for a selected partition')
+op=olddefs['parent']; np=ds['parent']
+idx=lambda b:next(i for i,n in enumerate(b) if isinstance(n,ast.Assign) and any(isinstance(x,ast.Name) and x.id=='catalogue_valid' for x in n.targets))
+ck('Sup_launch_capture_wait_terminate_reap_EOF_path_exact005',dump(ast.Module(body=np.body[6:idx(np.body)],type_ignores=[]))==dump(ast.Module(body=op.body[2:idx(op.body)],type_ignores=[])),'Fresh outputs/exclusive claim/Popen/capture/50wait/5reap/60total/EOF/stream writes/result read exact')
+rev=copy.deepcopy(np); del rev.body[2:6]
+class OldNames(ast.NodeTransformer):
+    def visit_Name(self,n):
+        n.id={'expected_case_count':'EXPECTED_CASE_COUNT','expected_case_names_sha256':'EXPECTED_CASE_NAMES_SHA256'}.get(n.id,n.id)
+        return n
+rev=OldNames().visit(rev)
+old_expected=next(n for n in ast.walk(op) if isinstance(n,ast.Assign) and any(isinstance(x,ast.Name) and x.id=='expected_names' for x in n.targets))
+for n in ast.walk(rev):
+    if isinstance(n,ast.Try):
+        for j,stmt in enumerate(list(n.body)):
+            if isinstance(stmt,ast.Expr) and isinstance(stmt.value,ast.Call) and isinstance(stmt.value.func,ast.Name) and stmt.value.func.id=='validate_diagnostic_part': n.body.insert(j,copy.deepcopy(old_expected)); break
+ck('Sup_whole_parent_only_selected_expected_names_changes',dump(rev)==dump(op),'Reverting selected-name initializers/count/hash restores entire005 parent AST')
+get_assignment=lambda t,k:next(n.value for n in ast.walk(t) if isinstance(n,ast.Assign) and any(isinstance(x,ast.Name) and x.id==k for x in n.targets))
+accept=get_assignment(np,'accepted')
+ck('Sup_acceptance_exact_original_plus_diagnostic_complete',dump(accept)==dump(get_assignment(op,'accepted')) and 'diagnostic_complete' in ast.unparse(accept),ast.unparse(accept))
+ck('Sup_exact_selected_names_counts_hash',"expected_names = partition['case_names']" in parent and 'expected_case_count = len(expected_names)' in parent and 'validate_diagnostic_part(projection, expected_names)' in parent,'Complete selected names/count/digest required; event prefix never accepts')
+ck('Sup_partial_or_failed_diagnostic_not_accepted','diagnostic_complete = False' in parent and 'diagnostic_failures = None' in parent and 'catalogue_valid and diagnostic_complete' in parent,'Absent/incomplete/malformed/failed child cannot accept allpass')
+
+controls=[('builder001','prepare_I13_partition_supervisor_Source_001.py',(6901,'af7e5801ede1164c34f5d34dd89878975b3451594cc5dbbd6340a79ee9e35b10')),('builder002','prepare_I13_partition_supervisor_Source_002.py',None),('once_control001','prepare_I13_bounded_partition_once_admission_001.py',(7960,'5faea7d445ebe8b81b8ea7b22dc53be2ad157ba2dcb1797e9cc9698b95db71d2'))]
+for label,name,pin in controls:
+    b=read(label,R/name,pin); t=ast.parse(b.decode('utf8')); compile(t,'<review metadata Source only>','exec'); text=b.decode('utf8'); excerpts[label]=text
+    imports={n.names[0].name for n in t.body if isinstance(n,ast.Import)}|{n.module for n in t.body if isinstance(n,ast.ImportFrom)}
+    calls={ast.unparse(n.func) for n in ast.walk(t) if isinstance(n,ast.Call)}
+    ck(label+'_metadata_no_launch_or_target_call',not imports.intersection({'subprocess','importlib','runpy'}) and not calls.intersection({'exec','eval','__import__'}) and not any(x.endswith(('.run','.run_diagnostic','.run_diagnostic_cases','.Popen','.system','.spawn')) for x in calls),dict(imports=sorted(imports),reviewer_invocations=0))
+    ck(label+'_create_new_xb',"open('xb')" in text,'No overwrite publication')
+    if label=='once_control001':
+        guards=[('closed_config4',"set(cfg)=={'supervisor','Source_adoption','previous_consumed_adoption','peer_release_report'}"),('config_hash',"pin(cp)['sha256']==config_sha"),('fixed_AST_plan',"plan=exact(constants['PARTITION_PLAN'])"),('fixed_partition',"rows=[r for r in plan['partitions'] if r['partition_id']==partition_id]"),('adoption_allsubjects',"for p in subjects: assert pin(p['path'])==p and occurs(adopt,p)"),('control_selfpin',"pin(Path(__file__))"),('prior_refusal_adopted',"occurs(adopt,cfg['previous_consumed_adoption'])"),('latest_grant_report',"max(int(p.stem.rsplit('_',1)[1]) for p in grantfiles)==grant"),('reported_release',"reported['reported_full_compute_custody_released'] is reported['grant_consumed_closed'] is True"),('all5_pause_dates',"('20261007','20261012','20261013','20261015','20261025')"),('no_duplicate_allocation',"v.get('source_adoption')==cfg['Source_adoption'] and v.get('partition_id')==partition_id"),('all_old_scopes_closed',"s['reaped'] is s['streams_drained'] is True and all(s['actual_stream_EOF'].values()) and s['custody_error'] is None"),('unconsumed_refusal','allocated prior scope unconsumed or unreconciled; no next admission'),('fresh_namespace','assert not os.path.lexists(owned)'),('Source_end_reserve',"(dt.datetime.fromisoformat(source_scope['interval_end'])-end).total_seconds()>60"),('RAM_disk','m.available_phys>=1073741824 and disk>=10737418240'),('fresh_less30','(dt.datetime.now(dt.timezone.utc)-now).total_seconds()<30'),('once_max1','maximum_suite_invocations=1'),('Source002','ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_002.json'),('no_host_absence','whole_host_quiet_claimed=False,physical_handle_absence_claimed=False'),('budgets','total_seconds=60,wait_seconds=50,cleanup_seconds=10,reap_seconds=5')]
+        for tag,needle in guards: ck('once_control_'+tag,needle in text,needle)
+        saves=[n for n in ast.walk(t) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id=='save']
+        ck('once_control_only_two_metadata_outputs',len(saves)==2,'Prelaunch and scope only; declared claim/child/result paths are not written or launched')
+        ck('once_control_literal_false_authority',all(k+'=False' in text for k in ['target_execution','operational_authority','scientific_authority','actual_family_publication']),'No original/operational/Native8/Parser/runtime/science authority')
+
+prior=js('prior_lifecycle_review250',R/'lifecycle_diagnostic_fixtures_Source_review_003'/'INDEPENDENT_I13_LIFECYCLE_DIAGNOSTIC_FIXTURES_SOURCE_CAPSULE_001.json',(5047,'57ad0782d9337f79900eddb959ef1b15644fd50bb8c7924a1677773befaac1b4'))
+ck('prior250_genuine_Source_review',prior['checks_passed']==250 and prior['checks_failed']==0 and prior['reviewer']=='/root/i13_final_review','Prior Source/lifecycle facts inherited only under exact complete predecessor pins')
+refusal=js('retained_genuine001_006_refusal',O/'INDEPENDENT_I13_PLAN001_SUPERVISOR006_SOURCE_REFUSAL_CAPSULE_001.json',(5299,'2beb89b050469260f6aeae975e090416c784f3aa274bbc07624c1d014b926714'))
+ck('genuine_refusal_retained',refusal['checks_passed']==26 and refusal['checks_failed']==1,'Exact original incompatible plan001/006 preserved')
+ck('independent_actor_separation',freeze['author']==plan['author']=='/root/project_architecture' and rec7['author']=='/root','Reviewer /root/i13_final_review; independent fixture/plan architect and Root supervisor/control')
+ck('no_subject_invoked_by_reviewer',True,'Read/hash/strict JSON/AST/compile metadata only. No import/function/fixture/helper/builder/control/supervisor call')
+ck('all_execution_gates_still_held',True,'Static936 partition coverage is no executed result or guarantee. Fresh actual Root adoption/exact once scope/latest reported full peer release/resources required; no next call or replay authority')
+ck('closed3_unique_check_rows',len({x['name'] for x in checks})==len(checks) and all(set(x)=={'name','passed','evidence'} and type(x['passed']) is bool for x in checks),'Unique named actual bool checks')
+failed=[x for x in checks if not x['passed']]
+if failed:
+    print(json.dumps(dict(checks_passed=len(checks)-len(failed),checks_failed=len(failed),failed=failed),ensure_ascii=True))
+    raise SystemExit(1)
+flags=dict(target_execution=False,tests_executed=False,native_Parser_executed=False,operational_authority=False,scientific_authority=False,actual_family_publication=False)
+base=dict(schema_version=1,reviewer='/root/i13_final_review',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),verdict='PASS_I13_FIXTURES010_008_PLAN002_SUPERVISOR007_BOUNDED_ONCE_CONTROL001_SOURCE_ONLY',checks_passed=len(checks),checks_failed=0,subjects=subjects,claim_limit='Genuine Source-only review; no subject invocation. Exact old fixture bytes/AST retained, only fixed five-kw bounded selection export appended, truthful fail6 immediate details and original held/global finally. Exact936 ordered disjoint30 partitions29x32+8, cross008 M3last23/peerfirst9. Refused plan001/006 retained; plan002 only decimal-string scalar repair, Supervisor007 only exact planpin successor. Selected complete diagnostic AND original allpass/custody/time/EOF/cap/exit acceptance required. Original60/50/10/5 unchanged. Control001 authors only exact fresh scope/prelaunch after Root adoption/latest reported full release/resources/closed prior scopes; no same Sourceadoption+partition allocation twice. No result, all936 qualification, elapsed guarantee, automatic next scope/call, replay, actual family/Native8/Parser/runtime/science/loader/human/physical acceptance.',**flags)
+proof=dict(base,record_type='Independent_I13_bounded_partition_fixture_supervisor_control_Source_full_proof',checks=checks,recomputed_fixture_inventory=inventory,reviewed_Source_segments=excerpts,partition_sizes=[32]*29+[8],names_LF_sha256=lf,review_authoring_infrastructure_refusal='One oversized anonymous metadata command was rejected by Windows CreateProcess os206 before a process existed; this owned review helper then performed the metadata review. No target call occurred.',original_consumed_scopes_unreplayed=['001','002','003'])
+wire=lambda v:(json.dumps(v,sort_keys=True,ensure_ascii=True,indent=2)+'\n').encode('utf8')
+fp=O/'INDEPENDENT_I13_PARTITION_FIXTURES_SUPERVISOR007_CONTROL001_SOURCE_FULL_PROOF_001.json'
+cp=O/'INDEPENDENT_I13_PARTITION_FIXTURES_SUPERVISOR007_CONTROL001_SOURCE_CAPSULE_001.json'
+body=wire(proof); assert len(body)<=2097152
+with fp.open('xb') as f: f.write(body)
+cap=dict(base,record_type='Independent_I13_bounded_partition_fixture_supervisor_control_Source_capsule',full_proof=fact(fp,body))
+body=wire(cap); assert len(body)<=2097152
+with cp.open('xb') as f: f.write(body)
+assert decode(cp.read_bytes())['full_proof']==fact(fp)
+print(json.dumps(dict(checks_passed=len(checks),checks_failed=0,capsule=fact(cp),full_proof=fact(fp)),sort_keys=True))

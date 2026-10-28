@@ -1,0 +1,266 @@
+"""I12 pure owner-v2 receipt FORMAT contracts. No IO or operational admission.
+
+Physical Source editor: /root/i2_resume_gap. Exact adopted metadata protocol002,
+catalogue002 and companions govern this component; old I0-I11 code is not imported.
+"""
+import base64
+import datetime
+import hashlib
+import json
+import re
+
+ACTUAL_ENTRY_QUALIFIED = False
+ACTUAL_SOURCE_EDITOR = '/root/i2_resume_gap'
+CATALOGUE_BYTES = 63218
+CATALOGUE_SHA256 = 'e1521b008e4cb5deac47fcd3586310c052b71635ade957c85ef59749221bc67d'
+PROTOCOL_PIN = {'path': r'D:\Aenv\pro2\WORK\resume-20261025-002\receipt_caller_integration_015\I12_EXACT_OUTSIDE8_RECEIPT_FORMAT_AND_METADATA_GRAPH_PROTOCOL_002.json', 'bytes': 30433, 'sha256': '33df6989e85c72ba584019ed72d722e09e44790ec0335989904723e8a3b94ef1'}
+CATALOGUE_PIN = {'path': r'D:\Aenv\pro2\WORK\resume-20261025-002\receipt_caller_integration_015\I12_EXACT_RECEIPT_FORMAT_SCHEMA_AND_FIXED_DATA_CATALOGUE_002.json', 'bytes': CATALOGUE_BYTES, 'sha256': CATALOGUE_SHA256}
+CAP = 2097152
+FALSE_FLAGS = ('actual_admission','producer_route_qualified','publisher_route_qualified','caller_route_qualified','owner_authority_qualified','lease_eligibility_qualified','physical_IO_qualified','human_review_authenticated','peer_content_semantics_qualified','Native8_qualified','Parser_qualified','full_G01_closed','actual_family_publication','runtime_acceptance','science_acceptance')
+
+
+class I12Error(ValueError):
+    def __init__(self, code):
+        self.code = code
+        super().__init__(code)
+
+
+def _need(ok, code):
+    if not ok:
+        raise I12Error(code)
+
+
+def _tree(value, counter, depth=0):
+    _need(depth <= 48, 'E_DEPTH')
+    counter[0] += 1
+    _need(counter[0] <= 50000, 'E_NODES')
+    if value is None or type(value) in (bool, int):
+        return
+    if type(value) is str:
+        _need(not any(0xD800 <= ord(c) <= 0xDFFF for c in value), 'E_VALUE')
+        return
+    if type(value) is list:
+        for child in value:
+            _tree(child, counter, depth + 1)
+        return
+    if type(value) is dict:
+        for key, child in value.items():
+            _need(type(key) is str, 'E_VALUE')
+            _tree(key, counter, depth + 1)
+            _tree(child, counter, depth + 1)
+        return
+    raise I12Error('E_VALUE')
+
+
+def _wire(value):
+    try:
+        return (json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False)+'\n').encode('utf8')
+    except (TypeError, ValueError, UnicodeError, RecursionError):
+        raise I12Error('E_JSON') from None
+
+
+def _pairs(items):
+    value = {}
+    for key, child in items:
+        _need(key not in value, 'E_DUPLICATE_JSON_KEY')
+        value[key] = child
+    return value
+
+
+def _bad_number(value):
+    raise I12Error('E_JSON_NUMBER')
+
+
+def _decode(raw, counter, byte_code='E_METADATA_CAP'):
+    _need(type(raw) is bytes and 0 < len(raw) <= CAP, byte_code)
+    try:
+        value = json.loads(raw.decode('utf8'),object_pairs_hook=_pairs,parse_float=_bad_number,parse_constant=_bad_number)
+    except I12Error:
+        raise
+    except (ValueError, UnicodeError, RecursionError):
+        raise I12Error('E_JSON') from None
+    _tree(value, counter)
+    return value
+
+
+def _same(a, b):
+    return _wire(a) == _wire(b)
+
+
+def _closed(value, keys, code='E_SCHEMA'):
+    _need(type(value) is dict and set(value) == set(keys), code)
+    return value
+
+
+def _path(value):
+    _need(type(value) is str and 3 < len(value) <= 32767 and re.fullmatch(r'[A-Z]:\\[^/]+',value) is not None, 'E_PATH')
+    _need(not any(ord(c) < 32 or ord(c) == 127 for c in value) and ':' not in value[2:], 'E_PATH')
+    for part in value[3:].split('\\'):
+        _need(bool(part) and part not in ('.','..') and not part.endswith((' ','.')) and
+              not any(c in part for c in '<>"|?*') and
+              re.fullmatch(r'(CON|PRN|AUX|NUL|CLOCK\$|COM[1-9]|LPT[1-9])(?:\..*)?',part,re.I) is None, 'E_PATH')
+    return value
+
+
+def _pin(value, cap=CAP):
+    _closed(value, ('path','bytes','sha256'), 'E_PIN')
+    _path(value['path'])
+    _need(type(cap) is int and 0 < cap <= CAP and type(value['bytes']) is int and 0 < value['bytes'] <= cap, 'E_PIN_BYTES')
+    _need(type(value['sha256']) is str and re.fullmatch('[0-9a-f]{64}',value['sha256']) is not None, 'E_PIN_SHA256')
+    return value
+
+
+def _actor(value, child=False):
+    _need(type(value) is str and len(value) <= 512 and re.fullmatch(r'/root(?:/[A-Za-z0-9_-]+)*',value) is not None and
+          (not child or value.casefold() != '/root'), 'E_ACTOR')
+    return value
+
+
+def _time(value):
+    _need(type(value) is str, 'E_TIME')
+    m = re.fullmatch(r'([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})\.([0-9]{6,7})\+00:00',value)
+    _need(m is not None, 'E_TIME')
+    try:
+        instant = datetime.datetime(*(int(m[i]) for i in range(1,7)))
+    except ValueError:
+        raise I12Error('E_TIME') from None
+    seconds = (instant - datetime.datetime(1,1,1)).days*86400 + instant.hour*3600 + instant.minute*60 + instant.second
+    return seconds*10000000 + int(m[7].ljust(7,'0'))
+
+
+def _pin_list(value, nonempty=False):
+    _need(type(value) is list and int(nonempty) <= len(value) <= 512, 'E_PIN_LIST')
+    paths = []
+    for pin in value:
+        _pin(pin); paths.append(pin['path'].casefold())
+    _need(len(set(paths)) == len(paths), 'E_PIN_LIST')
+    return value
+
+
+def _catalogue(raw):
+    _need(type(raw) is bytes and len(raw) == CATALOGUE_BYTES and hashlib.sha256(raw).hexdigest() == CATALOGUE_SHA256, 'E_CATALOGUE_PIN')
+    value = _decode(raw, [0])
+    _need(type(value) is dict and value.get('revision') == 2 and value.get('record_type') == 'I12_exact_receipt_contract_schema_and_fixed_data_catalogue', 'E_CATALOGUE_PIN')
+    return value
+
+
+def _typed(value, typ, catalogue, context):
+    """Interpret only the finite adopted catalogue DSL; no eval or import."""
+    if typ in catalogue['schemas']:
+        return _schema(value, typ, catalogue)
+    if typ == 'literal_record_type':
+        return
+    if typ.startswith('literal:'):
+        _need(type(value) is str and value == typ[8:], 'E_SCHEMA_VALUE'); return
+    if typ == 'false':
+        _need(value is False, 'E_AUTHORITY'); return
+    if typ == 'true':
+        _need(value is True, 'E_SCHEMA_VALUE'); return
+    if typ == 'null':
+        _need(value is None, 'E_SCHEMA_VALUE'); return
+    if typ == 'int2' or typ == 'builtin_int1':
+        _need(type(value) is int and value == (2 if typ == 'int2' else 1), 'E_VERSION'); return
+    if typ == 'utc':
+        _time(value); return
+    if typ == 'native_path':
+        _path(value); return
+    if typ.startswith('ordinary_pin'):
+        if value is None and ('null' in typ or 'None' in typ):
+            return
+        _pin(value); return
+    if typ.startswith('actor'):
+        _actor(value, typ.startswith('actor_child')); return
+    if typ == 'sha256':
+        _need(type(value) is str and re.fullmatch('[0-9a-f]{64}', value) is not None, 'E_PIN_SHA256'); return
+    if typ == 'base64':
+        _need(type(value) is str and value.isascii(), 'E_INVERSE')
+        try:
+            raw=base64.b64decode(value,validate=True)
+        except (ValueError,UnicodeError):
+            raise I12Error('E_INVERSE') from None
+        _need(base64.b64encode(raw).decode('ascii')==value, 'E_INVERSE'); return
+    if typ.startswith('opaque_json_object'):
+        _need(type(value) is dict, 'E_SCHEMA_VALUE'); return
+    if typ == 'builtin_bytes':
+        _need(type(value) is bytes, 'E_VALUE'); return
+    if typ.startswith('positive_builtin_int'):
+        _need(type(value) is int and 0 < value <= CAP, 'E_PIN_BYTES'); return
+    if typ == 'builtin_int':
+        _need(type(value) is int, 'E_SCHEMA_VALUE'); return
+    if typ == 'list_builtin_int' or typ == 'list9_builtin_int':
+        _need(type(value) is list and all(type(v) is int for v in value) and (typ != 'list9_builtin_int' or len(value) == 9), 'E_OBSERVATION'); return
+    if typ.startswith('pin_list'):
+        _pin_list(value, 'nonempty' in typ); return
+    if typ == 'source_role' or typ.startswith('outside8_role') or typ.startswith('generic9_role') or typ.startswith('peer_role'):
+        allowed = set(catalogue['ROLE_SOURCE_CAPS'])
+        if typ.startswith('outside8_role'): allowed -= set(catalogue['finite8_roles'])
+        if typ.startswith('generic9_role'): allowed = set(catalogue['generic9_roles'])
+        if typ.startswith('peer_role'): allowed = set(catalogue['peer_format_roles'])
+        if 'excluding phase_peer' in typ: allowed.discard('phase_peer')
+        _need(type(value) is str and value in allowed, 'E_UNSUPPORTED_PRODUCER_ROUTE'); return
+    if typ.startswith('enum:'):
+        _need(type(value) is str and value in typ[5:].split('|'), 'E_SCHEMA_VALUE'); return
+    if typ == 'publication_stage_support6 when stage=publish; opaque_json_object otherwise':
+        if context['stage'] == 'publish': _schema(value,'publication_stage_support6',catalogue)
+        else: _need(type(value) is dict, 'E_SCHEMA_VALUE')
+        return
+    if typ.startswith('list(recorded_observation12'):
+        _need(type(value) is list and len(value) <= 512, 'E_OBSERVATION')
+        for observation in value:
+            _need(type(observation) is dict, 'E_OBSERVATION')
+            _need('exact_spent_exception' not in observation or 'fixed_spent_observation10' in typ, 'E_OBSERVATION')
+            name = 'fixed_spent_observation10' if 'exact_spent_exception' in observation else 'recorded_observation12'
+            _schema(observation,name,catalogue)
+        return
+    if typ.startswith('phase_parser_support9_v2'):
+        _schema(value,'phase_parser_support9_v2',catalogue); return
+    if typ == 'exact ordered constructor_implemented_record_kinds in catalogue002':
+        _need(_same(value,catalogue['constructor_implemented_record_kinds']), 'E_SCHEMA_VALUE'); return
+    if typ == 'exact generic9 role list':
+        _need(_same(value,catalogue['generic9_roles']), 'E_SCHEMA_VALUE'); return
+    if typ == 'exact peer_format_roles list':
+        _need(_same(value,catalogue['peer_format_roles']), 'E_SCHEMA_VALUE'); return
+    if typ == 'canonical_UUID':
+        _need(type(value) is str and re.fullmatch('[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}',value) is not None, 'E_ROOT_THREAD'); return
+    if typ == 'list_actor_additive':
+        _need(type(value) is list and len(value) <= 512, 'E_ACTOR')
+        for actor in value: _actor(actor)
+        _need(len({x.casefold() for x in value}) == len(value), 'E_ACTOR'); return
+    raise I12Error('E_UNSUPPORTED_FIELD_TYPE')
+
+
+def _schema(value, name, catalogue):
+    spec = catalogue['schemas'][name]
+    _closed(value,spec['fields'])
+    if 'schema_version' in spec:
+        _need(type(value.get('schema_version')) is int and value['schema_version'] == spec['schema_version'], 'E_VERSION')
+    if 'record_type' in spec:
+        _need(type(value.get('record_type')) is str and value['record_type'] == spec['record_type'], 'E_RECORD_TYPE')
+    for key, typ in spec['fields'].items():
+        _typed(value[key],typ,catalogue,value)
+    return value
+
+
+def encode_receipt_contract_record(*, kind, value, catalogue_bytes):
+    catalogue = _catalogue(catalogue_bytes)
+    _need(type(kind) is str and kind in catalogue['constructor_implemented_record_kinds'], 'E_RECORD_KIND')
+    _tree(value,[0])
+    # Snapshot before schema processing: no returned or retained mutable references.
+    detached = _decode(_wire(value),[0])
+    _schema(detached,kind,catalogue)
+    if kind in ('single_publication29_v2','generic_stage_receipt29_v2'):
+        cap = catalogue['ROLE_SOURCE_CAPS'][detached['role']]
+        _pin(detached['draft'],cap);_pin(detached['predecessor'],cap)
+        if kind == 'single_publication29_v2':_pin(detached['canonical'],cap)
+    if kind == 'single_request14_v2':
+        _pin(detached['draft'],catalogue['ROLE_SOURCE_CAPS'][detached['role']])
+    if kind == 'selected_peer_receipt27_v2':
+        cap=catalogue['ROLE_SOURCE_CAPS'][detached['role']]
+        _pin(detached['draft'],cap);_pin(detached['predecessor'],cap)
+    raw = _wire(detached)
+    _need(len(raw) <= CAP, 'E_METADATA_CAP')
+    return raw
+
+
+def execute_stage(*args, **kwargs):
+    raise I12Error('E_ACTUAL_ENTRY_UNWIRED')

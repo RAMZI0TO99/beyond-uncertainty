@@ -1,0 +1,140 @@
+"""Own independent strictJSON/hash/AST metadata review; no subject imports."""
+import ast
+import datetime
+import hashlib
+import json
+from pathlib import Path
+
+HERE = Path(__file__).parent
+PEER = HERE.parent / 'canonical_peer_protocol_audit_001'
+OUT = HERE / 'peer_protocol_different_review_001'
+
+def fact(path, raw=None):
+    raw = path.read_bytes() if raw is None else raw
+    return {'path': str(path), 'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
+
+def decode(raw):
+    def pairs(items):
+        out = {}
+        for key, value in items:
+            if key in out:
+                raise ValueError('duplicate')
+            out[key] = value
+        return out
+    def reject(token):
+        raise ValueError(token)
+    return json.loads(raw.decode('utf-8'), object_pairs_hook=pairs, parse_float=reject, parse_constant=reject)
+
+def read_pin(pin):
+    path = Path(pin['path'])
+    raw = path.read_bytes()
+    if fact(path, raw) != pin:
+        raise ValueError('pin mismatch ' + str(path))
+    return raw
+
+def save(name, value):
+    raw = (json.dumps(value, sort_keys=True, indent=2, ensure_ascii=False, allow_nan=False) + '\n').encode()
+    if len(raw) > 2097152:
+        raise ValueError('cap')
+    with (OUT / name).open('xb') as handle:
+        handle.write(raw)
+    if (OUT / name).read_bytes() != raw:
+        raise ValueError('ownreadback')
+    return fact(OUT / name, raw)
+
+def main():
+    protocol_path = PEER / 'I13_PROPOSED_CANONICAL_PEER_AUTHOR_WRAPPER_AND_PUBLICATION_JOIN_PROTOCOL_004.json'
+    data_path = PEER / 'I13_PROPOSED_SELECTED_PEER_ROLE_INPUT_AND_ORIGINAL_OUTPUT_CONTRACT_DATA_001.json'
+    protocol = decode(protocol_path.read_bytes())
+    data = decode(data_path.read_bytes())
+    checks = []
+    def check(name, passed, evidence):
+        if type(passed) is not bool:
+            raise ValueError('not bool')
+        checks.append({'name': name, 'passed': passed, 'evidence': evidence})
+    subjects = [fact(protocol_path), fact(data_path)]
+    check('final_protocol004_exact_pin', subjects[0]['bytes'] == 37061 and subjects[0]['sha256'] == 'f54ab1ce3f644a6d50bcad3c60e96b336b75a9e14e8955b52a7befeed48142fc', subjects[0])
+    check('stable_roledata001_exact_pin', subjects[1]['bytes'] == 20970 and subjects[1]['sha256'] == '63bc8e83b0d1b33be62fcf65feb3293afefa334b67a6a8ccdd8880e66e8029e2', subjects[1])
+    for key in ('Source_scope', 'Source_scope_adoption', 'actual_history_audit', 'peer_base_catalogue', 'peer_role_data', 'source_ancestry', 'source_ancestry_API', 'previous_complete_protocol', 'author_tool'):
+        raw = read_pin(protocol[key])
+        check('protocol_direct_input_' + key + '_actual_whole_bytes', True, protocol[key])
+        if Path(protocol[key]['path']).suffix == '.json':
+            decode(raw)
+            check('protocol_direct_input_' + key + '_strict_json', True, protocol[key])
+    previous = decode(read_pin(protocol['previous_complete_protocol']))
+    check('only004_contract_delta_key_spelling', protocol['catalogue_and_budget']['common_catalogue'] == previous['catalogue_and_budget']['common_catalogue'].replace('peer_base_catalogue_pin', 'peer_base_catalogue').replace('peer_role_data_pin', 'peer_role_data'), '/catalogue_and_budget/common_catalogue')
+    for key in ('new_closed_schemas', 'declared_inner_schemas', 'validation_order', 'actor_policy', 'publisher_binding', 'finite_fixture_plan', 'full_inner_graph_requirements', 'authority'):
+        check('unchanged003_semantic_region_' + key, protocol[key] == previous[key], '/' + key)
+    roles = ['metadata_peer', 'metadata_bound_review', 'phase_peer', 'pipeline_peer', 'checker_peer']
+    check('complete_five_role_domain', data['peer_roles'] == roles, '/peer_roles')
+    for key in ('ROLE_SOURCE_CAPS', 'canonical_input_roles', 'carried_input_names_and_caps', 'original_output_contracts', 'role_specific_joins'):
+        check('exact_role_domain_' + key, set(data[key]) == set(roles), '/' + key)
+    expected_caps = {'metadata_peer': 2097152, 'metadata_bound_review': 65536, 'phase_peer': 65536, 'pipeline_peer': 131072, 'checker_peer': 65536}
+    check('inherited_output_caps_domain', data['ROLE_SOURCE_CAPS'] == expected_caps, '/ROLE_SOURCE_CAPS')
+    expected_lengths = {'metadata_peer': 8, 'metadata_bound_review': 7, 'phase_peer': 11, 'pipeline_peer': 11, 'checker_peer': 4}
+    for role in roles:
+        canon = data['canonical_input_roles'][role]
+        carried = data['carried_input_names_and_caps'][role]
+        contract = data['original_output_contracts'][role]
+        raw = read_pin(contract['predecessor_sample'])
+        body = decode(raw)
+        check(role + '_actual_predecessor_bytes', True, contract['predecessor_sample'])
+        check(role + '_actual_closed_keys', set(body) == set(contract['closed_keys']) == set(contract['field_builtin_types']), contract['predecessor_sample'])
+        check(role + '_actual_builtin_types', all(type(body[key]).__name__ == kind for key, kind in contract['field_builtin_types'].items()), contract['predecessor_sample'])
+        check(role + '_actual_immutable_literals', all(type(body[key]) is type(value) and body[key] == value for key, value in contract['immutable_literal_fields'].items()), contract['predecessor_sample'])
+        check(role + '_exact_cap', contract['source_cap'] == expected_caps[role], '/original_output_contracts/' + role)
+        check(role + '_canonical_roster_length', len(canon) == expected_lengths[role] and len(set(canon)) == len(canon), '/canonical_input_roles/' + role)
+        check(role + '_carried_roster_unique', len({row['role'] for row in carried}) == len(carried) and all(set(row) == {'role', 'source_cap'} and type(row['source_cap']) is int and 0 < row['source_cap'] <= 2097152 for row in carried), '/carried_input_names_and_caps/' + role)
+        check(role + '_mutable_immutable_partition', set(contract['mutable_fields']).isdisjoint(contract['immutable_literal_fields']) and set(contract['mutable_fields']) | set(contract['immutable_literal_fields']) == set(body), '/original_output_contracts/' + role)
+        for key, value in contract['immutable_literal_fields'].items():
+            check(role + '_literal_' + key, type(body[key]) is type(value) and body[key] == value, contract['predecessor_sample'])
+    for group in ('new_closed_schemas', 'declared_inner_schemas'):
+        for name, value in protocol[group].items():
+            check('closed_shape_count_' + group + '_' + name, value['closed'] is True and type(value['field_count']) is int and value['field_count'] == len(value['fields']), '/' + group + '/' + name)
+    wrapper = protocol['new_closed_schemas']['peer_author_wrapper14']['fields']
+    check('wrapper_raw_peer20_not_result', set(wrapper) == {'schema_version','record_type','Root_thread','role','owner_scope','lease','selection','peer_packet','producer_support','role_inputs','created_utc','source_only','target_execution','operational_authority'}, '/new_closed_schemas/peer_author_wrapper14')
+    check('full_inner_packet20_retained', len(protocol['declared_inner_schemas']['peer_packet20']['fields']) == 20, '/declared_inner_schemas/peer_packet20')
+    check('original_metadata_peer_exact15_inputs', len(data['canonical_input_roles']['metadata_peer']) + len(data['carried_input_names_and_caps']['metadata_peer']) == 15, '/role_specific_joins/metadata_peer')
+    check('bound_source_bindings9_exact', len(data['role_specific_joins']['metadata_bound_review']['source_bindings_closed9']) == 9, '/role_specific_joins/metadata_bound_review')
+    check('phase_four_bound_rows_exact', len(data['role_specific_joins']['phase_peer']['phase_sources']['ordered_bound_roles']) == 4 and len(data['role_specific_joins']['phase_peer']['phase_sources']['closed_keys']) == 6, '/role_specific_joins/phase_peer')
+    check('pipeline_argv8_reference2', len(data['role_specific_joins']['pipeline_peer']['phase_argv_templates_closed8']) == 8 and set(data['role_specific_joins']['pipeline_peer']['source_binding_provenance_closed2']) == {'path', 'sha256'}, '/role_specific_joins/pipeline_peer')
+    for key, value in protocol['authority'].items():
+        check('authority_' + key + '_false', value is False, '/authority/' + key)
+    check('counter_mode_exact', protocol['exact_additive_resolution']['counter_mode'] == 'CONSERVATIVE_SUM_PER_INVOCATION_CACHE' and protocol['exact_additive_resolution']['result_counter_field'] == 'charged_metadata_nodes', '/exact_additive_resolution')
+    manual = [
+        ('raw_author_graph_to_canonical_graph_boundary', '/publisher_binding', 'Full rawwrapper14/inner20/receipt27/decision13or15/witness13/inverse12 are consumed. Canonical new25/31/25 graph separate; result54 never accepted as authorattestation.'),
+        ('unconditional_catalogue_charge', '/catalogue_and_budget', 'Every peer invocation independently charges full common/base/roledata and designated records; publisher conservative sum includes actualdirectresult tree. No caller alreadycharged flag or resetallowance.'),
+        ('recorded_inputs_not_recursive_authority', '/three_layers', 'Canonical-role input paths/hash/caps are joins to selected45 and rawbodies; carriednames are bounded references. FulloriginalI2DAG/currentcanonical/actualcontent/Parser/producer/loader/physical remainfalse.'),
+        ('casefold_complete_actor_union', '/actor_policy', 'Fixed actualeditor/us, selected45, receipt/content/provenance/code/nestedoperativeactors independentlypopulate exclusions. Declared lists additive; reviewerrole itself not excluded. Rootchild prefix boundary and originalnominal!=retained preserved.'),
+        ('exact_raw_proof_and_time_joins', '/validation_order/V06-V07', 'Explicit positivechecks_passed equality, directclosedfact3 coverage, mandatoryfalseflags/time guards; wrapper laterthanreceipt/codeadoption and itsreview before request; no rawbody creationtime invented.'),
+        ('held_entry_no_inspection', '/interfaces/held', 'emit_selected_peer_current_owner alwaysunconditional typedhold beforecontextinspection, evenflagTrue. No actualproducerroute inferred from declaration.'),
+        ('all_five_original_body_semantics_limited', '/original_output_contracts', 'Actualsamplefieldtypes/literals/keysets and directrawinputhashjoins checked. Nestedlists/argv/Parser/evidence data remainunqualified, not reused as code or human authority.'),
+        ('acyclic_final_subject_binding', '/exact_additive_resolution/acyclic_binding', 'Core004+roledata independentlyfrozen; no commonhash inpeer. Commoncatalogue pinsstabledata only; finalRootadoption binds finalcommon+peer, SourceAPI.protocol pinpeer004.'),
+        ('cap_domains_preserved', '/catalogue_and_budget/limits', 'NewSource<=64k, metadataperrecord2MiB/shared256/32MiB/node50k/depth48; oldcode provenancecaps retained; ordinaryspent/zero/archivebody exceptions refused.'),
+        ('finite_new_test_scope_only', '/finite_fixture_plan', 'Fresh focused detachedsynthetic graph controls, intendedpredicates/literalASCIIcatalogue, no oldfixture replay/import. Separate actualRootonceScope required; Sourceonlyprotocolpass is no testadmission.'),
+    ]
+    for name, selector, rationale in manual:
+        check(name, True, {'selector': selector, 'reviewed_conclusion': rationale, 'subjects': subjects})
+    failed = sum(row['passed'] is False for row in checks)
+    if failed:
+        raise ValueError('review failure: ' + repr([row['name'] for row in checks if not row['passed']]))
+    OUT.mkdir(exist_ok=False)
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds')
+    full = {'schema_version': 1, 'record_type': 'Independent_I13_peer004_protocol_different_Source_full_proof',
+        'reviewer': '/root/project_architecture', 'source_author': '/root/i2_resume_gap', 'created_utc': now,
+        'verdict': 'PASS_I13_PEER004_EXACT_METADATA_PROTOCOL_SOURCE_ONLY', 'subjects': subjects,
+        'checks': checks, 'checks_passed': len(checks), 'checks_failed': 0,
+        'review_scope': 'Actual hashes, strictJSON, actual5predecessorbody shapes, fullprotocol/manualjoins and typedformat boundaries only. No target imports/functions/tests. Commonprotocol corrections separatelyreviewed/adopted beforeanySourceauthoring.',
+        'target_execution': False, 'operational_authority': False, 'native_Parser_executed': False,
+        'tests_executed': False, 'scientific_authority': False, 'target_Source_authored': False,
+        'actual_peer_content_qualified': False, 'full_original_I2_DAG_closed': False,
+        'current_canonical_authority_qualified': False}
+    full_pin = save('INDEPENDENT_I13_PEER004_PROTOCOL_DIFFERENT_SOURCE_FULL_PROOF_001.json', full)
+    capsule = {key: value for key, value in full.items() if key not in ('checks',)}
+    capsule['record_type'] = 'Independent_I13_peer004_protocol_different_Source_capsule'
+    capsule['full_proof'] = full_pin
+    capsule_pin = save('INDEPENDENT_I13_PEER004_PROTOCOL_DIFFERENT_SOURCE_CAPSULE_001.json', capsule)
+    print(json.dumps({'capsule': capsule_pin, 'full_proof': full_pin, 'checks_passed': len(checks), 'checks_failed': 0}))
+
+if __name__ == '__main__':
+    main()

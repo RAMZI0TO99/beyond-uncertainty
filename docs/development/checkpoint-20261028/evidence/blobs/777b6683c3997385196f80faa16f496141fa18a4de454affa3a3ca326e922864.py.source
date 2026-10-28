@@ -1,0 +1,120 @@
+"""Independent Root REJECT metadata creation/Source review; no subject or writer invocation."""
+import ast,datetime as dt,hashlib,json,os,stat
+from pathlib import Path
+O=Path(__file__).parent;R=O.parent;C=R.parent;Q=C/'pro3_bootstrap002_source_review_001'
+S=Q/'ROOT_PRO3_NEW_FINITE_SOURCE_ONLY_COEXISTENCE_SCOPE_011_001.json';A=Q/'ROOT_PRO3_SOURCE_ONLY_COEXISTENCE011_DIFFERENT_REVIEW_ADOPTION_001.json'
+V=R/'ROOT_PRO3_BOOTSTRAP_REQUEST003_REJECTION_CANDIDATE_001.json';W=R/'prepare_or_adopt_bootstrap003_rejection_001.py'
+FINAL=R/'ROOT_PRO3_BOOTSTRAP_REQUEST003_EXPLICIT_REJECTED_DECISION_001.json'
+EXP={str(S):(9049,'c52dbbfc4a5202bc5476e6b41071d72a1163b339e8bcaad29acf2a6dae70a540'),str(A):(4571,'6994cedd8c25318563d4aa398d6681c00e61e91f61bccd8d5ca67c75b554e378'),str(V):(17988,'ca1006ad5bed84a583846f9af2725d73c5404f6b7779d5cd2437ece7c12560af'),str(W):(13661,'f342bdf830ae908f00c5f003474e108eed5bfd8493f93dc0655fd144640f33b0')}
+CACHE={};CHECKS=[]
+def need(v,m):
+ if not v:raise ValueError(m)
+def ck(n,v,e):
+ need(n and n not in {x['name'] for x in CHECKS},'unique named check');CHECKS.append(dict(name=n,passed=v is True,evidence=e));need(v is True,'own creation-review predicate '+n)
+def raw(p):
+ p=Path(p)
+ for q in (p,*p.parents):need(not q.is_symlink() and not getattr(q.lstat(),'st_file_attributes',0)&1024,'ordinary nonreparse lineage')
+ a=p.stat();need(stat.S_ISREG(a.st_mode) and a.st_nlink==1 and 0<=a.st_size<=2097152,'bounded regular singlelink file')
+ with p.open('rb') as h:d=os.fstat(h.fileno());b=h.read(2097153);e=os.fstat(h.fileno())
+ z=p.stat();key=lambda x:(x.st_dev,x.st_ino,x.st_mode,x.st_nlink,x.st_size,x.st_mtime_ns)
+ need(key(a)==key(d)==key(e)==key(z) and len(b)==a.st_size,'stable samebuffer');return b
+def fact(p,b):return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def pairs(xs):
+ d={}
+ for k,v in xs:need(k not in d,'duplicateJSON');d[k]=v
+ return d
+def bad(_):raise ValueError('noninteger/nonfinite JSON')
+def shape(v):
+ todo=[(v,0)];n=0;depth=0
+ while todo:
+  x,d=todo.pop();n+=1;depth=max(depth,d);need(n<=50000 and d<=48,'own fullkeyvalue node/depth caps');need(x is None or type(x) in (bool,int,str,list,dict),'builtin JSON')
+  if type(x) is str:need(not any(55296<=ord(c)<=57343 for c in x),'surrogates refused')
+  elif type(x) is list:todo.extend((y,d+1) for y in x)
+  elif type(x) is dict:
+   need(all(type(k) is str for k in x),'builtin keys')
+   for k,y in x.items():todo.extend(((k,d+1),(y,d+1)))
+ return dict(nodes=n,depth=depth)
+def load(p,expected=None,doc=True):
+ p=Path(p);b=raw(p);f=fact(p,b)
+ if str(p) in EXP:need((len(b),f['sha256'])==EXP[str(p)],'hardpinned input')
+ if expected is not None:need(f==expected,'whole exact fact3')
+ CACHE[str(p)]=b
+ if not doc:return b.decode('utf8'),f
+ v=json.loads(b.decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad);shape(v);return v,f
+s,sp=load(S);a,ap=load(A)
+def fresh():
+ n=dt.datetime.now(dt.timezone.utc);need(dt.datetime.fromisoformat(s['interval_start'])<=n and (dt.datetime.fromisoformat(s['interval_end'])-n).total_seconds()>60,'effective Source011 strict >60 reserve');need(raw(S)==CACHE[str(S)] and raw(A)==CACHE[str(A)],'unchanged active Source/adoption');return n.isoformat()
+fresh()
+ck('actual_adopted_Source011_is_effective_metadata_authority',a['Source_only_scope']==sp and a['Source_only_coexistence_adopted'] is True and a['not_effective_before_interval_start'] is True,[sp,ap])
+ck('Source011_window_reserve_original_caps_no_extension',s['interval_start']=='2026-10-27T16:20:00+00:00' and s['interval_end']=='2026-10-27T18:30:00+00:00' and s['Source009_end_unchanged']=='2026-10-27T16:30:00+00:00' and s['publication_reserve_seconds']==60 and s['metadata_cap_bytes']==2097152 and s['metadata_nodes']==50000 and s['metadata_depth']==48,'No reliance on an extension of009.')
+ck('Root3_peer2_shared5_no_extra_allocation',s['Pro2_max_including_Root']==3 and s['Pro3_max_including_Root_and_reviewer']==2 and s['shared_max_including_both_roots_and_overlap']==5 and s['additional_slots_granted']==0,'No nested agent, subject process, Job or reservation.')
+v,vp=load(V);w,wp=load(W,doc=False);tree=ast.parse(w,filename=str(W))
+ck('candidate_and_writer_actual_wholepins',vp['bytes']==17988 and wp['bytes']==13661,[vp,wp])
+peer=v['reviewed_peer_packet'];ck('candidate_exact_eight_unique_peer_facts',len(peer)==8 and len({p['path'].casefold() for p in peer})==8,peer)
+values=[]
+for i,p in enumerate(peer):
+ x,pin=load(p['path'],p,doc=p['path'].endswith('.json'));values.append(x);ck('fresh_peer_packet_wholepin_'+str(i+1),pin==p,p)
+request=values[5];rr=values[6];ob=values[7]
+ck('request003_exact_candidate_identity',v['request_path']==peer[5]['path'] and v['request_sha256']==peer[5]['sha256']=='968350ffc1003fd99891c223f247aaaaa64703c333bc2260869b0a3c2becb194' and v['request_created_utc']==request['created_utc'],'Request read only to verify copied rejected identity, not to qualify its operation.')
+for field,i in [('source_sha256',0),('supervisor_sha256',1),('protocol_sha256',2),('source_review_sha256',3),('owner_resource_amendment_sha256',4),('source_coordination_observation_sha256',7)]:ck('request_packet_join_'+field,request[field]==peer[i]['sha256'],peer[i])
+ck('peer_request_review_exact_request_join',rr['request_sha256']==peer[5]['sha256'],'Peer request-review metadata rehashed/joined as provenance only.')
+ck('candidate_current_Source011_exact_joins',v['Source_only_scope']==sp and v['Source_only_scope_adoption']==ap and request['source_scope_path']==v['source_scope_path']==sp['path'] and request['source_scope_sha256']==v['source_scope_sha256']==sp['sha256'] and request['source_adoption_path']==v['source_adoption_path']==ap['path'] and request['source_adoption_sha256']==v['source_adoption_sha256']==ap['sha256'],'Dynamic Source bindings point to actual adopted011; no current operation admitted.')
+refs=[('supervisor',v['genuine_supervisor_Source_refusal'],v['supervisor_refusal_full_proof'],'/root/i13_final_review',46),('helper',v['genuine_helper_Source_refusal'],v['helper_refusal_full_proof'],'/root/project_architecture',57)]
+reviews={};fulls={};basis=[sp,ap,*peer]
+for label,cp,fp,who,n in refs:
+ c,cpf=load(cp['path'],cp);f,fpf=load(fp['path'],fp);basis.extend([cpf,fpf]);reviews[label]=c;fulls[label]=f
+ ck('refusal_capsule_full_exact_join_'+label,c['full_proof']==fpf and c['reviewer']==f['reviewer']==who and c['verdict']==f['verdict'] and c['verdict'].startswith('REFUSE_') and c['scope']==f['scope']==sp and c['source_only'] is f['source_only'] is True and c['subject_execution_performed'] is f['subject_execution_performed'] is False,[cpf,fpf])
+ xs=f['checks'];ck('refusal_actual_named_counts_'+label,type(xs) is list and len(xs)==n+1 and len({x['name'] for x in xs})==n+1 and all(type(x['name']) is str and x['name'] and type(x['passed']) is bool for x in xs) and sum(x['passed'] is True for x in xs)==c['checks_passed']==f['checks_passed']==n and sum(x['passed'] is False for x in xs)==c['checks_failed']==f['checks_failed']==1,'Saved counts recomputed; no subject semantic review repeated.')
+ ck('refusal_single_shared_ID_'+label,c['remaining_actionable_findings']==f['remaining_actionable_findings'] and len(c['remaining_actionable_findings'])==1 and c['remaining_actionable_findings'][0]['id']=='S003_PAUSE_EXISTS_ERROR_FALSE_UNKNOWN' and [x['name'] for x in xs if x['passed'] is False]==['S003_PAUSE_EXISTS_ERROR_FALSE_UNKNOWN'],'Same Root cause, not two blockers.')
+ck('candidate_shared_findings_exact_dedup',v['blocking_root_cause_count']==1 and v['shared_blocking_finding']==dict(id='S003_PAUSE_EXISTS_ERROR_FALSE_UNKNOWN',count_once=True,supervisor_finding=reviews['supervisor']['remaining_actionable_findings'][0],helper_finding=reviews['helper']['remaining_actionable_findings'][0]),'Candidate copies both genuine source findings and deduplicates one common cause.')
+ck('candidate_underlying_refusal_counts_exact',v['supervisor_static_checks_passed']==46 and v['supervisor_static_checks_failed']==1 and v['helper_static_checks_passed']==57 and v['helper_static_checks_failed']==1,'Creation PASS does not turn either Source REFUSE into Source acceptance.')
+nf={x['name']:x['passed'] for x in fulls['supervisor']['checks']}
+ck('S002_repair_positive_is_actual_saved_complement',all(nf[k] is True for k in ('attempt_unknown_and_false_custody_marked_before_native_Start','Original_Handle_uses_private_Start_owned_fields_not_getter_reopen','unknown_remains_unreleased_even_after_best_effort_cleanup','Complete_Release_initial_prior_state_unknown_not_optimistic')) and 'positivelyreviewed' in v['previous_custody_issue_status'] and 'not an unresolved blocker' in v['previous_custody_issue_status'],'Root handoff records genuine positive repair evidence, without requalification or new acceptance.')
+ck('D01_remains_deferred_not_added_operation_blocker',nf['D01_helper_full_payload_acceptance_explicitly_deferred_not_op_blocker'] is True and 'not a currentoperationblocker' in v['deferred_payload_acceptance'] and reviews['helper']['deferred_observational_acceptance_requirements'][0]['current_execution_blocker_asserted'] is False,'No stronger payload/native-ID requirement is invented.')
+ck('candidate_REJECTED_schema_author_creation_only',v['schema']=='pro2_pro3_bootstrap_observation_decision_v1' and v['author']=='Pro2 Root /root' and v['scope']==request['scope'] and v['decision']=='REJECTED' and v['record_is_candidate'] is True,'Exact Root-owned candidate, not an actual serialized final decision yet.')
+ck('candidate_actual_writer_Source_identity',v['metadata_author_adopter_Source']==wp,wp)
+ck('candidate_observed_UTC_live_and_after_request',dt.datetime.fromisoformat(request['created_utc'])<=dt.datetime.fromisoformat(v['observed_utc'])<dt.datetime.fromisoformat(s['interval_end'])-dt.timedelta(seconds=60) and dt.datetime.fromisoformat(s['interval_start'])<=dt.datetime.fromisoformat(v['observed_utc']),v['observed_utc'])
+assignments={n.targets[0].id:n.value for n in ast.walk(tree) if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name)}
+fields=ast.literal_eval(assignments['fields'])
+for k in fields:ck('copied_rejected_request_identity_'+k,type(v[k]) is type(request[k]) and v[k]==request[k],'Identity only; copied maxima/floors/runtime hashes do not allocate or measure resources.')
+holdnode=assignments['held'];need(isinstance(holdnode,ast.Call) and isinstance(holdnode.func,ast.Name) and holdnode.func.id=='dict','closed held dict Source')
+held={kw.arg:ast.literal_eval(kw.value) for kw in holdnode.keywords}
+for k,z in held.items():ck('candidate_denied_'+k,type(v[k]) is type(z) and v[k]==z,dict(actual=z))
+ck('requested_cleanup_preserved_but_denied',v['requested_bounded_cleanup_after_pause_admitted'] is request['bounded_cleanup_after_pause_admitted'] is True and v['bounded_cleanup_after_pause_admitted'] is False and v['helper_invocations_granted']==v['controller_mode_invocations_granted']==0,'Requested True is identity data; actual effective candidate cleanup/permission is False.')
+num=request['expected_numerical_budget'];ck('eight_exact_signed_integer_numerical_zeros',set(num)=={'source_updates','restore_count','support_updates','gradient_updates','target_inference_calls','query_count','model_constructions','measured_cells'} and all(type(z) is int and z==0 for z in num.values()) and v['expected_numerical_budget']==num,'No numerical or scientific operation accepted.')
+ck('no_empirical_pause_error_or_Runtime_claim',v['actual_pause_or_ACL_error_observed'] is False and 'No actualACL/pause/runtime error or overrun was observed.' in v['decision_basis'] and v['Root_runtime_byte_observation_performed'] is False,'Runtime executable/DLL SHA values are copied request identity only; no binary opened by this reviewer.')
+ck('permission_boundary_explicit_no_resource_floor_or_release_inference','identitydata only' in v['permission_boundary'] and 'physicalrelease/quiet/resource/pauseclearance orRootflooramendment' in v['permission_boundary'],'No current capacity measured, reservation, pause request, custody release or whole-host-quiet claim.')
+ck('repair_scope_immutable_no_retry_extra_native_ID_or_contentread','separatelyversionedfullSources/protocol/request' in v['repair_scope'] and 'No needtoreadpausecontentsorproveNativeID' in v['repair_scope'] and 'nooldscopeextension oroperationpermission' in v['repair_scope'],'Repair is a future separately reviewed request/decision, not dispatch under this review.')
+
+def W(*xs):return all(x in w for x in xs)
+imports=[]
+for n in ast.walk(tree):
+ if isinstance(n,ast.Import):imports.extend(x.name for x in n.names)
+ elif isinstance(n,ast.ImportFrom):imports.append(n.module)
+ck('writer_only_stdlib_metadata_imports',set(imports)=={'datetime','hashlib','json','os','stat','sys','pathlib'},imports)
+names={n.id for n in ast.walk(tree) if isinstance(n,ast.Name)}
+ck('writer_no_dynamic_subject_or_process_operators',not names.intersection({'exec','eval','compile','__import__','subprocess','ctypes','importlib','multiprocessing'}),'AST/source inspection only; writer not invoked.')
+for n,val in [
+ ('writer_samebuffer_ordinary_strict_JSON',W('st_file_attributes','st_nlink==1','os.fstat','k(a)==k(d)==k(e)==k(z)','b=raw(p);f=pin(p,b)','object_pairs_hook=pairs','parse_float=bad','parse_constant=bad')),
+ ('writer_hardpinned_effective_Source011',W(sp['sha256'],ap['sha256'],"sa['Source_only_scope']==sp","sa['Source_only_coexistence_adopted'] is True","dt.datetime.fromisoformat(s['interval_start'])<=n","(dt.datetime.fromisoformat(s['interval_end'])-n).total_seconds()>60")),
+ ('writer_full_shape_caps_and_prewrite_fresh_exclusive_readback',W('n<=50000 and d<=48','todo.extend(((k,d+1),(v,d+1)))','len(b)<=2097152','fresh();p=R/name',"p.open('xb')",'h.flush();os.fsync(h.fileno())','raw(p)==b')),
+ ('writer_rehashes_all_eight_peer_and_both_Refusals',W("need(pin(p['path'])==p","(icp,'/root/i13_final_review',46,[1,2])","(hcp,'/root/project_architecture',57,[0,2])","c['verdict'].startswith('REFUSE_')","c['scope']==f['scope']==sp","S003_PAUSE_EXISTS_ERROR_FALSE_UNKNOWN")),
+ ('writer_explicit_prepare_adopt_modes_and_arity',W("sys.argv[1] in ('prepare','adopt')","len(sys.argv)==2","len(sys.argv)==4")),
+ ('writer_creationcapsule_exact_location_SHA_fullproof',W("cp.is_relative_to(R/'decision003_creation_different_review_001')","cf['sha256']==sys.argv[3]","doc(c['full_proof']['path'],c['full_proof'])")),
+ ('writer_genuine_creation_role_allclear_nonempty_unique_checks',W("c['reviewer']==f['reviewer']=='/root/project_architecture'","c['verdict']==f['verdict']","startswith('PASS_')","c['remaining_actionable_findings']==f['remaining_actionable_findings']==[]","type(xs) is list and len(xs)>0","len({x['name'] for x in xs})","c['checks_failed']==f['checks_failed']==0","all(x['passed'] is True for x in xs)")),
+ ('writer_same_scope_roster_and_actual_wholepins',W("c['scope']==f['scope']==sp","c['reviewed_artifacts']==f['reviewed_artifacts']","Path(p['path']).is_relative_to(R) and pin(p['path'])==p","by.get(selfpin['path'])==selfpin","by.get(vp['path'])==vp","c['candidate']==f['candidate']==vp","v['metadata_author_adopter_Source']==selfpin")),
+ ('writer_preserves_exact_REJECT_and_shared_once_findings',W("v['decision']=='REJECTED'","v['record_is_candidate'] is True","v['shared_blocking_finding']==shared","v['blocking_root_cause_count']==1","v['reviewed_peer_packet']==peer","for k,value in held.items():need(type(v[k]) is type(value) and v[k]==value")),
+ ('writer_final_records_genuine_review_actual_UTC_not_grant',W('record_is_candidate=False,observed_utc=fresh()','frozen_rejection_candidate=vp','genuine_different_decision_metadata_review=cf','full_decision_metadata_review_proof=ff','Root_decision_adopted=True',"save('ROOT_PRO3_BOOTSTRAP_REQUEST003_EXPLICIT_REJECTED_DECISION_001.json',v)",'no_execution_permission=True')),
+ ]:ck(n,val,'Exact frozen Root writer Source/AST, not its execution.')
+ck('writer_only_one_exclusive_file_output_site',len([n for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=='open' and any(isinstance(x,ast.Constant) and x.value=='xb' for x in n.args)])==1,'Central save controls only fixed candidate/final rejection filenames; no deletion, overwrite or grant writer.')
+ck('actual_final_rejection_still_absent',not os.path.lexists(FINAL),'Read-only metadata path observation, not native/process/handle absence or operational admission.')
+for p,b in list(CACHE.items()):ck('final_unchanged_samebuffer_'+str(len(CHECKS)),raw(p)==b,p)
+regions=[dict(name=n.name,line=n.lineno,end_line=n.end_lineno,AST_sha256=hashlib.sha256(ast.dump(n,include_attributes=False).encode('utf8')).hexdigest()) for n in tree.body if isinstance(n,ast.FunctionDef)]
+def save(n,v):
+ shape(v);b=(json.dumps(v,sort_keys=True,indent=2,ensure_ascii=False,allow_nan=False)+'\n').encode('utf8');need(len(b)<=2097152,'own2MiBcap');fresh();p=O/n
+ with p.open('xb') as h:need(h.write(b)==len(b),'whole exclusive metadata evidence');h.flush();os.fsync(h.fileno())
+ need(raw(p)==b,'whole evidence readback');return fact(p,b)
+base=dict(schema_version=1,record_type='Independent_Root_rejection003_candidate_writer_CREATION_review',reviewer='/root/project_architecture',created_utc=fresh(),scope=sp,scope_adoption=ap,candidate=vp,reviewed_artifacts=[vp,wp],basis=basis,verdict='PASS_ROOT_REJECTION003_METADATA_CREATION_ONLY_NO_SOURCE_OR_OPERATION_ACCEPTANCE',checks_passed=len(CHECKS),checks_failed=0,remaining_actionable_findings=[],source_only=True,subject_execution_performed=False,Root_metadata_writer_invoked_by_reviewer=False,peer_Source_requalified_or_accepted=False,helper_proof_join_is_REFUSE_not_self_Source_acceptance=True,exact_request003_operationally_qualified=False,Root_decision_serialized_by_reviewer=False,new_compute_grant_issued=False,new_once_admission_issued=False,helper_invocations_granted=0,controller_mode_invocations_granted=0,bounded_cleanup_after_pause_admitted=False,released=False,accepted=False,raw_capture_admitted=False,operational_authority=False,scientific_authority=False,physical_custody_release_claimed=False,whole_host_quiet_claimed=False,resource_availability_measured=False,ready_for_execution=False,shared_blocking_Root_cause_count=1,shared_blocking_finding_id='S003_PAUSE_EXISTS_ERROR_FALSE_UNKNOWN',D01_acceptance_remains_deferred_not_blocker=True,actual_final_decision_absent_at_review=True,final_decision_path=str(FINAL),writer_Source_regions=regions,claim_limit='PASS applies only to Root-authored rejection003 candidate and uninvoked metadata writer creation/Source. Sealed genuine supervisor46/1 and helper57/1 refusals are joined, never reinterpreted as Source passes. The helper proof was authored by this reviewer, but it is joined as a preserved refusal under Root-created metadata, not self-adopted Source acceptance. Shared pause defect counted once, S002 repair positive and D01 deferred. Peer eight-file metadata wholepins rehashed, copied caps/floors/runtime hashes/window bind a rejected request only. No Source/subject parsing as PowerShell, compile/import/load/call, native/resource/binary observation, child/test/Job/capture/runtime/science or actual Root decision serialization is performed.',own_metadata_reviewer_Source=fact(Path(__file__),raw(__file__)))
+pp=save('INDEPENDENT_PRO3_REJECTION003_ROOT_CANDIDATE_WRITER_CREATION_FULL_PROOF_001.json',dict(base,checks=CHECKS))
+cp=save('INDEPENDENT_PRO3_REJECTION003_ROOT_CANDIDATE_WRITER_CREATION_CAPSULE_001.json',dict(base,full_proof=pp))
+print(json.dumps(dict(full_proof=pp,capsule=cp,checks_passed=len(CHECKS),checks_failed=0,remaining_actionable_findings=[],no_subject_or_writer_calls=True),ensure_ascii=True))

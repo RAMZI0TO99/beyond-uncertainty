@@ -1,0 +1,184 @@
+"""Independent reviewer-only grammar reconstruction; never invokes subject code."""
+import ast,collections,copy,datetime,hashlib,json
+from pathlib import Path
+R=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003');P=R/'m3_peer_contracts_016';M=P/'m3_protocol_audit_001';I=P/'i13';O=R/'descriptor_factoring_protocol_feasibility_Source_review_001'
+checks=[];subjects=[];seen=set()
+def ck(n,v,e):
+    assert n not in {x['name']for x in checks};checks.append(dict(name=n,passed=bool(v),evidence=e))
+def pairs(a):
+    d={}
+    for k,v in a:
+        if k in d:raise ValueError('duplicate key')
+        d[k]=v
+    return d
+def bad(x):raise ValueError('noninteger JSON '+x)
+def dec(b):return json.loads(b.decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def key(x):return json.dumps(x,sort_keys=True,ensure_ascii=True,separators=(',',':'),allow_nan=False).encode('ascii')
+def sha(b):return hashlib.sha256(b).hexdigest()
+def wh(x):return sha(key(x)+b'\n')
+def read(p,n=None,h=None,JSON=True):
+    b=p.read_bytes();assert p.is_absolute()and p.is_file()and len(b)<=2097152
+    f=dict(path=str(p),bytes=len(b),sha256=sha(b))
+    if n is not None:assert len(b)==n and sha(b)==h
+    if str(p)not in seen:subjects.append(f);seen.add(str(p))
+    return dec(b)if JSON else b
+def rp(f,JSON=True):return read(Path(f['path']),f['bytes'],f['sha256'],JSON)
+def nodes(v):
+    if type(v)is dict:return 1+sum(1+nodes(x)for x in v.values())
+    if type(v)is list:return 1+sum(map(nodes,v))
+    assert v is None or type(v)in(bool,int,str);return 1
+path=M/'descriptor_dictionary_factor_protocol_proposal_001/I13_EXACT_COMPACT_DESCRIPTOR_GRAMMAR_PROTOCOL_PROPOSAL_002.json'
+d=read(path,323542,'fae3aa96dc8ea0278b67f70ce571e0fce0a5413f0389c7d2af762415f0c93e47')
+basis={n:rp(f,not(n.endswith('Source009')or n in('publisher_Source004','M3_fixture012','peer_fixture010','outer_helper009')))for n,f in d['basis'].items()}
+old=basis['catalogue007'];prior=rp(d['supersedes_unadopted_proposal001']);scope=rp(d['Source_scope'])
+marker=read(M/'once006_fixture_closure_and_node_proposal_001/I13_ONCE006_MARKER_AND_JOINT_BINDING_FIXTURE_SOURCE_PROPOSAL_001.json',11850,'1fc9ac905fba3fe34036956d82da890e18b97c6201d7ca28a8a17e8af2bd425f')
+addendum=read(M/'once006_fixture_closure_and_node_proposal_001/I13_ONCE006_JOINT_BINDING_NODE_CO_LIMIT_ADDENDUM_001.json',3320,'811d17a04cf34fb74df7722fc1ecb52b77858589cf4f6f5d2bc96e3050fc8c3f')
+PREFIX='$I13_DESCRIPTOR:';conversion=[]
+def dict5(v):return type(v)is dict and set(v)=={'additional_fields_allowed','builtin_type','exact_keys','field_count','fields'}and v['builtin_type']=='dict'and v['additional_fields_allowed']is False and type(v['fields'])is dict and type(v['exact_keys'])is list and v['exact_keys']==list(v['fields'])and type(v['field_count'])is int and v['field_count']==len(v['fields'])
+def list3(v):return type(v)is dict and set(v)=={'builtin_type','exact_length','items_by_ordinal'}and v['builtin_type']=='list'and type(v['items_by_ordinal'])is list and type(v['exact_length'])is int and v['exact_length']==len(v['items_by_ordinal'])
+def normalize(v,path):
+    if type(v)is dict:
+        if dict5(v):
+            conversion.append(dict(path=path,rule='closed_dict5_to_closed_dict2',original_sha256=wh(v),exact_ordered_key_inverse=True))
+            return dict(additional_fields_allowed=False,fields={k:normalize(x,path+['fields',k])for k,x in v['fields'].items()})
+        if list3(v):
+            conversion.append(dict(path=path,rule='fixed_list3_to_fixed_list1',original_sha256=wh(v),exact_ordered_key_inverse=True))
+            return dict(items_by_ordinal=[normalize(x,path+['items_by_ordinal',i])for i,x in enumerate(v['items_by_ordinal'])])
+        return {k:normalize(x,path+[k])for k,x in v.items()}
+    if type(v)is list:return [normalize(x,path+[i])for i,x in enumerate(v)]
+    return v
+normalized=normalize(old['schemas'],['schemas'])
+ck('normalization79_exactordered_dicts_and23_fixed_lists',sum(r['rule']=='closed_dict5_to_closed_dict2'for r in conversion)==79 and sum(r['rule']=='fixed_list3_to_fixed_list1'for r in conversion)==23,[dict(dicts=79,lists=23,normalized_schema_nodes=nodes(normalized))])
+authorconv={tuple(x['path']):x for x in d['grammar_conversion_proof_rows']}
+ck('all102_conversion_paths_preserved',len(authorconv)==len(conversion)==102 and set(authorconv)=={tuple(x['path'])for x in conversion},[x['path']for x in conversion])
+for i,r in enumerate(conversion,1):
+    ar=authorconv[tuple(r['path'])]
+    ck('conversion_'+str(i)+'_exact_inverse_precondition',r['original_sha256']==ar['original_sha256']and ar['exact_ordered_key_inverse']is True and ('dict'in r['rule'])==('dict'in ar['rule']),[r,ar])
+def compactdict(v):return type(v)is dict and set(v)=={'additional_fields_allowed','fields'}and v['additional_fields_allowed']is False and type(v['fields'])is dict
+def compactlist(v):return type(v)is dict and set(v)=={'items_by_ordinal'}and type(v['items_by_ordinal'])is list
+groups=collections.defaultdict(list);objects={}
+def scan(v,path,root=False):
+    if type(v)is dict:
+        if not root and ('builtin_type'in v or compactdict(v)or compactlist(v)):
+            k=key(v);groups[k].append(path);objects[k]=v
+        for k,x in v.items():scan(x,path+[k])
+    elif type(v)is list:
+        for i,x in enumerate(v):scan(x,path+[i])
+for n,v in normalized.items():scan(v,['schemas',n],True)
+eligible={k for k,v in groups.items()if len(v)>=2 and nodes(objects[k])>1}
+header=d['exact_representation']['encoding_header_closed5']
+ck('closed5_header_exact',header==dict(schema_version=2,reference_prefix=PREFIX,namespace='I13_CATALOGUE_DESCRIPTOR_DEFINITIONS_V2',mode='COUNT_COMPLETE_ENCODED_GRAPH_ONCE_PER_LOCAL_CACHE_NO_EXPANSION',descriptor_grammar='CLOSED2_FIELDS_OR_CLOSED1_ORDINALS_LOSSLESS_V1')and type(header['schema_version'])is int,header)
+def reconstruct(selected):
+    ids={k:'D'+str(i).zfill(4)for i,k in enumerate(sorted(selected),1)}
+    def enc(v,root=False):
+        if type(v)is dict:
+            k=key(v)
+            if not root and k in ids:return PREFIX+ids[k]
+            return {k:enc(x)for k,x in v.items()}
+        if type(v)is list:return [enc(x)for x in v]
+        return v
+    p=copy.deepcopy(old);p['schemas']={n:enc(v,True)for n,v in normalized.items()};p['schema_descriptor_encoding']=header;p['schema_descriptor_definitions']={ids[k]:enc(objects[k],True)for k in sorted(selected)};return p
+selected=set(eligible);pruned=[]
+while True:
+    current=nodes(reconstruct(selected));options=sorted((nodes(reconstruct(selected-{k})),k)for k in selected)
+    if not options or options[0][0]>=current:break
+    total,k=options[0];pruned.append(dict(before=current,after=total,removed_key_sha256=sha(k)));selected.remove(k)
+preview=reconstruct(selected);defs=preview['schema_descriptor_definitions'];ids=['D'+str(i).zfill(4)for i in range(1,31)]
+ck('deterministic30_definitions_exact_ID_order',list(defs)==ids and [r['definition_id']for r in d['definition_analysis']]==ids and len(selected)==30,pruned)
+for r in d['definition_analysis']:
+    k=key(r['normalized_visible_descriptor']);n=r['definition_id']
+    ck(n+'_visible_normalized_definition_exact',k in selected and defs[n]==r['encoded_visible_definition']and nodes(defs[n])==r['encoded_definition_nodes']and nodes(objects[k])==r['normalized_descriptor_nodes']and wh(objects[k])==r['normalized_descriptor_wire_plus_LF_sha256']and groups[k]==r['normalized_paths']and len(groups[k])==r['normalized_occurrences'],[n,r['normalized_descriptor_wire_plus_LF_sha256']])
+refs=[]
+def refs_of(v,path):
+    if type(v)is str and v.startswith(PREFIX):
+        n=v[len(PREFIX):]
+        if n not in defs:raise ValueError('unknown ref')
+        refs.append(dict(definition_id=n,path=path));return {n}
+    result=set()
+    if type(v)is dict:
+        for k,x in v.items():result|=refs_of(x,path+[k])
+    elif type(v)is list:
+        for i,x in enumerate(v):result|=refs_of(x,path+[i])
+    return result
+schema_refs=refs_of(preview['schemas'],['schemas']);edges={n:refs_of(v,['schema_descriptor_definitions',n])for n,v in defs.items()}
+visited=set();active=set()
+def visit(n):
+    if n in active:raise ValueError('cycle')
+    if n in visited:return
+    active.add(n)
+    for child in edges[n]:visit(child)
+    active.remove(n);visited.add(n)
+for n in schema_refs:visit(n)
+ck('all30_visible_definition_roots_not_references',all(type(v)is dict and ('builtin_type'in v or compactdict(v)or compactlist(v))for v in defs.values()),[dict(id=n,keys=list(v))for n,v in defs.items()])
+ck('all30_graph_acyclic_reachable',visited==set(ids),{n:sorted(v)for n,v in edges.items()})
+ck('exact510_reference_occurrences',len(refs)==510 and key(refs)==key(d['encoded_reference_occurrences']),[dict(reference_count=len(refs))])
+def leaves(v):
+    if type(v)is dict:
+        for k,x in v.items():yield k;yield from leaves(x)
+    elif type(v)is list:
+        for x in v:yield from leaves(x)
+    elif type(v)is str:yield v
+ck('reserved_prefix_absent_all_original_schema_keys_values',not any(x.startswith(PREFIX)for x in leaves(old['schemas'])),PREFIX)
+def expand(v,stack=()):
+    if type(v)is str and v.startswith(PREFIX):
+        n=v[len(PREFIX):]
+        if n not in defs or n in stack:raise ValueError('unknown/cyclic ref')
+        return expand(defs[n],stack+(n,))
+    if compactdict(v):
+        fields={k:expand(x,stack)for k,x in v['fields'].items()}
+        return dict(additional_fields_allowed=False,builtin_type='dict',exact_keys=list(fields),field_count=len(fields),fields=fields)
+    if compactlist(v):
+        items=[expand(x,stack)for x in v['items_by_ordinal']]
+        return dict(builtin_type='list',exact_length=len(items),items_by_ordinal=items)
+    if type(v)is dict:return {k:expand(x,stack)for k,x in v.items()}
+    if type(v)is list:return [expand(x,stack)for x in v]
+    return v
+expanded={n:expand(v)for n,v in preview['schemas'].items()};author_schemas={r['schema']:r for r in d['schema_equivalence_checks']};schema_proof=[]
+ck('all65_schema_names_exact',list(expanded)==list(old['schemas'])and len(expanded)==65,list(expanded))
+for n,v in old['schemas'].items():
+    ar=author_schemas[n];digest=wh(v)
+    ck('schema_'+n+'_canonical_wire_LF_exact',key(v)==key(expanded[n])and digest==ar.get('original_canonical_wire_plus_LF_sha256',ar.get('original_canonical_sha256'))and digest==ar.get('expanded_canonical_wire_plus_LF_sha256',ar.get('expanded_canonical_sha256')),[n,digest])
+    schema_proof.append(dict(schema=n,original_wire_plus_LF_sha256=digest,expanded_wire_plus_LF_sha256=wh(expanded[n])))
+for r in d['definition_analysis']:ck(r['definition_id']+'_expanded_original_descriptor_exact',key(expand(defs[r['definition_id']]))==key(r['fully_expanded_original_descriptor']),r['definition_id'])
+restored={k:v for k,v in preview.items()if k not in('schema_descriptor_encoding','schema_descriptor_definitions')};restored['schemas']=expanded
+ck('entire_original_schema_nonschema_canonical_inverse',key(restored)==key(old)and all(key(preview[k])==key(v)for k,v in old.items()if k!='schemas'),[wh(restored),wh(old)])
+ck('actual_whole5378_all_header_defs_refs_charged',nodes(old)==9373 and nodes(normalized)==7290 and nodes(preview)==5378 and nodes(preview['schemas'])==4018 and nodes(defs)==239,[dict(old=9373,normalized_schemas=7290,new_whole=5378,new_schemas=4018,new_definition_map=239)])
+ck('minified_preview103141_exact_wire_hash',len(key(preview)+b'\n')==103141 and wh(preview)=='8e4214a5ea8f528e3defb7c22b8c84ff3d69be941f0e012a0dc1c99a0074522a',[dict(bytes=len(key(preview)+b'\n'),sha256=wh(preview),candidate_not_written=True)])
+ck('actual_saved3995_per_cache7990_two_caches',9373-5378==3995 and 2*3995==7990,d['analysis']['two_cache_saved_nodes'])
+for row in d['analysis']['root_field_node_breakdown']:
+    n=row['root_field'];ck('root_'+n+'_exact_node_accounting',nodes(preview[n])==row['encoded_value_nodes']and 1+nodes(preview[n])==row['encoded_key_plus_value_nodes'],row)
+ck('header_definitions_same_local_charging_no_new_allowance',all(x in ' '.join(d['counter_and_runtime_contract']['load_validation'])for x in('full strict decode/_tree charging','without building expanded objects','neither resets nor supplies a second metadata allowance','no expanded copies'))or 'no expanded copies'in d['exact_representation']['read_only_ownership'],d['counter_and_runtime_contract'])
+ck('trusted_closed_namespace_invalid_graph_guards_required',all(x in ' '.join(d['counter_and_runtime_contract']['load_validation'])for x in('D0001..D0030','bad/unknown namespace','dangling refs','unreachable definitions','cycles','extra compact grammar keys','E_CATALOGUE_PIN')),d['counter_and_runtime_contract']['load_validation'])
+ck('no_caller_or_literal_reference_interpretation','Never caller/packet/receipt/proof/Source/API/native metadata values, literal constraint values' in d['exact_representation']['reference_domain'],d['exact_representation']['reference_domain'])
+ck('old_input_ABI_result54_and_allcaps_preserved',all(x in d['counter_and_runtime_contract']['unchanged']for x in('Record256','aggregate33554432','source65536','metadata2MiB','node50000','depth48','result54','reserve>60')),d['counter_and_runtime_contract']['unchanged'])
+joint=d['fit_and_scope_limits']['optional_shared_prior_marker_source_proposal'];m3=basis['M3_Source009'].decode('utf8');pub=basis['publisher_Source004'].decode('utf8')
+ck('shared_capture_marker_complete5_subjects_one_storedrow',joint['old_marker_count']==5 and joint['new_marker_count']==1 and joint['capture_inputs_after_shared_marker']==44 and 'one supplied store row only'in joint['label_aliases']and 'All5 exact canonical subjects'in joint['full_subjects'],joint)
+ck('prior_predicates_do_not_require_distinct_marker_identity',all(x in m3 for x in("g.s.body(packet['execution_witness'])","_same(reconciliation['initial_actual_execution_witness'],packet['execution_witness'])","_same(request['author_receipt'],dep['author_receipt'])")),[d['basis']['M3_Source009'],526,573])
+ck('publisher_marker_nonempty_superset_subject_read_guard_preserved',"for q4 in _list(raw.get('subjects'), 2003, 1):"in pub and "q2.s.body(_pin(q4))"in pub,[d['basis']['publisher_Source004'],350,372])
+ck('shared_marker44_vs5repaired80_and_old35_arithmetic',7+1+1+5*7==44 and 5*(7+1+1+7)==80 and 5*7==35,joint)
+ck('joint_binding_complete9_subject_superset_conditions',marker['proposed_joint_binding_event']['binding_count']==9 and "all(any(_same(subject,x) for x in named) for subject in subjects)"in m3 and "g.proof(support['different_review'],[support['source']])"in m3,marker['proposed_joint_binding_event']['event_contract'])
+ck('shared_marker1824_lower_bound_saving_not_guarantee',3*4*(44+7)*2==1224 and (2215-(112+21*44+3*(1+19+7*44+9)))*2==336 and 66*4==264 and 1224+336+264==1824,joint)
+ck('lowerbounds49172_then47348_below_cap_not_fitproof',57162-7990==49172 and 49172-1824==47348 and d['fit_and_scope_limits']['joint_capture_fit_proved']is False and d['fit_and_scope_limits']['shared_marker_body_overhead_not_yet_added_to_that_bound']is True,d['fit_and_scope_limits'])
+ck('unmeasured_remaining_costs_never_relabel_expected_positive',d['fit_and_scope_limits']['dynamic_fit_and_runtime_guaranteed']is False and d['fit_and_scope_limits']['joint_capture_remaining_facts_and_packet_costs_not_yet_counted']is True and 'never waive caps'in d['fit_and_scope_limits']['response'],d['fit_and_scope_limits']['response'])
+ck('Source_direct_reader_plan_includes_root_key_view_adapters',all(x in json.dumps(d['Source_integration_plan'])for x in('_descriptor_keys','selection_row9','peer_author_wrapper14','result54','M3_read_observation9')),d['Source_integration_plan'])
+ck('no_actual_implementation_or_invocation_in_proposal',all(d[k]is False for k in('actual_catalogue_files_created','actual_kernel_sources_authored','actual_fixture_sources_authored','target_functions_called','fixture_builders_called','new_tests_executed','target_execution','operational_authority','scientific_authority')),d['verdict'])
+# Exact additive clarification is required for the templates choices reader before final proof.
+clarification_path=M/'descriptor_dictionary_factor_protocol_proposal_001/I13_PROTOCOL002_EXACT_TEMPLATE_CHOICES_DESCRIPTOR_KEYS_CLARIFICATION_001.json'
+if not clarification_path.exists():raise RuntimeError('Await exact architect template-choice descriptor_keys clarification; no proof written')
+clarification=read(clarification_path,2371,'ad0e25b86fb274c68524966303dcb9d76792a65991013a56ee511fa0fa6232bc')
+ck('templates_choice_key_view_clarification_bound_exact002',any(type(x)is dict and x.get('path')==str(path)and x.get('bytes')==323542 and x.get('sha256')=='fae3aa96dc8ea0278b67f70ce571e0fce0a5413f0389c7d2af762415f0c93e47'for x in clarification.values())and '_descriptor_keys'in json.dumps(clarification),clarification)
+ck('all5_template_choice_descriptors_need_key_view',all(dict5(v)for v in old['schemas']['templates_operational_choices']['fields'].values()),list(old['schemas']['templates_operational_choices']['fields']))
+ck('all_runtime_malformed_ref_guards_require_later_Source_review',True,'This review verifies normative closed namespace/grammar/cycle/unknown/error specification and reviewer offline inverse only. No resolver Source exists and none was called; actual implementations must independently prove all new guards and exact protected AST complement, including compact shape bool/int/extra-key handling and old untrusted-value behavior.')
+ck('Source_cap_and_inverse_requirements_not_waived',d['publisher_Source_cap_feasibility']['cap']==65536 and d['publisher_Source_cap_feasibility']['candidate_written']is False,'Author in-memory whitespace room is not an accepted final Source. Final actual Source must separately fit65536 with complete predecessor inverse/token/AST complement proof.')
+ck('genuine_author_reviewer_separation',d['author']==marker['author']=='/root/project_architecture','reviewer /root/i13_final_review')
+ck('no_catalogue_Source_or_candidate_written_by_reviewer',True,'Only reviewer metadata script/proof/capsule files. All normalization/interning/reference expansion objects detached in reviewer memory; never installed/passed to target code. No subject export/function invocation.')
+ck('unique_closed3_checks',len({c['name']for c in checks})==len(checks)and all(set(c)=={'name','passed','evidence'}and type(c['passed'])is bool for c in checks),'closed3 builtinbool')
+assert all(c['passed']for c in checks),[c['name']for c in checks if not c['passed']]
+now=datetime.datetime.now(datetime.timezone.utc).isoformat();limit='Source-only protocol002 and exact additive reader-clarification review. Independent79 ordered closed-dict/23 fixed-list conversions, deterministic30 definitions/510refs, all65 canonical wire+LF schema inverses and all non-schema original007 fields exact. Whole5378 encoded nodes include all header/definition/reference data;3995/cache7990/two separately charged caches is a legitimate proposed representation change requiring Root adoption, not a legacy-byte counting waiver. Optional shared capture marker retains all5canonical subjects/one store row with role-specific packets; joint9Source proof event retains all sources and unchanged actor/time/context/readset joins. Current lowerbound47348 omits remaining positive costs and marker overhead: no fit/runtime/936qualification guarantee. No actual resolver Source exists; runtime guard/cap/AST/inverse/readers/final pins need separate genuine Source review, then any execution needs a fresh exact scope. No implementation/candidate/Source/catalogue or target/fixture/helper/supervisor invocation authorized by this review; all family/Native8/Parser/runtime/science/physical/operational holds remain.'
+common=dict(schema_version=1,reviewer='/root/i13_final_review',created_utc=now,verdict='PASS_I13_COMPACT_DESCRIPTOR_GRAMMAR002_PROTOCOL_ONLY_NO_FIT_OR_EXECUTION',subjects=subjects,checks_passed=len(checks),checks_failed=0,claim_limit=limit,target_execution=False,tests_executed=False,native_Parser_executed=False,operational_authority=False,scientific_authority=False,actual_family_publication=False)
+full=dict(common,record_type='Independent_I13_compact_descriptor_grammar002_protocol_Source_full_proof',checks=checks,independent_pruning=pruned,definition_edges={n:sorted(v)for n,v in edges.items()},schema_comparisons=schema_proof,actual_encoded_node_count=5378,conservative_lower_bound_only=47348,actual_fit_proved=False,actual_runtime_guards_not_executed=True,implementation_Source_review_required=True)
+def write(p,v):
+    with p.open('xb')as f:f.write((json.dumps(v,sort_keys=True,ensure_ascii=False,indent=2,allow_nan=False)+'\n').encode('utf8'))
+f=O/'INDEPENDENT_I13_COMPACT_DESCRIPTOR_GRAMMAR002_PROTOCOL_SOURCE_FULL_PROOF_001.json';write(f,full);b=f.read_bytes();ff=dict(path=str(f),bytes=len(b),sha256=sha(b));cap=O/'INDEPENDENT_I13_COMPACT_DESCRIPTOR_GRAMMAR002_PROTOCOL_SOURCE_CAPSULE_001.json';write(cap,dict(common,record_type='Independent_I13_compact_descriptor_grammar002_protocol_Source_capsule',full_proof=ff))
+for p in(f,cap):
+    b=p.read_bytes();print(json.dumps(dict(path=str(p),bytes=len(b),sha256=sha(b),checks_passed=len(checks),checks_failed=0)))

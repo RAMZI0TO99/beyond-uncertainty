@@ -1,0 +1,257 @@
+"""New finite Source-only coordination metadata. Physical author must not review/adopt.
+
+Only Root may invoke adopt after a genuine different metadata review. This helper
+never imports or invokes Subject Source, helper, mode, process/native query or test.
+"""
+import base64
+import datetime as dt
+import hashlib
+import json
+import os
+import stat
+import sys
+from pathlib import Path
+
+R = Path(__file__).parent
+R5 = R.parent
+OLD = R5 / 'Source014_coexistence_001'
+AUTHOR = '/root/failure_disposition_final_review'
+END = '2026-10-28T10:30:00+00:00'
+CAP = 2097152
+SCOPE_NAME = 'ROOT_PRO3_NEW_FINITE_SOURCE_ONLY_COEXISTENCE_SCOPE_015_001.json'
+INVERSE_NAME = 'ROOT_SOURCE015_COMPLETE_LATEST_SOURCE014_AND_ADOPTION_INVERSE_001.json'
+ADOPTION_NAME = 'ROOT_PRO3_SOURCE_ONLY_COEXISTENCE015_DIFFERENT_REVIEW_ADOPTION_001.json'
+
+def need(value, message):
+    if not value:
+        raise ValueError(message)
+
+def raw(path):
+    path = Path(path)
+    need(path.is_absolute() and path.is_relative_to(R5), 'fixed Root metadata workspace')
+    for parent in (path, *path.parents):
+        info = parent.lstat()
+        need(not stat.S_ISLNK(info.st_mode) and not getattr(info, 'st_file_attributes', 0) & 1024,
+             'direct nonreparse lineage')
+    first = path.stat()
+    need(stat.S_ISREG(first.st_mode) and first.st_nlink == 1 and 0 <= first.st_size <= CAP,
+         'bounded ordinary singlelink metadata')
+    with path.open('rb') as handle:
+        opened = os.fstat(handle.fileno())
+        data = handle.read(CAP + 1)
+        last = os.fstat(handle.fileno())
+    after = path.stat()
+    key = lambda x: (x.st_dev, x.st_ino, x.st_mode, x.st_nlink, x.st_size,
+                     x.st_mtime_ns, x.st_ctime_ns, getattr(x, 'st_file_attributes', 0))
+    need(key(first) == key(opened) == key(last) == key(after) and len(data) == first.st_size,
+         'stable whole same-buffer read')
+    return data
+
+def fact(path, data=None):
+    if data is None:
+        data = raw(path)
+    return dict(path=str(path), bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+
+def pairs(items):
+    out = {}
+    for key, value in items:
+        need(key not in out, 'duplicate JSON key')
+        out[key] = value
+    return out
+
+def bad_number(token):
+    raise ValueError('fractional/nonfinite own metadata token: ' + token)
+
+def shape(value):
+    todo, count = [(value, 0)], 0
+    while todo:
+        obj, depth = todo.pop()
+        count += 1
+        need(count <= 50000 and depth <= 48, 'metadata node/depth caps')
+        need(obj is None or type(obj) in (str, int, bool, list, dict), 'float-free builtin metadata')
+        if type(obj) is str:
+            need(not any(55296 <= ord(c) <= 57343 for c in obj), 'no surrogate strings')
+        elif type(obj) is list:
+            todo.extend((item, depth + 1) for item in obj)
+        elif type(obj) is dict:
+            need(all(type(k) is str for k in obj), 'string keys only')
+            for key, val in obj.items():
+                todo.extend(((key, depth + 1), (val, depth + 1)))
+
+def document(path, expected=None):
+    data = raw(path)
+    pin = fact(path, data)
+    if expected is not None:
+        need(pin == expected, 'exact metadata F3')
+    value = json.loads(data.decode('utf-8'), object_pairs_hook=pairs,
+                       parse_float=bad_number, parse_constant=bad_number)
+    shape(value)
+    return value, pin
+
+def fresh(start=None):
+    now = dt.datetime.now(dt.timezone.utc)
+    need(now.date() == dt.date(2026, 10, 28), 'current 28 October finite metadata interval')
+    need(now < dt.datetime.fromisoformat(END) - dt.timedelta(seconds=60), 'strict sixty-second reserve')
+    if start is not None:
+        need(dt.datetime.fromisoformat(start) <= now, 'new interval start reached')
+    return now
+
+def save(name, value):
+    need(Path(name).name == name, 'fixed own output filename')
+    shape(value)
+    data = (json.dumps(value, sort_keys=True, indent=2, ensure_ascii=False, allow_nan=False) + '\n').encode('utf-8')
+    need(len(data) <= CAP, 'own output byte cap')
+    fresh(value.get('interval_start'))
+    path = R / name
+    with path.open('xb') as handle:
+        need(handle.write(data) == len(data), 'whole exclusive CreateNew')
+        handle.flush()
+        os.fsync(handle.fileno())
+    need(raw(path) == data and document(path)[0] == value, 'whole strict output readback')
+    return fact(path, data)
+
+old_path = OLD / 'ROOT_PRO3_NEW_FINITE_SOURCE_ONLY_COEXISTENCE_SCOPE_014_001.json'
+old_adoption_path = OLD / 'ROOT_PRO3_SOURCE_ONLY_COEXISTENCE014_DIFFERENT_REVIEW_ADOPTION_001.json'
+old, old_pin = document(old_path)
+old_adoption, old_adoption_pin = document(old_adoption_path)
+need(old_pin['bytes'] == 10760 and old_pin['sha256'] == '4059a9d6b67f3ca73f86ed0eb609ffb2ed847ad1da26f07084998f163691ddf4', 'exact latest Source014')
+need(old_adoption_pin['bytes'] == 4989 and old_adoption_pin['sha256'] == '54949d3c7d989ba562caec668baa88bdd618eafe122984876c931b6cd3cd8350', 'exact actual Source014 adoption')
+need(old_adoption['Source_only_scope'] == old_pin and old_adoption['Source_only_coexistence_adopted'] is True,
+     'actual Source014 adoption binding')
+need(old['interval_end'] == old_adoption['interval_end'] == '2026-10-28T09:30:00+00:00', 'Source014 end unchanged')
+scope13_pin = old['separate_Root_failure_closeout_Source013_context']
+scope13_adoption_pin = old['separate_Root_failure_closeout_Source013_adoption_context']
+scope13, _ = document(scope13_pin['path'], scope13_pin)
+scope13_adoption, _ = document(scope13_adoption_pin['path'], scope13_adoption_pin)
+need(scope13_adoption['Source_only_scope'] == scope13_pin and scope13['interval_end'] == '2026-10-28T10:00:00+00:00', 'Source013 separate exact unchanged end')
+failure_path = R5 / 'ROOT_BOOTSTRAP004_ACTUAL_FAILURE_REVIEW_ADOPTION_AND_NATIVE_REQUEST_HOLD_001.json'
+failure, failure_pin = document(failure_path)
+need(failure_pin['bytes'] == 20136 and failure_pin['sha256'] == '4ddb9ea4195f134d516f38be4d2e239066ffea5d0c3a7b8d38f0e21751c99fea', 'exact dated Root saved-failure adoption')
+need(failure['Root_saved_refusal_adopted'] is True and failure['actual_disposition'] == 'FAILED_UNRELEASED_CONSUMED' and
+     failure['actual_child_reaped'] is failure['actual_custody_closed'] is failure['actual_operation_released'] is
+     failure['actual_bootstrap_accepted'] is failure['native_preparation_request_prepared'] is False,
+     'dated failed004 adoption is no actual success or release')
+self_pin = fact(Path(__file__))
+HOLDS = {key: False for key, value in old.items() if type(value) is bool and value is False}
+HOLDS.update({key: False for key in (
+    'Source014_period_or_authority_extended', 'Source005_prelaunch_readiness_accepted',
+    'Source005_original_or_different_review_results_accepted', 'custody_resolution_contract_accepted',
+    'new_bootstrap_request_authoring_or_issuance_admitted', 'physical_custody_result_acceptance_granted',
+    'new_human_instruction_verified_by_current_author', 'current_Source005_files_independently_qualified_by_Root')})
+
+def make_scope(created, inverse_pin):
+    return dict(
+        record_type='Root_NEW_finite_Source_only_Pro3_coexistence_scope015_proposal', schema_version=15,
+        proposal_owner='/root', physical_Source_author=AUTHOR, created_utc=created, interval_start=created,
+        interval_end=END, interval_start_Riyadh=dt.datetime.fromisoformat(created).astimezone(dt.timezone(dt.timedelta(hours=3))).isoformat(),
+        interval_end_Riyadh='2026-10-28T13:30:00+03:00', publication_reserve_seconds=60,
+        Pro2_max_including_Root=3, Pro3_max_including_Root_and_reviewer=2,
+        shared_max_including_both_roots_reviewers_children_and_overlap=5, additional_slots_granted=0,
+        Pro3_author_and_different_reviewer_serialized=True,
+        Pro3_active_work_shape='At most Pro3 Root plus one Source author OR one genuinely different Source reviewer. Author and reviewer must be serialized, never concurrent extra slots.',
+        metadata_cap_bytes=CAP, metadata_depth=48, metadata_nodes=50000,
+        metadata_author_adopter_Source=self_pin, complete_predecessor_inverse=inverse_pin,
+        latest_Source014=old_pin, latest_Source014_actual_adoption=old_adoption_pin,
+        Source014_end_unchanged=old['interval_end'], Source014_strict_reserve_cutoff_unchanged='2026-10-28T09:29:00+00:00',
+        Source014_status='Latest predecessor; its dated start/end remain unchanged. It is not described as expired before its actual end. Stop reliance by its original strict60 cutoff unless new Source015 is actually adopted in time.',
+        older_Source011_inverse_chain_retained_by_reference=old['complete_predecessor_inverse'],
+        Source011_end_unchanged=old['Source011_end_unchanged'], earlier_Source008_009_010_periods_and_bytes_unchanged=True,
+        separate_Root_failure_closeout_Source013_context=scope13_pin,
+        separate_Root_failure_closeout_Source013_adoption_context=scope13_adoption_pin,
+        Source013_end_unchanged=scope13['interval_end'], Source013_remains_separate_Root_saved_failure_metadata_only=True,
+        new_scope_preparation_authority='Continuation of the bounded Source005 author/review/fix phase already grounded in the genuine direct human next-step instruction retained in adopted Source014, plus a new finite Root metadata scheduling decision. The peer request for more Source-review time is coordination context and supplies no new human or execution permission. No previous record or window is extended.',
+        historical_direct_human_provenance=dict(basis=old_pin, retained_Source014_human=old['verified_new_direct_human'],
+            attribution='Historical genuine Source014 author/Root verification only. Current physical author read the exact saved metadata; no new user instruction or fresh human-message verification is claimed.'),
+        inherited_immediately_prior_handoff_context=dict(basis=old_pin, retained_context=old['immediate_prior_handoff_context'],
+            attribution='Dated saved Source014 context; no new runtime/physical result is accepted.'),
+        peer_Source005_progress_report=dict(report_only=True, received_context_utc='2026-10-28T09:15:00+00:00',
+            author_reported_stopped_utc='2026-10-28T09:12:40+00:00', reported_new_Source_count=3,
+            reported_new_Source_total_bytes_approximate='98KB', reported_PS_AST_inputs=2, reported_PS_AST_errors=0,
+            reported_preservation_pins_unchanged=75,
+            limit='Peer report only, not independently recounted or qualified by Root/current metadata author. No Source005 file was read, modified, parsed or invoked in this preparation.'),
+        Source005_phase=dict(status='SOURCE_ONLY_REVIEW_FIX_PHASE_PRELAUNCH_HELD',
+            allowed='Pro3-owned separately versioned Source005 supervisor/protocol diagnostic Source review and fixes, text/hash/strictJSON/Source-AST inspection and genuine different review only.',
+            explicit_prelaunch_hard_hold='Unchanged bootstrap004 false custody and false release are a hard prelaunch hold. Source005 is not launch-ready even with an ordinary future operation grant. A separately reviewed custody-resolution contract and distinct successor would be required before any launch decision. No readiness Boolean or execution authority is supplied by Source015.',
+            prospective_instrumentation='Source may describe future bounded refusal-row, controller/helper-generation and cleanup-stage/type/HResult/message diagnostics; no actual capture, target call or custody result now.',
+            prohibited='No new request, whitelist, guessed-PID/unowned kill, bypass, normalization, replay, retry, rerun or reinterpretation of failed004; original guards, caps and budgets remain unchanged.'),
+        permitted_Source_only_work=[
+            'Root bounded coordination/proposal metadata and exact saved Root-file read/hash/strictJSON/Source text/own metadata AST with bounded metadata helpers only.',
+            'Pro3-owned Source005 diagnostic supervisor/protocol Source review and fixes, text/hash/strictJSON/Source-AST inspection and genuinely different Source review under the serialized two-agent peer ceiling.',
+            'Preserve complete Sources001-004, original14, all75 spent identities, all guard/control inventories, refusals, decisions, consumed identities, partial outputs and complete prior bytes. Preservation counts are standing/report context, not new Root recount evidence.',
+            'Create only newly named bounded Source/proposal/review metadata. No Subject function/mode/helper/controller, native API, target Python, test, Job, process/resource/pause query, capture, runtime, training/numerical/science, Git or operational request.'
+        ],
+        Root_budgets_unchanged=old['Root_budgets_unchanged'],
+        all_original_Root_and_peer_Source_and_output_caps_unchanged=True,
+        peer_phase_resource_proposal_data=old['peer_phase_resource_proposal_data'],
+        standing_preservation=old['standing_preservation'],
+        dated_Root_saved_failure_review_adoption=failure_pin,
+        dated_failure_reference_limit='Exact dated saved-refusal metadata reference only; this new Source scheduling proposal does not newly qualify or promote actual004.',
+        unclosed_failed004_and_native_hold='Bootstrap004 remains FAILED_UNRELEASED_CONSUMED, unreaped/unclosed/unreleased, with no accepted observational success or D01 manifest. The conditional native-request prerequisite failed; Source015 prepares no native request and grants no result/custody/cleanup acceptance.',
+        unknowns_preserved=scope13['unknowns_preserved'], Source_only_scheduling_not_operative_lease=True,
+        new_interval_requires_actual_time_at_or_after_start=True,
+        requires_genuinely_different_metadata_review_and_separate_Root_adoption_before_reliance=True,
+        physical_author_must_not_review_or_adopt_this_proposal=True,
+        Root_alone_may_invoke_adopt_after_genuine_different_review=True,
+        future_operation_requirements='Source-only coordination grants no future operation. Any later operation requires distinct unused identity, separately reviewed exact frozen Source/protocol/request and custody-resolution contract, explicit Root decision, current peer/Root admission and current resources/pause/custody controls. No rerun004 or predecessor extension.',
+        **HOLDS)
+
+need(len(sys.argv) >= 2 and sys.argv[1] in ('prepare', 'adopt'), 'explicit metadata prepare/adopt mode')
+fresh()
+if sys.argv[1] == 'prepare':
+    need(len(sys.argv) == 2, 'prepare no other arguments')
+    inverse = save(INVERSE_NAME, dict(record_type='Root_Source015_complete_latest_Source014_scope_and_actual_adoption_inverse',
+        created_utc=fresh().isoformat(), physical_Source_author=AUTHOR, metadata_author_Source=self_pin,
+        whole_predecessor_bytes_preserved=True, predecessor_end_unchanged=old['interval_end'],
+        items=[dict(**pin, base64=base64.b64encode(raw(pin['path'])).decode('ascii')) for pin in (old_pin, old_adoption_pin)]))
+    candidate = save(SCOPE_NAME, make_scope(fresh().isoformat(), inverse))
+    print(json.dumps(dict(prepared_scope=candidate, metadata_author_adopter_Source=self_pin,
+        complete_predecessor_inverse=inverse, Root_adoption_pending=True, operational_authority=False), sort_keys=True))
+    sys.exit(0)
+
+need(len(sys.argv) == 4, 'Root alone adopt requires exact different-review capsule path and SHA256')
+capsule_path = Path(sys.argv[2])
+need(capsule_path.is_absolute() and capsule_path.is_relative_to(R5), 'review capsule within Root metadata workspace')
+capsule, capsule_pin = document(capsule_path)
+need(capsule_pin['sha256'] == sys.argv[3], 'exact capsule SHA256 argument')
+proof_path = Path(capsule['full_proof']['path'])
+need(proof_path.is_absolute() and proof_path.is_relative_to(R5), 'proof within Root metadata workspace')
+proof, proof_pin = document(proof_path, capsule['full_proof'])
+need(capsule['reviewer'] == proof['reviewer'] and type(capsule['reviewer']) is str and capsule['reviewer'] not in (AUTHOR, '/root'),
+     'reviewer genuinely different from physical author and Root adopter')
+need(capsule['verdict'] == proof['verdict'] and capsule['verdict'].startswith('PASS_') and
+     capsule['remaining_actionable_findings'] == proof['remaining_actionable_findings'] == [], 'exact PASS and zero actionable findings')
+checks = proof['checks']
+need(type(checks) is list and len(checks) > 0 and all(type(x) is dict and type(x.get('name')) is str and x['name'] and x.get('passed') is True for x in checks),
+     'positive uniquely named all-pass checks')
+need(len({x['name'] for x in checks}) == len(checks), 'unique check names')
+for reviewed in (capsule, proof):
+    need(type(reviewed['checks_passed']) is int and reviewed['checks_passed'] == len(checks) and
+         type(reviewed['checks_failed']) is int and reviewed['checks_failed'] == 0, 'exact positive count joins')
+scope, scope_pin = document(R / SCOPE_NAME)
+inverse, inverse_pin = document(R / INVERSE_NAME)
+need(scope == make_scope(scope['created_utc'], inverse_pin), 'entire exact expected Source015 candidate')
+fresh(scope['interval_start'])
+need(len(inverse['items']) == 2, 'exact two whole Source014 predecessor files')
+for item, pin in zip(inverse['items'], (old_pin, old_adoption_pin)):
+    need({k: item[k] for k in ('path', 'bytes', 'sha256')} == pin and base64.b64decode(item['base64'], validate=True) == raw(pin['path']),
+         'whole predecessor inverse exact F3 and bytes')
+artifacts = [scope_pin, self_pin, inverse_pin]
+need(capsule['scope'] == proof['scope'] == capsule['candidate'] == proof['candidate'] == scope_pin and
+     capsule['reviewed_artifacts'] == proof['reviewed_artifacts'] == artifacts, 'exact scope candidate ordered three-file roster')
+for pin in artifacts:
+    need(fact(Path(pin['path'])) == pin, 'fresh exact reviewed artifact F3')
+for key in HOLDS:
+    need(type(scope[key]) is bool and scope[key] is False, 'unchanged false operational hold: ' + key)
+adoption = save(ADOPTION_NAME, dict(record_type='Root_NEW_finite_Source_only_coexistence015_different_review_adoption',
+    schema_version=15, author='/root', physical_proposal_Source_author=AUTHOR, created_utc=fresh(scope['interval_start']).isoformat(),
+    Source_only_coexistence_adopted=True, Source_only_scope=scope_pin, genuine_different_metadata_review=capsule_pin,
+    full_proof=proof_pin, metadata_adopter_Source=self_pin, complete_predecessor_inverse=inverse_pin,
+    checks_passed=len(checks), checks_failed=0, interval_start=scope['interval_start'], interval_end=END,
+    publication_reserve_seconds=60, Pro2_max_including_Root=3, Pro3_max_including_Root_and_reviewer=2,
+    shared_max_including_both_roots_reviewers_children_and_overlap=5, additional_slots_granted=0,
+    Pro3_author_and_different_reviewer_serialized=True, Source014_end_unchanged=old['interval_end'],
+    Source013_end_unchanged=scope13['interval_end'], Source_only_scheduling_not_operative_lease=True,
+    dated_Root_saved_failure_review_adoption=failure_pin,
+    Root_decision='Root adopts a separately named NEW finite Source015 Source-only review/fix and coordination interval. Source014 and Source013 ends/bytes stay unchanged. Peer Source005 reports are not Root qualification. False004 custody/release remain a hard prelaunch hold even beyond ordinary future grants; separately reviewed custody-resolution contract/distinct successor would be needed. No result, physical release, native request, retry, request issuance, operation or execution is accepted or granted.',
+    **HOLDS))
+print(json.dumps(dict(adoption=adoption, Source_only_scope=scope_pin, operational_authority=False), sort_keys=True))

@@ -1,0 +1,229 @@
+"""Prepare the standalone portion of peer fixture004; no target/build calls."""
+import ast
+import base64
+import copy
+import hashlib
+import json
+from pathlib import Path
+
+ROOT=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003')
+OUT=ROOT/'m3_peer_contracts_016'/'i13'
+PREP=OUT/'peer_fixture004_standalone_preparation_001'
+OLD=OUT/'exercise_selected_peer_author_metadata_memory_003.py'
+before=OLD.read_bytes()
+assert hashlib.sha256(before).hexdigest()=='026aef7fbeffda8fdbbdf0e86b624a5e3528e6ab9794048e4a0bc784b8b617ff'
+tree=ast.parse(before);text=before.decode('utf8')
+catalog_node=next(n for n in tree.body if isinstance(n,ast.Assign)and any(isinstance(z,ast.Name)and z.id=='CASE_CATALOGUE'for z in n.targets))
+cases=ast.literal_eval(catalog_node.value)
+assert len(cases)==504
+new_cases=[]
+def add(name,expected=None,role='metadata_peer',handler='general_proof',**kw):
+    row=dict(name='peer_'+name,role=role,handler=handler,expected_error=expected,**kw)
+    cases.append(row);new_cases.append(copy.deepcopy(row))
+
+common=('schema_version','record_type','reviewer','created_utc','subjects','checks_passed','checks_failed','native_Parser_executed','target_execution','operational_authority','verdict')
+adoption=('schema_version','record_type','author','created_utc','subjects','different_review','full_proof','native_Parser_executed','target_execution','operational_authority','verdict')
+for kind in ('capsule','full'):
+    for field in common:
+        add('F01_constructor_'+kind+'_missing_'+field,'E_AUTHORITY'if field in ('target_execution','operational_authority')else'E_REVIEW',label='constructor_'+kind,variant='missing',field=field)
+add('F01_constructor_capsule_missing_full_proof','E_PIN',label='constructor_capsule',variant='missing',field='full_proof')
+add('F01_constructor_full_missing_checks','E_REVIEW',label='constructor_full',variant='missing',field='checks')
+for field in adoption:
+    add('F01_constructor_adoption_missing_'+field,'E_AUTHORITY'if field in ('target_execution','operational_authority')else'E_ADOPTION',label='constructor_adoption',variant='missing',field=field)
+for name,field,value,error in (
+    ('schema_bool','schema_version',True,'E_REVIEW'),('schema_zero','schema_version',0,'E_REVIEW'),
+    ('record_type_bool','record_type',True,'E_REVIEW'),('record_type_empty','record_type','','E_REVIEW'),
+    ('subjects_bool','subjects',True,'E_PIN_LIST'),('checks_passed_bool','checks_passed',True,'E_REVIEW'),
+    ('checks_failed_bool','checks_failed',False,'E_REVIEW'),('native_true','native_Parser_executed',True,'E_AUTHORITY'),
+    ('target_true','target_execution',True,'E_AUTHORITY'),('operational_true','operational_authority',True,'E_AUTHORITY'),
+    ('checks_bool','checks',True,'E_REVIEW'),('checks_empty','checks',[],'E_REVIEW')):
+    add('F01_constructor_full_'+name,error,label='constructor_full',variant='set',field=field,value=value)
+for name,field,value,error in (
+    ('schema_bool','schema_version',True,'E_ADOPTION'),('record_type_bool','record_type',True,'E_ADOPTION'),
+    ('author_bool','author',True,'E_ADOPTION'),('subjects_bool','subjects',True,'E_PIN_LIST'),
+    ('native_true','native_Parser_executed',True,'E_AUTHORITY')):
+    add('F01_constructor_adoption_'+name,error,label='constructor_adoption',variant='set',field=field,value=value)
+for field in ('different_review','full_proof'):
+    add('F01_constructor_adoption_wrong_valid_'+field,'E_ADOPTION_COVERAGE',label='constructor_adoption',variant='wrong_pin',field=field)
+for kind in ('capsule','full'):
+    add('F01_constructor_'+kind+'_recursive_evidence_does_not_cover','E_REVIEW_COVERAGE',label='constructor_'+kind,variant='recursive_only')
+add('F01_constructor_adoption_recursive_evidence_does_not_cover','E_ADOPTION_COVERAGE',label='constructor_adoption',variant='recursive_only')
+add('F01_constructor_full_extended_subject_not_fact3','E_PIN',label='constructor_full',variant='extended_subject')
+for field in ('name','passed','evidence'):
+    add('F01_constructor_check3_missing_'+field,'E_REVIEW',label='constructor_full',variant='check_missing',field=field)
+for variant,error in (('unknown','E_REVIEW'),('name_empty','E_REVIEW'),('name512',None),('name513','E_REVIEW'),('name_bool','E_REVIEW'),('passed_false','E_REVIEW'),('passed_int','E_REVIEW'),('duplicate','E_REVIEW')):
+    add('F01_constructor_check3_'+variant,error,label='constructor_full',variant='check_'+variant)
+for label in ('constructor_full','constructor_adoption'):
+    add('F01_'+label+'_UTC7_not_UTC6','E_TIME',label=label,variant='UTC7')
+add('F01_constructor_full_one_microsecond_after_capsule','E_CHRONOLOGY',label='constructor_full',variant='full_later')
+for context in ('selection_proof','content','proposal'):
+    for variant,label,field,error in (
+        ('missing',context+'_full','record_type','E_REVIEW'),
+        ('set',context+'_full','native_Parser_executed','E_AUTHORITY'),
+        ('recursive_only',context+'_full',None,'E_REVIEW_COVERAGE'),
+        ('check_missing',context+'_full','evidence','E_REVIEW'),
+        ('missing',context+'_adoption','native_Parser_executed','E_ADOPTION'),
+        ('wrong_pin',context+'_adoption','different_review','E_ADOPTION_COVERAGE')):
+        add('F01_shared_'+context+'_'+variant+'_'+str(field),error,label=label,variant=variant,field=field,value=True)
+for context in ('constructor','selection_proof','content','proposal'):
+    add('F02_'+context+'_proof_root_author_is_reviewer_positive',context=context,variant='root_author')
+    add('F02_'+context+'_reviewer_only_extensions_positive',context=context,variant='reviewer_only')
+kernel_tree=ast.parse((OUT/'validate_selected_peer_author_packet_metadata_008.py').read_bytes())
+actors=ast.literal_eval(next(n.value for n in kernel_tree.body if isinstance(n,ast.Assign)and any(isinstance(z,ast.Name)and z.id=='I13_OPERATIVE_ACTOR_KEYS'for z in n.targets)))
+contexts=ast.literal_eval(next(n.value for n in kernel_tree.body if isinstance(n,ast.Assign)and any(isinstance(z,ast.Name)and z.id=='I13_OPERATIVE_AUTHOR_CONTEXTS'for z in n.targets)))
+for alias in actors:add('F02_recursive_operative_alias_'+alias,'E_REVIEWER',handler='operative_actor',variant='alias',field=alias)
+for context in contexts:add('F02_nested_'+context+'_author','E_REVIEWER',handler='operative_actor',variant='nested_author',field=context)
+for alias,value in (('historical_binding_Source_editor',False),('implementation_Source_editor',[])):
+    add('F02_typed_alias_'+alias,'E_ACTOR',handler='operative_actor',variant='alias_value',field=alias,value=value)
+for field in ('actual_content_authors','actual_content_authors_additional'):
+    add('F02_additive_list_'+field,'E_REVIEWER',handler='operative_actor',variant='list',field=field)
+    add('F02_additive_list_'+field+'_bool','E_ACTOR',handler='operative_actor',variant='list_bool',field=field)
+add('F02_typed_draft_source_alias_before_first_review','E_REVIEWER',handler='operative_actor',variant='draft_alias')
+add('F02_typed_draft_nested_provenance_author','E_REVIEWER',handler='operative_actor',variant='draft_author')
+add('F02_raw_dependency_Source_is_opaque_positive',handler='operative_actor',variant='opaque_dependency')
+add('F02_phase_code_API_nested_author_before_first_review','E_REVIEWER',role='phase_peer',handler='operative_actor',variant='phase_API')
+add('F02_same_catalogue_key_on_proof_not_exempt_actor','E_REVIEWER',handler='operative_actor',variant='false_I11_actor')
+add('F02_same_catalogue_key_on_proof_not_exempt_C0','E_VALUE',handler='operative_actor',variant='false_I11_C0')
+add('F02_exact_fixed_I11_API_examples_remain_descriptive_positive',role='phase_peer',handler='operative_actor',variant='fixed_I11')
+add('F02_fixed_I11_extra_graph_isolation',role='phase_peer',handler='i11_isolation')
+assert len(cases)==len({row['name']for row in cases})and all(row['name'].isascii()for row in cases)
+lines=text.splitlines(keepends=True);oldcat=''.join(lines[catalog_node.lineno-1:catalog_node.end_lineno])
+text=text.replace(oldcat,'CASE_CATALOGUE = '+repr(cases)+'\n',1)
+
+i11_api=Path(r'D:\Aenv\pro2\WORK\resume-20261025-001\i2_receipt_contract_014\i11\CURRENT_OWNER_FINITE8_CANONICAL_RECEIPT_METADATA_INERT_API_007.json')
+api_value=json.loads(i11_api.read_bytes());i11_source=Path(api_value['Source']['path'])
+def pin(path,raw=None):
+    raw=path.read_bytes()if raw is None else raw
+    return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+assert pin(i11_api)==dict(path=str(i11_api),bytes=257593,sha256='eac8760d0ed56b1397c15666dfbed0983ea174081a3368bfc67a5b830ef0fa2f')
+assert pin(i11_source)==api_value['Source']
+extra={name:dict(pin=pin(path),base64=base64.b64encode(path.read_bytes()).decode())for name,path in (('API',i11_api),('Source',i11_source))}
+at=text.index('HOME=');text=text[:at]+'I11_EXACT_FIXTURE_DATA = '+repr(extra)+'\n'+text[at:]
+text=text.replace("_fingerprint((FIXED,CASE_CATALOGUE))","_fingerprint((FIXED,CASE_CATALOGUE,I11_EXACT_FIXTURE_DATA))",1)
+def region(name,replacement,parent=None):
+    global text
+    t=ast.parse(text);nodes=t.body if parent is None else next(n.body for n in t.body if isinstance(n,ast.ClassDef)and n.name==parent)
+    n=next(n for n in nodes if isinstance(n,ast.FunctionDef)and n.name==name)
+    ss=text.splitlines(keepends=True);old=''.join(ss[n.lineno-1:n.end_lineno]);assert text.count(old)==1
+    text=text.replace(old,replacement.rstrip()+'\n',1)
+region('proof', '''    def proof(self,name,subjects,when,adopt):
+        subjects=_unique_pins(subjects)
+        reviewer='/root/i13_peer_independent_review'
+        common=dict(schema_version=1,record_type='synthetic_source_proof',reviewer=reviewer,verdict='PASS_SOURCE_SYNTHETIC_METADATA_ONLY',checks_failed=0,checks_passed=1,created_utc=_time(when),subjects=copy.deepcopy(subjects),target_execution=False,operational_authority=False,native_Parser_executed=False)
+        full=copy.deepcopy(common);full['checks']=[dict(name='whole_source_and_metadata',passed=True,evidence=copy.deepcopy(subjects))]
+        fp=self.add(name+'_full',full);caps=copy.deepcopy(common);caps['full_proof']=fp;cap=self.add(name+'_capsule',caps)
+        declared=_unique_pins([*subjects,cap,fp,self.scope,self.selection])
+        ap=self.add(name+'_adoption',dict(schema_version=1,record_type='synthetic_Root_source_adoption',author='/root',verdict='ACCEPT_SOURCE_SYNTHETIC_METADATA_ONLY',created_utc=_time(adopt),subjects=declared,different_review=cap,full_proof=fp,target_execution=False,operational_authority=False,native_Parser_executed=False))
+        return cap,ap''','_Build')
+helpers=r'''def _unique_pins(values):
+    out=[];seen={}
+    for value in values:
+        key=value['path'].casefold()
+        if key in seen:assert value==seen[key]
+        else:seen[key]=copy.deepcopy(value);out.append(copy.deepcopy(value))
+    return out
+
+def _append_case_record(b,label,value,path=None,raw=False,mutable=True):
+    body=value if raw else _wire(value);path=path or _path('case_records',label+'.json')
+    assert all(row['pin']['path'].casefold()!=path.casefold()for row in b['records'])
+    pin=_pin(path,body);b['records'].append(dict(pin=copy.deepcopy(pin),body=body));b['labels'][label]=path
+    if mutable:b['mutable'].append(path)
+    return copy.deepcopy(pin)
+
+def _install_fixed_I11_phase_support(b):
+    captured=copy.deepcopy(I11_EXACT_FIXTURE_DATA);pins={}
+    for name in ('Source','API'):
+        row=captured[name];body=base64.b64decode(row['base64'],validate=True)
+        pins[name]=_append_case_record(b,'fixed_I11_'+name,body,row['pin']['path'],True,False)
+        assert pins[name]==row['pin']
+    subjects=_unique_pins([pins['Source'],pins['API']]);who='/root/i13_peer_independent_review'
+    proof=dict(schema_version=2,record_type='synthetic_fixed_I11_reference_Source_proof',reviewer=who,verdict='PASS_SOURCE_SYNTHETIC_METADATA_ONLY',created_utc=_time(1),subjects=subjects,checks_passed=1,checks_failed=0,target_execution=False,operational_authority=False,native_Parser_executed=False)
+    full=copy.deepcopy(proof);full['checks']=[dict(name='fixed_API_whole_bytes_and_inert_examples',passed=True,evidence=copy.deepcopy(subjects))]
+    fp=_append_case_record(b,'fixed_I11_full',full);cap=copy.deepcopy(proof);cap['full_proof']=fp;cp=_append_case_record(b,'fixed_I11_capsule',cap)
+    declared=_unique_pins(subjects+[cp,fp,_row(b,'owner')['pin'],_row(b,'selection')['pin']])
+    ap=_append_case_record(b,'fixed_I11_adoption',dict(schema_version=2,record_type='synthetic_fixed_I11_reference_adoption',author='/root',created_utc=_time(2),verdict='ACCEPT_SOURCE_SYNTHETIC_METADATA_ONLY',subjects=declared,different_review=cp,full_proof=fp,target_execution=False,operational_authority=False,native_Parser_executed=False))
+    context=_json(_row(b,'context')['body']);context['own_program_support']=dict(Source=pins['Source'],API=pins['API'],different_review=cp,Root_adoption=ap,editor='/root/i2_resume_gap');_rewrite(b,'context',context)
+
+def _general_proof_mutation(b,spec):
+    variant=spec['variant'];label=spec.get('label');field=spec.get('field')
+    if variant in ('root_author','reviewer_only'):
+        for kind in ('full','capsule'):
+            label=spec['context']+'_'+kind;v=_json(_row(b,label)['body'])
+            if variant=='root_author':v['author']=v['reviewer']
+            else:v.update(reviewer_agent='/root/i2_resume_gap',review_identity=dict(reviewer='/root/i2_resume_gap',reviewer_agent='/root/i2_resume_gap'))
+            _rewrite(b,label,v)
+        return
+    v=_json(_row(b,label)['body'])
+    if variant=='missing':del v[field]
+    elif variant=='set':v[field]=copy.deepcopy(spec['value'])
+    elif variant=='wrong_pin':v[field]=copy.deepcopy(_row(b,'owner')['pin'])
+    elif variant=='recursive_only':v['otherwise_complete_recursive_evidence']=copy.deepcopy(v['subjects']);v['subjects']=[copy.deepcopy(_row(b,'owner')['pin'])]
+    elif variant=='extended_subject':v['subjects'][0]['extra']=False
+    elif variant=='UTC7':v['created_utc']=v['created_utc'].replace('+00:00','1+00:00')
+    elif variant=='full_later':v['created_utc']=v['created_utc'].replace('.000000','.000001')
+    elif variant=='check_missing':del v['checks'][0][field]
+    elif variant.startswith('check_'):
+        kind=variant[len('check_'):];check=v['checks'][0]
+        if kind=='unknown':check['unknown']=False
+        elif kind=='name_empty':check['name']=''
+        elif kind=='name512':check['name']='N'*512
+        elif kind=='name513':check['name']='N'*513
+        elif kind=='name_bool':check['name']=True
+        elif kind=='passed_false':check['passed']=False
+        elif kind=='passed_int':check['passed']=1
+        elif kind=='duplicate':v['checks'].append(copy.deepcopy(check));v['checks_passed']=2
+        else:raise AssertionError('unowned general check3 case')
+    else:raise AssertionError('unowned general proof case')
+    _rewrite(b,label,v)
+    if variant=='check_duplicate':
+        other=label[:-len('_full')]+'_capsule';caps=_json(_row(b,other)['body']);caps['checks_passed']=2;_rewrite(b,other,caps)
+
+def _operative_actor_mutation(b,spec):
+    variant=spec['variant'];actor='/root/i13_peer_independent_review'
+    if variant=='fixed_I11':_install_fixed_I11_phase_support(b);return
+    if variant=='opaque_dependency':_rewrite(b,'input_capture_template',_wire(dict(source_author=actor)));return
+    if variant in ('draft_alias','draft_author'):
+        v=_json(_row(b,'draft')['body']);v['findings']=[dict(source_author=actor)]if variant=='draft_alias'else[dict(provenance=dict(author=actor))]
+        _rewrite(b,'draft',v);_rewrite(b,'proposal',_row(b,'draft')['body']);return
+    if variant=='phase_API':
+        context=_json(_row(b,'context')['body']);support=copy.deepcopy(context['own_program_support']);api=dict(schema_version=2,record_type='synthetic_typed_phase_API_reference',author='/root/i2_resume_gap',Source=support['Source'],provenance=dict(author=actor),target_execution=False,operational_authority=False)
+        support['API']=_append_case_record(b,'actor_phase_API',api);context['own_program_support']=support;_rewrite(b,'context',context);return
+    v=_json(_row(b,'content_full')['body'])
+    if variant=='alias':v['nested_recorded_evidence']={spec['field']:actor}
+    elif variant=='alias_value':v['nested_recorded_evidence']={spec['field']:copy.deepcopy(spec['value'])}
+    elif variant=='nested_author':v['nested_recorded_evidence']={spec['field']:dict(author=actor)}
+    elif variant=='list':v[spec['field']]=[actor]
+    elif variant=='list_bool':v[spec['field']]=True
+    elif variant=='false_I11_actor':v['literal_case_catalogue']=[dict(source_author=actor)]
+    elif variant=='false_I11_C0':v['literal_case_catalogue']=[chr(10)]
+    else:raise AssertionError('unowned operative actor case')
+    _rewrite(b,'content_full',v)
+
+'''
+needle='def _make(role,peer,catalogue_bytes):'
+assert text.count(needle)==1;text=text.replace(needle,helpers+needle,1)
+needle="    handler=spec['handler'];label=spec.get('label','draft');field=spec.get('field')\n"
+assert text.count(needle)==1;text=text.replace(needle,needle+"    if handler=='general_proof':_general_proof_mutation(b,spec);return\n    if handler=='operative_actor':_operative_actor_mutation(b,spec);return\n",1)
+needle="        if spec['handler']=='isolation':\n"
+replacement="""        if spec['handler']=='i11_isolation':
+            a=_make(spec['role'],peer,catalogue_bytes);b=_make(spec['role'],peer,catalogue_bytes);_install_fixed_I11_phase_support(a);_install_fixed_I11_phase_support(b)
+            assert not(_mutable_ids(a)&_mutable_ids(b))and not(_mutable_ids(a)&_mutable_ids(I11_EXACT_FIXTURE_DATA))
+            saved=_fingerprint(b);_row(a,'fixed_I11_API')['pin'].pop('path');assert _fingerprint(b)==saved and _seal()==seal
+        elif spec['handler']=='isolation':
+"""
+assert text.count(needle)==1;text=text.replace(needle,replacement,1)
+raw=text.encode('utf8');assert len(raw)<=2097152
+nt=ast.parse(raw);compile(raw,str(PREP/'I13_PEER004_STANDALONE_AUTHORED_SOURCE_001.py.source'),'exec',dont_inherit=True)
+newcat=ast.literal_eval(next(n.value for n in nt.body if isinstance(n,ast.Assign)and any(isinstance(z,ast.Name)and z.id=='CASE_CATALOGUE'for z in n.targets)))
+assert newcat==cases and cases[:504]==ast.literal_eval(catalog_node.value)
+run=next(n for n in nt.body if isinstance(n,ast.FunctionDef)and n.name=='run')
+assert [a.arg for a in run.args.kwonlyargs]==['m3','publisher','peer','catalogue_bytes']
+assert not PREP.exists();PREP.mkdir()
+source_path=PREP/'I13_PEER004_STANDALONE_AUTHORED_SOURCE_001.py.source'
+with source_path.open('xb')as f:f.write(raw)
+def save(path,value):
+    body=(json.dumps(value,sort_keys=True,indent=2,ensure_ascii=True)+'\n').encode();assert len(body)<=2097152
+    with path.open('xb')as f:f.write(body)
+    return pin(path,body)
+catalogue=save(PREP/'I13_PEER004_STANDALONE_LITERAL_CASES_001.json',dict(schema_version=1,record_type='I13_peer004_standalone_authored_case_preparation_not_final',author='/root/i2_resume_gap',Source=pin(source_path,raw),cases=cases,case_count=len(cases),new_case_count=len(new_cases),names_json_sha256=hashlib.sha256(json.dumps([row['name']for row in cases],separators=(',',':')).encode()).hexdigest(),pending='Final new outer helper copy and five canonical-peer publisher positives; target004 remains absent.',tests_executed=False,target_execution=False,operational_authority=False,scientific_authority=False))
+print(json.dumps(dict(Source=pin(source_path),catalogue=catalogue,standalone_case_count=len(cases),new_cases=len(new_cases),target_calls=0),sort_keys=True))

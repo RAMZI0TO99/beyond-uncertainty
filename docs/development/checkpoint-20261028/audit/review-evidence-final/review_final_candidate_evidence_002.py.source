@@ -1,0 +1,154 @@
+"""Final independent metadata comparison only; no target code is executed."""
+from pathlib import Path
+import datetime as dt
+import hashlib
+import json
+import os
+import stat
+
+PUB = Path('D:/Aenv/pro2/WORK/docs-publication-20261028-001')
+CAND = PUB / 'candidate'
+BASE = Path('docs/development/checkpoint-20261028')
+OUT = PUB / 'review-evidence-final'
+LIMIT = 2097152
+checks = []
+
+def check(ok, name):
+    checks.append({'id': name, 'passed': bool(ok)})
+
+def read(p):
+    s = p.lstat()
+    if not stat.S_ISREG(s.st_mode) or p.is_symlink() or s.st_size > LIMIT:
+        raise ValueError(('bounded ordinary read', str(p)))
+    b = p.read_bytes()
+    if len(b) != s.st_size or p.read_bytes() != b:
+        raise ValueError(('ordinary content changed', str(p)))
+    return b
+
+def pin(b):
+    return {'bytes':len(b), 'sha256':hashlib.sha256(b).hexdigest()}
+
+def pairs(rows):
+    obj = {}
+    for k,v in rows:
+        if k in obj: raise ValueError(('duplicate JSON key', k))
+        obj[k]=v
+    return obj
+
+def load(p):
+    return json.loads(read(p), object_pairs_hook=pairs)
+
+def save(name, obj):
+    b = (json.dumps(obj, sort_keys=True, indent=2) + '\n').encode()
+    if len(b)>LIMIT: raise ValueError(('own proof cap', len(b)))
+    p = OUT / name
+    with p.open('xb') as f:
+        f.write(b); f.flush(); os.fsync(f.fileno())
+    if read(p) != b: raise ValueError('proof readback')
+    return {'path':str(p), **pin(b)}
+
+scope = load(PUB / 'PUBLICATION_SCOPE.json')
+deadline = dt.datetime.fromisoformat(scope['end_utc']) - dt.timedelta(seconds=60)
+check(dt.datetime.now(dt.timezone.utc) < deadline, 'fresh publication reserve')
+check(scope['subject_execution_or_test_or_capture_or_native_or_science_authorized'] is False and scope['Source015_adopted'] is False and scope['old_Source_windows_extended'] is False, 'unchanged scope holds')
+initial = load(PUB / 'CANDIDATE.json')
+final = load(PUB / 'CANDIDATE_FINAL.json')
+old = {r['path']:r for r in initial['files']}
+new = {r['path']:r for r in final['files']}
+check(len(old)==1534 and len(new)==1573 and len(new)==len(final['files']), 'exact old and final manifest counts')
+check(set(old).issubset(new), 'all old candidate paths retained')
+actual = {p.relative_to(CAND).as_posix() for p in CAND.rglob('*') if p.is_file()}
+check(actual==set(new), 'final manifest exact actual roster')
+for rel,row in new.items():
+    p = (CAND / rel).resolve()
+    check(p.is_relative_to(CAND.resolve()), 'contained candidate '+rel)
+    check(pin(read(p)) == {k:row[k] for k in ('bytes','sha256')}, 'final exact bytes '+rel)
+changed = [rel for rel in old if old[rel]!=new[rel]]
+reportrel = (BASE / 'CURRENT_CHECKPOINT.md').as_posix()
+check(changed==[reportrel], 'only old-file change is report clarification')
+prior = read(CAND / BASE / 'audit/CURRENT_CHECKPOINT_before_package_clarification.md')
+report = read(CAND / reportrel)
+addition = b'This documentation publication uses four independently bounded evidence packages, each with at most384 file rows and less than64MiB of logical content. The aggregate documentation archive does not invoke, replace or widen any original I13 target/export/retention cap. All original caps remain unchanged.\n\n'
+check(report==prior.replace(b'The [evidence index](evidence-index.json) maps', addition+b'The [evidence index](evidence-index.json) maps'), 'exact additive clarification')
+check(pin(prior)=={k:old[reportrel][k] for k in ('bytes','sha256')}, 'original report preserved exactly')
+check(read(CAND / BASE / 'audit/CANDIDATE_before_clarification.json')==read(PUB/'CANDIDATE.json'), 'original candidate manifest preserved')
+check(read(CAND / BASE / 'audit/BEFORE.json')==read(PUB/'BEFORE.json'), 'prior workspace status preserved')
+
+index=load(CAND/BASE/'evidence-index.json')
+rows=[]
+for part in index['parts']:
+    p=CAND/part['path']
+    check(pin(read(p))=={k:part[k] for k in ('bytes','sha256')}, 'unchanged evidence part '+part['path'])
+    doc=load(p)
+    check(len(doc['files'])<=384 and sum(x['bytes'] for x in doc['files'])<64*1024*1024, 'independent docs package bounds '+part['path'])
+    rows.extend(doc['files'])
+check(len(rows)==1516 and sum(x['bytes'] for x in rows)==92732786, 'original1516 evidence totals unchanged')
+for n,row in enumerate(rows,1):
+    wanted={k:row[k] for k in ('bytes','sha256')}
+    b=read(CAND/row['archive_path'])
+    check(pin(b)==wanted and b==read(Path(row['original_path'])), 'original evidence still exact '+str(n))
+
+pack=load(CAND/BASE/'audit/review-packaging.json')
+check(len(pack['records'])==32, 'all32 base-review packaging records')
+for row in pack['records']:
+    check(read(Path(row['path']))==read(CAND/row['archive_path']) and pin(read(CAND/row['archive_path']))=={k:row[k] for k in ('bytes','sha256')}, 'exact review copy '+Path(row['path']).name)
+
+reassembly=load(CAND/BASE/'audit/review-docs/REVIEW_ATTEMPT_PRESERVATION_AND_REASSEMBLY_001.json')
+original=Path(reassembly['original']['path'])
+check(original.stat().st_size==reassembly['original']['bytes']==2635352, 'original oversized proof length retained')
+whole=hashlib.sha256(); count=0
+with original.open('rb') as f:
+    for n,row in enumerate(reassembly['parts_in_reassembly_order'],1):
+        # Read one bounded part at a time; never parse or materialize oversized proof.
+        b=read(CAND/BASE/'audit/review-docs'/Path(row['path']).name)
+        check(len(b)<=1048576 and pin(b)=={k:row[k] for k in ('bytes','sha256')}, 'bounded original proof part '+str(n))
+        check(f.read(len(b))==b, 'original proof exact chunk '+str(n))
+        whole.update(b);count+=len(b)
+    check(f.read(1)==b'', 'no original proof trailing bytes')
+check({'bytes':count,'sha256':whole.hexdigest()}=={k:reassembly['original'][k] for k in ('bytes','sha256')}, 'exact original oversized proof reconstruction')
+check(reassembly['candidate_or_original_guard_modified'] is False and reassembly['first_checker_refusal']['exit_code']==1, 'own review refusal history preserved')
+bounded=load(CAND/BASE/'audit/review-docs/INDEPENDENT_DOCUMENTATION_CANDIDATE_CAPSULE_003.json')
+check(bounded['verdict']=='PASS_CONTENT_AND_DOCUMENTATION_PENDING_NOTED_PUBLICATION_PRECONDITIONS' and bounded['checks_failed']==0 and bounded['checks_passed']==8107, 'genuine base-doc review PASS')
+check(len(bounded['bounded_proof_parts'])==19, 'nineteen bounded base-review parts')
+for n,row in enumerate(bounded['bounded_proof_parts'],1):
+    p=CAND/BASE/'audit/review-docs'/Path(row['path']).name
+    check(pin(read(p))=={k:row[k] for k in ('bytes','sha256')}, 'bounded review003 part '+str(n))
+evidencecap=load(CAND/BASE/'audit/review-evidence/INDEPENDENT_EVIDENCE_COPY_AND_FACT_REVIEW_CAPSULE_001.json')
+check(evidencecap['verdict']=='PASS' and evidencecap['checks_passed']==6775 and evidencecap['checks_failed']==0, 'base evidence review PASS and exact count')
+check(evidencecap['candidate_manifest']=={'path':str(PUB/'CANDIDATE.json'),**pin(read(PUB/'CANDIDATE.json'))}, 'base evidence review bound to preserved original candidate')
+
+for name in ['publish_checkpoint.py','finalize_candidate.py']:
+    check(read(CAND/BASE/(name+'.source'))==read(PUB/name), 'current helper inert exact '+name)
+check(read(CAND/BASE/'audit/publish_checkpoint001_unrun.py.source')==read(PUB/'publish_checkpoint001_unrun.py.source'), 'earlier unrun publisher preserved')
+publisher=read(CAND/BASE/'publish_checkpoint.py.source').decode()
+check("load(OUT/'CANDIDATE_FINAL.json')" in publisher and "reviews['candidate_manifest']==pin(read(OUT/'CANDIDATE_FINAL.json'))" in publisher, 'publisher binds final manifest')
+check("cap['verdict']=='PASS' and cap['checks_failed']==0" in publisher and "reviews['accepted_for_documentation_publication_only'] is True" in publisher, 'publisher requires exact reviewed docs-only adoption')
+check("scope['end_utc']" in publisher and 'timedelta(seconds=60)' in publisher, 'publisher retains60second reserve')
+check("assert pin(b)=={k:row[k] for k in ('bytes','sha256')}, 'candidate changed before write'" in publisher, 'publisher rereads exact candidate before each write')
+check("if p.exists(): assert row['path'] in allowed_existing" in publisher and "p.resolve().is_relative_to(REPO.resolve())" in publisher, 'publisher bounded existing write set and path containment')
+text=report.decode()
+for claim in ['all original I13 target/export/retention cap','All original caps remain unchanged','Root has not qualified Source005','Source015 was never adopted','FAILED_UNRELEASED_CONSUMED','native preparation request not prepared','No actual family publication, Native8, Parser, actual6, runtime, capture, training, numerical or scientific authority is created','not a complete transitive dependency closure']:
+    # First phrase is verified by exact addition instead of an alternative wording.
+    if claim=='all original I13 target/export/retention cap':
+        check('any original I13 target/export/retention cap' in text, 'no original cap waiver')
+    else: check(claim in text, 'final held fact '+claim)
+check(final['subject_execution'] is False, 'final manifest no subject execution')
+check(dt.datetime.now(dt.timezone.utc)<deadline, 'final review completed within reserve')
+bad=[x for x in checks if not x['passed']]
+proof={'record_type':'independent_final_documentation_evidence_delta_review','reviewer':'/root/current_evidence_inventory',
+ 'created_utc':dt.datetime.now(dt.timezone.utc).isoformat(),'verdict':'PASS' if not bad else 'FAIL',
+ 'candidate_manifest':{'path':str(PUB/'CANDIDATE_FINAL.json'),**pin(read(PUB/'CANDIDATE_FINAL.json'))},
+ 'reviewer_Source':{'path':str(Path(__file__)),**pin(read(Path(__file__)))},
+ 'checks_passed':len(checks)-len(bad),'checks_failed':len(bad),'checks':checks,
+ 'source_records_unchanged':1516,'candidate_files':1573,'original_oversized_proof_reassembled_pin':{'bytes':count,'sha256':whole.hexdigest()},
+ 'method':'Ordinary bounded content checks only. Oversized old reviewer proof is checked by bounded1MiB parts and streaming exact comparison; no original metadata guard is changed.',
+ 'execution_or_capture_or_native_authority':False,'Source005_qualified':False,'Source015_adopted':False,'bootstrap004_accepted':False}
+fp=save('INDEPENDENT_FINAL_EVIDENCE_REVIEW_FULL_PROOF_002.json',proof)
+cap={'record_type':'independent_final_documentation_evidence_delta_review_capsule','reviewer':proof['reviewer'],
+ 'created_utc':dt.datetime.now(dt.timezone.utc).isoformat(),'verdict':proof['verdict'],'checks_passed':proof['checks_passed'],'checks_failed':proof['checks_failed'],
+ 'candidate_manifest':proof['candidate_manifest'],'reviewer_Source':proof['reviewer_Source'],'full_proof':fp,'failed_checks':bad,
+ 'source_records_unchanged':1516,'candidate_files':1573,'oversized_original_review_proof_reassembly_exact':True,
+ 'scope':'Documentation evidence final delta, copy and held-fact review only; no subject execution or operational admission.',
+ 'execution_or_capture_or_native_authority':False,'Source005_qualified':False,'Source015_adopted':False,'bootstrap004_accepted':False}
+cp=save('INDEPENDENT_FINAL_EVIDENCE_REVIEW_CAPSULE_002.json',cap)
+print(json.dumps({'verdict':proof['verdict'],'passed':proof['checks_passed'],'failed':proof['checks_failed'],'capsule':cp,'proof':fp,'failed_checks':bad}))

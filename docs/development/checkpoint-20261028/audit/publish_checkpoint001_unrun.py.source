@@ -1,0 +1,97 @@
+"""Apply only reviewed documentation bytes; no project imports or execution."""
+from pathlib import Path
+import datetime as dt
+import hashlib
+import json
+import os
+import subprocess
+
+ROOT=Path('D:/Aenv/pro2')
+REPO=ROOT/'github-portable-20261012-001'
+OUT=ROOT/'WORK/docs-publication-20261028-001'
+CAND=OUT/'candidate'
+BASE='docs/development/checkpoint-20261028'
+
+def read(p):
+    assert p.is_file() and not p.is_symlink() and p.stat().st_size <= 2*1024*1024, str(p)
+    return p.read_bytes()
+def pin(b): return {'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()}
+def load(p): return json.loads(read(p))
+def js(o): return (json.dumps(o,indent=2,sort_keys=True)+'\n').encode()
+def git(*a): return subprocess.check_output(['git','-C',str(REPO),*a])
+def write(p,b):
+    p.parent.mkdir(parents=True,exist_ok=True)
+    with p.open('xb') as f: f.write(b);f.flush();os.fsync(f.fileno())
+    assert read(p)==b
+def time_guard():
+    scope=load(OUT/'PUBLICATION_SCOPE.json')
+    assert dt.datetime.now(dt.timezone.utc)+dt.timedelta(seconds=60)<dt.datetime.fromisoformat(scope['end_utc']), 'publication reserve'
+def target(rel):
+    assert not Path(rel).is_absolute() and '..' not in Path(rel).parts
+    p=REPO/rel
+    assert p.resolve().is_relative_to(REPO.resolve()), 'outside checkout'
+    return p
+
+time_guard()
+before=load(OUT/'BEFORE.json')
+assert git('rev-parse','HEAD').decode().strip()==before['head']
+assert not git('diff','--cached','--name-only').strip(), 'index changed'
+status=git('status','--porcelain=v1','-z','--untracked-files=all').split(b'\0')
+actual={x[3:].decode():x[:2].decode() for x in status if x}
+assert actual=={x['path']:x['status'] for x in before['existing_changes']}, 'unreviewed workspace change'
+for row in before['existing_changes']: assert pin(read(target(row['path'])))=={k:row[k] for k in ('bytes','sha256')}
+manifest=load(OUT/'CANDIDATE_FINAL.json')
+reviews=load(OUT/'REVIEW_ADOPTION.json')
+assert reviews['accepted_for_documentation_publication_only'] is True
+assert reviews['candidate_manifest']==pin(read(OUT/'CANDIDATE_FINAL.json'))
+for r in reviews['review_capsules']:
+    p=Path(r['path']); assert pin(read(p))=={k:r[k] for k in ('bytes','sha256')}
+    cap=load(p);assert cap['verdict']=='PASS' and cap['checks_failed']==0
+pres=load(CAND/BASE/'document-preservation.json')['files']
+allowed_existing={row['path']:row['before'] for row in pres}
+old_overlay=next(x for x in before['existing_changes'] if x['path']=='continuation/canonical-source-overlays.json')
+allowed_existing[old_overlay['path']]={k:old_overlay[k] for k in ('bytes','sha256')}
+for row in manifest['files']:
+    p=target(row['path']);b=read(CAND/row['path'])
+    assert pin(b)=={k:row[k] for k in ('bytes','sha256')}
+    if p.exists(): assert row['path'] in allowed_existing and pin(read(p))==allowed_existing[row['path']], ('unexpected existing file',str(p))
+for row in manifest['files']:
+    time_guard()
+    p=target(row['path']);b=read(CAND/row['path'])
+    if p.exists():
+        assert pin(read(p))==allowed_existing[row['path']]
+        temporary=p.with_name(p.name+'.docs-20261028.tmp')
+        assert temporary.resolve().is_relative_to(REPO.resolve())
+        write(temporary,b);os.replace(temporary,p)
+    else: write(p,b)
+    assert pin(read(p))=={k:row[k] for k in ('bytes','sha256')}
+for row in before['existing_changes']:
+    if row['path']!='continuation/canonical-source-overlays.json':
+        assert pin(read(target(row['path'])))=={k:row[k] for k in ('bytes','sha256')}
+for row in pres:
+    current=read(target(row['path']))
+    assert pin(current[row['prefix_bytes']:])==row['before']
+canonical=load(REPO/'continuation/canonical-source.json')
+overlay=load(REPO/'continuation/canonical-source-overlays.json')['overlays'][0]
+for row in canonical['files']:
+    b=read(target(row['path']))
+    if row['path']==overlay['path']:
+        assert pin(b)=={'bytes':overlay['current_bytes'],'sha256':overlay['current_sha256']}
+        b=b[overlay['prefix_bytes']:]
+    assert pin(b)=={k:row[k] for k in ('bytes','sha256')},row['path']
+time_guard()
+receipt={'record_type':'actual_documentation_copy_and_canonical_byte_verification',
+ 'created_utc':dt.datetime.now(dt.timezone.utc).isoformat(),'author':'/root',
+ 'candidate_manifest':pin(read(OUT/'CANDIDATE_FINAL.json')),'files':manifest['files'],
+ 'canonical_files_verified':len(canonical['files']),'all_prior_document_suffixes_preserved':True,
+ 'preexisting_changes_preserved_except_reviewed_overlay_update':True,
+ 'saved_reviews_adopted_for_documentation_only':reviews,
+ 'subject_or_test_or_native_or_capture_execution':False,'Source015_adopted':False,
+ 'Source005_qualified':False,'bootstrap004_accepted':False,'Git_commit_and_push_not_yet_performed':True}
+receipt_rel=BASE+'/ACTUAL_DOCUMENTATION_PUBLICATION.json'
+write(target(receipt_rel),js(receipt))
+write(OUT/'ACTUAL_DOCUMENTATION_PUBLICATION.json',js(receipt))
+paths=sorted({x['path'] for x in manifest['files']}|{x['path'] for x in before['existing_changes']}|{receipt_rel})
+write(OUT/'stage-paths.nul',b'\0'.join(x.encode() for x in paths)+b'\0')
+write(OUT/'commit-message.txt',b'Refresh October 28 handoff and preserve reviewed engineering evidence\n\nPublish the accepted verifier overlay and I11/I12 work, archive exact I13 and bootstrap evidence, and document the current retention and custody blockers. Preserve prior documents and all execution gates.\n')
+print(json.dumps({'published_candidate_files':len(manifest['files']),'canonical_files_verified':len(canonical['files']),'stage_paths':len(paths),'subject_execution':False}))

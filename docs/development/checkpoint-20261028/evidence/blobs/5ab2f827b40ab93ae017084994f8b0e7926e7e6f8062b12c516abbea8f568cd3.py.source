@@ -1,0 +1,190 @@
+"""Root-owned bounded metadata audit. Never imports, parses or invokes subject PS."""
+import datetime as dt
+import hashlib
+import json
+import os
+import stat
+from pathlib import Path
+
+R = Path(__file__).parent
+P = Path('D:/Aenv/pro3/runs/coordination/cho51_p3_contracts_20261027_v1')
+S = R.parent / 'pro3_bootstrap002_source_review_001'
+checks = []
+
+def need(ok, message):
+    if not ok:
+        raise ValueError(message)
+
+def ck(name, ok, detail=None):
+    need(type(ok) is bool, 'Boolean check outcome')
+    checks.append(dict(name=name, passed=ok, detail=detail))
+
+def raw(path):
+    path = Path(path)
+    for q in (path, *path.parents):
+        need(not q.is_symlink() and not getattr(q.lstat(), 'st_file_attributes', 0) & 1024, 'direct nonreparse metadata lineage')
+    a = path.stat()
+    need(stat.S_ISREG(a.st_mode) and a.st_nlink == 1 and 0 <= a.st_size <= 2097152, 'bounded ordinary single-link metadata')
+    with path.open('rb') as h:
+        bstat = os.fstat(h.fileno())
+        data = h.read(2097153)
+        c = os.fstat(h.fileno())
+    d = path.stat()
+    key = lambda x: (x.st_dev, x.st_ino, x.st_mode, x.st_nlink, x.st_size, x.st_mtime_ns)
+    need(key(a) == key(bstat) == key(c) == key(d) and len(data) == a.st_size, 'stable same-buffer bytes')
+    return data
+
+def pin(path, data=None):
+    if data is None:
+        data = raw(path)
+    return dict(path=str(path), bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+
+def pairs(items):
+    value = {}
+    for k, v in items:
+        need(k not in value, 'duplicate JSON key')
+        value[k] = v
+    return value
+
+def bad(value):
+    raise ValueError('noninteger or nonfinite JSON number')
+
+def shape(value):
+    pending = [(value, 0)]
+    nodes = 0
+    depth = 0
+    while pending:
+        v, d = pending.pop()
+        nodes += 1
+        depth = max(depth, d)
+        need(nodes <= 50000 and d <= 48, 'bounded metadata shape')
+        need(v is None or type(v) in (dict, list, str, int, bool), 'built-in metadata only')
+        if type(v) is str:
+            need(not any(55296 <= ord(c) <= 57343 for c in v), 'no Unicode surrogates')
+        elif type(v) is list:
+            pending.extend((x, d + 1) for x in v)
+        elif type(v) is dict:
+            need(all(type(k) is str for k in v), 'string JSON keys')
+            for k, x in v.items():
+                pending.extend(((k, d + 1), (x, d + 1)))
+    return dict(nodes_including_keys=nodes, maximum_depth_including_keys=depth)
+
+def doc(path, sha=None, size=None):
+    data = raw(path)
+    fact = pin(path, data)
+    if sha is not None:
+        need(fact['sha256'] == sha, 'exact announced SHA: ' + str(path))
+    if size is not None:
+        need(fact['bytes'] == size, 'exact announced byte count')
+    obj = json.loads(data.decode('utf-8'), object_pairs_hook=pairs, parse_float=bad, parse_constant=bad)
+    shape(obj)
+    return obj, fact
+
+scope, sp = doc(S / 'ROOT_PRO3_NEW_FINITE_SOURCE_ONLY_COEXISTENCE_SCOPE_011_001.json', 'c52dbbfc4a5202bc5476e6b41071d72a1163b339e8bcaad29acf2a6dae70a540', 9049)
+adoption, ap = doc(S / 'ROOT_PRO3_SOURCE_ONLY_COEXISTENCE011_DIFFERENT_REVIEW_ADOPTION_001.json', '6994cedd8c25318563d4aa398d6681c00e61e91f61bccd8d5ca67c75b554e378', 4571)
+
+def fresh():
+    now = dt.datetime.now(dt.timezone.utc)
+    need(dt.datetime.fromisoformat(scope['interval_start']) <= now and (dt.datetime.fromisoformat(scope['interval_end']) - now).total_seconds() > 60, 'effective Source011 and strict 60-second reserve')
+    return now.isoformat()
+
+def save(name, obj):
+    shape(obj)
+    data = (json.dumps(obj, sort_keys=True, indent=2, ensure_ascii=False, allow_nan=False) + '\n').encode('utf-8')
+    need(len(data) <= 2097152, 'metadata output cap')
+    fresh()
+    target = R / name
+    with target.open('xb') as h:
+        need(h.write(data) == len(data), 'whole CreateNew write')
+        h.flush()
+        os.fsync(h.fileno())
+    need(raw(target) == data, 'whole output readback')
+    return pin(target, data)
+
+fresh()
+ck('actual Source011 adopted and exact joined', adoption['Source_only_coexistence_adopted'] is True and adoption['Source_only_scope'] == sp)
+ck('scheduling alone never grants operation', scope['operational_authority'] is False and adoption['operational_authority'] is False)
+ck('shared allocation 3+2=5 and reserve60 unchanged', scope['Pro2_max_including_Root'] == 3 and scope['Pro3_max_including_Root_and_reviewer'] == 2 and scope['shared_max_including_both_roots_and_overlap'] == 5 and scope['publication_reserve_seconds'] == 60)
+specs = [
+    ('bootstrap-observation_004.ps1', 16938, '9e6869e4f8b4a5fe832382f4987313684e1d9064839ff32135555de06069e425'),
+    ('bootstrap-supervise_004.ps1', 39178, '689f91d080a1a335324e01156a3962d34e9855ed630042befa66e9d6a3aa5970'),
+    ('bootstrap-protocol_004.md', 16429, 'c2bdf423e8616db01e1f862c5c7f9b65da3ac8cd3e3e8f7f0dffccbbe8028524'),
+    ('bootstrap-source-review_004.json', 6242, 'a6901c928517e475f28544544f18af2f922af1281a2b9a095a1bfad4b8f2dc34'),
+    ('owner-resource-amendment.json', 1876, '733d6505fb24ee552ae0abd7e1bec46c14f6fc33e66a71d1adb3cf2f30c9fe75'),
+    ('bootstrap-request_004.json', 11889, '4cab7e95a2aa4d48f6b3b4c1946c910883cc88ab559c57394d3cdb8463cc0b79'),
+    ('bootstrap-request-review_004.json', None, '8ca23f56e0b2585908775b1410543ec1889bb1ad9bf466bbaf328fa725bbed69'),
+    ('coordination-source-observation_003.json', 2460, 'c8433deb14507280eadaa1829bb77ce893681d6cefc638e443ea2c62502c453d'),
+]
+facts = []
+for name, size, sha in specs:
+    f = pin(P / name)
+    need(f['sha256'] == sha and (size is None or f['bytes'] == size), 'frozen peer packet differs')
+    facts.append(f)
+    ck('frozen exact physical source or metadata pin: ' + name, True, f)
+
+request, rp = doc(P / specs[5][0], specs[5][2], specs[5][1])
+review, rrp = doc(P / specs[6][0], specs[6][2])
+sr, srp = doc(P / specs[3][0], specs[3][2], specs[3][1])
+obs, op = doc(P / specs[7][0], specs[7][2], specs[7][1])
+amd, amp = doc(P / specs[4][0], specs[4][2], specs[4][1])
+ck('request schema and versioned scope', request['schema'] == 'cho51_p3_bootstrap_observation_request_v1' and request['scope'] == 'cho51_p3_contracts_20261027_v1_bootstrap_observation_004')
+for field, index in [('source', 0), ('supervisor', 1), ('protocol', 2), ('source_review', 3)]:
+    ck('exact request ' + field + ' path/hash', request[field + '_path'] == facts[index]['path'] and request[field + '_sha256'] == facts[index]['sha256'])
+for field, fact in [('source_scope', sp), ('source_adoption', ap), ('source_coordination_observation', op)]:
+    ck('exact request ' + field + ' actual path/hash', request[field + '_path'] == fact['path'] and request[field + '_sha256'] == fact['sha256'])
+ck('resource amendment digest retained as verified human provenance', request['owner_resource_amendment_sha256'] == amp['sha256'])
+ck('genuine peer Source review positive with no findings', sr['source_only'] is True and sr['independent_review'] is True and sr['passed'] is True and sr['remaining_actionable_findings'] == [] and 'author of none' in sr['reviewer'])
+ck('peer Source map exactly three actual sources', sr['files'] == {f['path']: f['sha256'] for f in facts[:3]} and sr['source_sha256'] == facts[0]['sha256'])
+ck('genuine peer request audit joins actual request and review', review['source_only'] is True and review['independent_review'] is True and review['passed'] is True and review['remaining_actionable_findings'] == [] and review['request_path'] == rp['path'] and review['request_sha256'] == rp['sha256'] and review['request_bytes'] == rp['bytes'] and review['source_review_sha256'] == srp['sha256'])
+caps = dict(maximum_seconds=90, publication_reserve_seconds=60, helper_work_seconds=45, helper_effect_seconds=50, outer_start_before_seconds=15, outer_work_stop_seconds=65, outer_cleanup_end_seconds=80, outer_effect_end_seconds=85, maximum_controller_mode_invocations=4, maximum_helper_invocations=1, maximum_files=2500, maximum_code_bytes=1073741824, maximum_enumerated_entries=10000, maximum_directory_depth=16, maximum_manifest_bytes=1048576, maximum_stdout_bytes=1048576, maximum_stderr_bytes=1048576, process_table_maximum_rows=64, startup_ram_gib=4, active_ram_gib=4, disk_gib=20, outer_child_processes=1, helper_child_processes=0, python_invocations=0, jobs=0)
+need(len(caps) == 25, '25 integer caps')
+for k, v in caps.items():
+    ck('exact integer cap ' + k, type(request[k]) is int and request[k] == v)
+flags = dict(two_startup_samples_required=True, automatic_retry_permitted=False, native_helper_compilation_admitted=False, scientific_admission=False, bounded_cleanup_after_pause_admitted=True, root_admission_required=True, peer_decision_received=False, bootstrap_executed=False)
+for k, v in flags.items():
+    ck('exact Boolean requested flag ' + k, type(request[k]) is bool and request[k] is v)
+zero = ['source_updates', 'restore_count', 'support_updates', 'gradient_updates', 'target_inference_calls', 'query_count', 'model_constructions', 'measured_cells']
+ck('closed numerical budget exactly eight zero int64 values', set(request['expected_numerical_budget']) == set(zero) and all(type(request['expected_numerical_budget'][k]) is int and request['expected_numerical_budget'][k] == 0 for k in zero))
+outputs = ['bootstrap-dispatch_004.json', 'bootstrap-attempt_004.json', 'bootstrap-supervision_004.json', 'bootstrap-stdout_004.txt', 'bootstrap-stderr_004.txt', 'bootstrap-caller-completion_004.json', 'bootstrap-release_004.json', 'bootstrap-failure_004.json', 'bootstrap-helper-attempt_004.json', 'preparation-bootstrap-pins_004.json']
+ck('exact ten ordered outputs and owned root', request['create_once_outputs'] == outputs and request['output_root'] == str(P) and len(set(outputs)) == 10)
+ck('actual new admission target required but not granted', request['root_admission_path'] == str(P / 'bootstrap-admission_004.json') and request['root_admission_required'] is True and request['peer_decision_received'] is request['bootstrap_executed'] is False)
+ck('exact six observational extensions', request['read_extensions'] == ['.dll', '.exe', '.json', '.ps1', '.psm1', '.psd1'])
+pauses = [str(Path('D:/Aenv/pro2/WORK') / ('resume-' + date + '-001') / 'coordination/PRO2_REQUEST_PRO3_PAUSE.json') for date in ['20261007', '20261012', '20261013', '20261015', '20261025']]
+ck('exact five pause path identities only; no physical query', request['pause_paths'] == pauses)
+runtime = 'C:\\Users\\aladdin-alyanai\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell'
+ck('runtime pin identities match reviewed expectation only', request['runtime_root'] == runtime and request['runtime_executable_sha256'] == '362a356ce7f0940ec74f73a8fc2c990a2cc24a38a11c90bbd8eca947110ad139' and request['process_dll_sha256'] == '2b4871e02b366113c6ccf3b1436fadde5e69fc0a3e3ac421e2fa0f7af8c2bc3b')
+inv = request['invocation']
+ck('literal executable, working directory and launch flags', inv['executable'] == runtime + '\\pwsh.exe' and inv['working_directory'] == 'D:\\Aenv\\pro3' and inv['no_profile'] is inv['noninteractive'] is True and inv['login_shell'] is False)
+ck('exact four sequential mode identities', [x['mode'] for x in inv['ordered_modes']] == ['Begin', 'Invoke', 'Complete', 'Release'])
+ck('future Root admission digest remains explicit placeholder', inv['common_arguments'] == ['-Mode', '<exact mode>', '-RequestSha256', '<actual independent SHA of this request>', '-RootAdmissionSha256', '<actual SHA of fresh Root bootstrap-admission_004.json>'])
+start = dt.datetime.fromisoformat(request['window_start_utc'])
+end = dt.datetime.fromisoformat(request['window_end_utc'])
+created = dt.datetime.fromisoformat(request['created_utc'])
+reviewed = dt.datetime.fromisoformat(review['observed_utc'].replace('Z', '+00:00'))
+now = dt.datetime.fromisoformat(fresh())
+ck('actual request/review chronology no retroactive invocation', start <= created <= reviewed <= now and request['created_utc'] == '2026-10-27T16:37:06+00:00')
+ck('proposed operation window fits separate current Source011', dt.datetime.fromisoformat(scope['interval_start']) <= start < end <= dt.datetime.fromisoformat(scope['interval_end']) and (end - now).total_seconds() > 60 and request['window_end_utc'] == '2026-10-27T17:45:00+00:00')
+ck('dynamic scope is actual separately adopted011', request['source_scope_name'] == 'Source011' and request['source_scope_effective_only_after_utc'] == scope['interval_start'])
+ck('future decision schema requests actual separate disposition', request['requested_peer_schema'] == 'pro2_pro3_bootstrap_observation_decision_v1' and 'released=true only if separately accepted' in request['requested_peer_contract'])
+prior = [
+    ('001', 'pro3_bootstrap_review_001/ROOT_PRO3_BOOTSTRAP_REQUEST001_EXPLICIT_REJECTED_DECISION_001.json', 'cb3c427f239b47c0e6070602c02a116eba57e0acf643c15157d485dcc4ce13bc'),
+    ('002', 'pro3_bootstrap002_source_review_001/ROOT_PRO3_BOOTSTRAP_REQUEST002_EXPLICIT_REJECTED_DECISION_001.json', '9d6a476f2309207a82d2d50b20b5496d08333e9de014794f0e4424a667478698'),
+    ('003', 'pro3_bootstrap003_source_review_001/ROOT_PRO3_BOOTSTRAP_REQUEST003_EXPLICIT_REJECTED_DECISION_001.json', 'e6395f747aef09687b9302e0f6157988c8871dfe544e20412d24d2e57e2658ec'),
+]
+old = []
+for version, name, sha in prior:
+    value, fact = doc(R.parent / name, sha)
+    ck('actual rejected predecessor ' + version + ' retained and not reused', value['released'] is value['accepted'] is False and request['actual_rejected' + version + '_peer_decision_sha256'] == fact['sha256'] and request['preserved_rejected' + version + '_request_sha256'] == value['request_sha256'])
+    old.append(fact)
+ck('uncertain Start cannot become no-child or released by request wording', 'unknown/custody_closed=false BEFORE Start' in request['start_uncertainty_contract'] and 'Unknown never released' in request['start_uncertainty_contract'])
+ck('pause policy asserts unknown refusal without nativeID or atomic proof', 'UNKNOWN' in request['pause_presence_contract'] and 'not native file identity' in request['pause_presence_contract'] and 'stop observation/effects' in request['pause_presence_contract'])
+ck('full manifest and coverage acceptance expressly deferred', 'full manifest payload' in request['acceptance'] and 'before native preparation' in request['acceptance'])
+ck('human standing execution hold overrides requested cleanup permission', flags['bounded_cleanup_after_pause_admitted'] is True, 'Requested true is identity data; actual Root granted false in forthcoming decision. No execution is permitted by this audit.')
+need(len(checks) == len({x['name'] for x in checks}), 'unique review checks')
+failed = sum(x['passed'] is not True for x in checks)
+out = dict(record_type='Root_bootstrap004_exact_request_bounded_metadata_audit', schema_version=1, reviewer='/root', observed_utc=fresh(), verdict='PASS_STATIC_METADATA_ONLY' if failed == 0 else 'REFUSE_STATIC_METADATA', checks_passed=len(checks)-failed, checks_failed=failed, checks=checks, remaining_actionable_findings=[] if failed == 0 else [x for x in checks if x['passed'] is not True], request=rp, peer_request_review=rrp, reviewed_peer_packet=facts, preserved_actual_refusals=old, scope=sp, scope_adoption=ap, request_shape=shape(request), own_metadata_audit_Source=pin(Path(__file__)), source_only=True, subject_execution_performed=False, subject_PS_parsed_or_loaded=False, runtime_binary_or_pause_state_observed_by_Root=False, output_namespace_absence_observed_by_Root=False, operational_decision_issued=False, source_results_adopted=False, full_caller_accepted=False, observational_manifest_accepted=False, native_identity_or_complete_coverage_accepted=False, requested_cleanup_after_pause=True, granted_cleanup_after_pause=False, all_execution_gates_held=True, request_review_boundary='Own exact metadata/source hash audit only, not independent review of own writer, operational permission, current resource observation, future absence, custody or runtime acceptance. Whole Source reviews are separate. D01 remains deferred before actual observational acceptance, not an invented current Source blocker.', standing_human_instruction='go ahead and prepare and review the raw-input retention capture protocol and exact admission request, refreshing the Source-only scope as needed. take your time and use subagents if needed, keeping capture and all execution gates held.')
+fp = save('ROOT_PRO3_BOOTSTRAP004_EXACT_REQUEST_METADATA_FULL_PROOF_001.json', out)
+capsule = {k:v for k,v in out.items() if k != 'checks'}
+capsule['full_proof'] = fp
+cp = save('ROOT_PRO3_BOOTSTRAP004_EXACT_REQUEST_METADATA_CAPSULE_001.json', capsule)
+print(json.dumps(dict(capsule=cp, full_proof=fp, checks_passed=len(checks)-failed, checks_failed=failed, invocation_or_cleanup_permission_issued=False)))

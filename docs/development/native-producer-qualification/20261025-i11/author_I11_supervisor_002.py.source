@@ -1,0 +1,122 @@
+"""Own supervisor Source author; never launches or imports emitted programs."""
+import ast
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+
+HERE=Path(__file__).parent
+I11=HERE/'i11'
+def pin(path):
+    raw=path.read_bytes();return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+def replace(text,old,new):
+    if text.count(old)!=1:raise ValueError('nonunique exact supervisor edit '+old[:100])
+    return text.replace(old,new,1)
+
+old=HERE/'ROOT_I11_ONCE_MEMORY_SUPERVISOR_001.py'
+source=old.read_text(encoding='utf8')
+source=replace(source,'import importlib.util\n','import types\n')
+source=replace(source,'''def load_new(name, pin):
+    read_pin(pin)
+    spec = importlib.util.spec_from_file_location(name, pin['path'])
+    need(spec is not None and spec.loader is not None, 'new Python Source loader')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+''','''def load_new(name, pin):
+    raw = read_pin(pin)
+    module = types.ModuleType(name)
+    module.__file__ = pin['path']
+    # The separately admitted once child compiles/executes the exact verified
+    # buffer. No filesystem loader can substitute a later path read.
+    exec(compile(raw, pin['path'], 'exec'), module.__dict__)
+    return module
+''')
+source=replace(source,"    value, scope_pin = scope(scope_path, expected_hash)\n    outputs = value['outputs']\n    read_pin(fact(outputs['claim'], ordinary(outputs['claim']).read_bytes()))\n",
+'''    value, scope_pin = scope(scope_path, expected_hash)
+    need(sys.flags.isolated == 1 and sys.flags.no_site == 1 and sys.flags.dont_write_bytecode == 1, 'isolated -I -S -B child')
+    outputs = value['outputs']
+    read_pin(fact(outputs['claim'], ordinary(outputs['claim']).read_bytes()))
+''')
+module=pin(I11/'validate_finite8_canonical_receipt_metadata_002.py')
+fixture=pin(I11/'test_finite8_canonical_receipt_metadata_memory_only_002.py')
+tree=ast.parse(Path(fixture['path']).read_bytes())
+catalogue=next(ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='CASE_CATALOGUE' for t in n.targets))
+names=[r[0] for r in catalogue]
+digest=hashlib.sha256(json.dumps(names,separators=(',',':'),ensure_ascii=True).encode()).hexdigest()
+lines=source.splitlines(keepends=True)
+for name,value in [('SOURCE',module),('FIXTURE',fixture)]:
+    node=next(n for n in ast.parse(source).body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id==name for t in n.targets))
+    lines=source.splitlines(keepends=True)
+    source=''.join(lines[:node.lineno-1])+name+' = '+repr(value)+'\n'+''.join(lines[node.end_lineno:])
+source=replace(source,'BUDGETS = dict(total_seconds=60,',
+'''EXPECTED_CASE_COUNT = '''+str(len(names))+'''
+EXPECTED_CASE_NAMES_SHA256 = '''+repr(digest)+'''
+OWNED_PARENT_ROOT = Path(__file__).parent / 'owned_memory_runs'
+BUDGETS = dict(total_seconds=60,''')
+source=replace(source,"        if all(k in value for k in pin) and all(type(value[k]) is type(v) and value[k] == v for k, v in pin.items()):",
+                      "        if set(value) == {'path', 'bytes', 'sha256'} and all(type(value[k]) is type(v) and value[k] == v for k, v in pin.items()):")
+source=replace(source,"    adoption = decode(read_pin(value['source_adoption']))\n",'''    source_scope = decode(read_pin(value['source_scope']))
+    need(source_scope.get('author') == '/root' and source_scope.get('record_type') == 'Root_current_I11_source_contract_and_portability_scope' and
+         source_scope.get('target_execution') is False and source_scope.get('operational_authority') is False and
+         parse_time(source_scope['interval_start']) <= now < parse_time(source_scope['interval_end']) and
+         parse_time(value['interval_end']) <= parse_time(source_scope['interval_end']), 'current Source scheduling preserved')
+    adoption = decode(read_pin(value['source_adoption']))
+''')
+source=replace(source,"         all(occurs(adoption, value[k]) for k in ('module', 'fixture', 'supervisor')), 'actual Root Source adoption covers exact three programs')",
+'''         adoption.get('target_execution') is False and adoption.get('operational_authority') is False and
+         all(occurs(adoption, value[k]) for k in ('module', 'fixture', 'supervisor')), 'actual Root Source adoption covers exact three programs')''')
+source=replace(source,"    need(not any(str(p).casefold() == q['path'].casefold() for p in outputs for q in (value['module'], value['fixture'], value['supervisor'])), 'inputs distinct from outputs')",
+'''    need(all(p.parent.parent == OWNED_PARENT_ROOT for p in outputs), 'declared synthetic owned attempt directory only')
+    need(not any(str(p).casefold() == q['path'].casefold() for p in outputs for q in (value['module'], value['fixture'], value['supervisor'])), 'inputs distinct from outputs')''')
+source=replace(source,"    read_pin(fact(outputs['claim'], ordinary(outputs['claim']).read_bytes()))\n",'''    claim_raw = ordinary(outputs['claim']).read_bytes()
+    need(0 < len(claim_raw) <= 2097152, 'bounded once claim')
+    claim = decode(claim_raw)
+    need(claim.get('record_type') == 'I11_once_scope_claim' and claim.get('scope') == scope_pin and
+         claim.get('supervisor') == value['supervisor'] and type(claim.get('suite_invocations_maximum')) is int and
+         claim['suite_invocations_maximum'] == 1 and type(claim.get('parent_pid')) is int and
+         claim['parent_pid'] == os.getppid(), 'actual owned parent claim/scope identity')
+''')
+source=replace(source,"suite_invocations_maximum=1)))","suite_invocations_maximum=1, parent_pid=os.getpid())))")
+source=replace(source,"reason = 'WAIT50_TIMEOUT_PROGRESS_UNKNOWN'; break","reason = 'WAIT50_TIMEOUT'; break")
+source=replace(source,"    accepted = reason is None and proc.returncode == 0 and drained and not overflow.is_set() and result is not None\n",'''    catalogue_valid = False
+    if result is not None:
+        child_value = result['value']
+        cases = child_value.get('cases')
+        if type(cases) is list and len(cases) == EXPECTED_CASE_COUNT and all(type(c) is dict and set(c) == {'name', 'passed'} and
+                type(c['name']) is str and c['passed'] is True for c in cases):
+            names = [c['name'] for c in cases]
+            catalogue_valid = (hashlib.sha256(json.dumps(names, separators=(',', ':'), ensure_ascii=True).encode()).hexdigest() == EXPECTED_CASE_NAMES_SHA256 and
+                               len(set(names)) == len(names) and type(child_value.get('passed')) is int and child_value['passed'] == EXPECTED_CASE_COUNT and
+                               type(child_value.get('failed')) is int and child_value['failed'] == 0 and child_value.get('metadata_only') is True and
+                               child_value.get('record_type') == 'I11_owned_synthetic_memory_case_results' and child_value.get('scope') == scope_pin and
+                               type(child_value.get('owned_pid')) is int and child_value['owned_pid'] == proc.pid and
+                               all(child_value.get(k) is False for k in ('actual_family_publication', 'target_execution', 'operational_authority', 'scientific_authority')))
+    events = None
+    if drained and not overflow.is_set():
+        try:
+            events = [decode(line) for line in bytes(buffers['stdout']).splitlines() if line]
+        except (ValueError, UnicodeError):
+            events = None
+    known_entry = None if events is None else any(type(e) is dict and e.get('event') == 'SUITE_ENTRY' for e in events)
+    known_pass_prefix = None if events is None else sum(type(e) is dict and e.get('event') == 'CASE_PASS' for e in events)
+    accepted = reason is None and proc.returncode == 0 and drained and not overflow.is_set() and catalogue_valid
+''')
+source=replace(source,"                   unknown_suite_entry_and_progress=result is None)",
+'''                   actual_case_catalogue_valid=catalogue_valid, expected_case_count=EXPECTED_CASE_COUNT,
+                   expected_case_names_sha256=EXPECTED_CASE_NAMES_SHA256,
+                   known_suite_entry_from_complete_stdout=known_entry, known_case_pass_prefix_from_complete_stdout=known_pass_prefix,
+                   child_result_absent=result is None, progress_unknown_without_complete_streams=events is None)''')
+source=source.replace("'_i11_new_component_001'","'_i11_new_component_002'").replace("'_i11_new_fixture_001'","'_i11_new_fixture_002'")
+raw=source.encode();compile(raw,'<supervisor002 Source data compile>','exec')
+out=HERE/'ROOT_I11_ONCE_MEMORY_SUPERVISOR_002.py'
+with out.open('xb') as handle:handle.write(raw)
+receipt=dict(schema_version=1,record_type='I11_supervisor002_static_Source_author_receipt',author='/root/i2_resume_gap',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),
+             supervisor=pin(out),predecessor=pin(old),module=module,fixture=fixture,literal_case_count=len(names),case_names_sha256=digest,
+             author_tool=pin(Path(__file__)),budgets=dict(total_seconds=60,wait_seconds=50,cleanup_seconds=10,reap_seconds=5,stdout_maximum_bytes=2097152,stderr_maximum_bytes=2097152),
+             scope_record_type='Root_I11_once_owned_synthetic_memory_scope',scope_keys=ast.literal_eval(next(n.value for n in ast.parse(raw).body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='SCOPE_KEYS' for t in n.targets))),
+             owned_output_parent_root=str(HERE/'owned_memory_runs'),outputs='claim/child_entry/child_result/stdout/stderr/supervisor_result in one fresh Root-prepared attempt subdirectory',
+             tests_executed=False,supervisor_executed=False,target_execution=False,operational_authority=False,scientific_authority=False)
+rp=HERE/'I11_SUPERVISOR002_STATIC_SOURCE_AUTHOR_RECEIPT_001.json'
+with rp.open('xb') as handle:handle.write((json.dumps(receipt,sort_keys=True,indent=2)+'\n').encode())
+print(json.dumps(dict(supervisor=pin(out),receipt=pin(rp),case_count=len(names),case_names_sha256=digest,tests_executed=False),sort_keys=True))

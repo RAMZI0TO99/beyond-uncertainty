@@ -1,0 +1,69 @@
+"""Root exact saved Source-review adoption. No test scope or child launch."""
+import ast,datetime as dt,hashlib,json
+from pathlib import Path
+
+BUFFERS={}
+def _raw_buffer(p):
+ p=Path(p);key=str(p.resolve()).casefold()
+ if key not in BUFFERS:
+  with p.open('rb') as h:raw=h.read(2097153)
+  assert 0<len(raw)<=2097152
+  BUFFERS[key]=raw
+ return BUFFERS[key]
+R=Path(__file__).parent;C=R/'m3_peer_contracts_016';checks=[]
+def ck(ok,name,evidence):
+ assert ok,name
+ checks.append(dict(name=name,passed=True,evidence=evidence))
+def pin(p):
+ p=Path(p);b=_raw_buffer(p);return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def pairs(rows):
+ d={}
+ for k,v in rows:assert k not in d;d[k]=v
+ return d
+def bad(v):raise ValueError('noninteger JSON token')
+def load(p):
+ b=_raw_buffer(p);assert 0<len(b)<=2097152
+ return json.loads(b.decode(),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def exact(p):
+ ck(pin(p['path'])==p,'exact_'+p['sha256'],p)
+ return load(p['path'])
+def save(name,v):
+ p=C/name;b=(json.dumps(v,indent=2,sort_keys=True,allow_nan=False)+'\n').encode();assert len(b)<=2097152
+ with p.open('xb') as h:assert h.write(b)==len(b)
+ return pin(p)
+cfg=load(C/'I13_FINAL_SOURCE_ADOPTION_INPUT_001.json');manifest=exact(cfg['manifest'])
+scope_path=R/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_001.json';scope=load(scope_path);now=dt.datetime.now(dt.timezone.utc)
+ck(scope['author']=='/root' and scope['target_execution'] is False and scope['operational_authority'] is False,'current_Source_only_scope',pin(scope_path))
+ck(dt.datetime.fromisoformat(scope['interval_start'])<=now and (dt.datetime.fromisoformat(scope['interval_end'])-now).total_seconds()>60,'original_Source_reserve',pin(scope_path))
+protocol=cfg['protocol_adoption'];pv=exact(protocol)
+ck(pv['verdict']=='ACCEPT_EXACT_I13_PROTOCOL007_SOURCE_AUTHORING_ONLY','exact_final_protocol007',protocol)
+allpins=[*manifest['modules'].values(),*manifest['APIs'].values(),*manifest['fixtures'].values(),manifest['catalogue'],cfg['supervisor'],cfg['held_composition'],cfg['held_composition_API'],cfg['once_admission_helper']]
+for p in allpins:ck(pin(p['path'])==p,'final_whole_bytes_'+p['sha256'],p)
+for name,p in manifest['modules'].items():
+ ck(0<p['bytes']<=65536,'new_module_original_cap_'+name,p)
+ ast.parse(_raw_buffer(Path(p['path'])),filename=p['path'])
+ck(0<cfg['held_composition']['bytes']<=65536,'new_held_composition_cap',cfg['held_composition'])
+for name,p in manifest['fixtures'].items():
+ ck(0<p['bytes']<=2097152,'fixture_original_cap_'+name,p)
+ tree=ast.parse(_raw_buffer(Path(p['path'])));rows=ast.literal_eval(next(n.value for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='CASE_CATALOGUE' for t in n.targets)))
+ ck([r['name'] for r in rows]==manifest['case_names_by_fixture'][name],'literal_case_roster_'+name,p)
+for index,r in enumerate(cfg['different_reviews']):
+ cap=exact(r['capsule']);full=exact(r['full_proof'])
+ for body,label in ((cap,'capsule'),(full,'full')):
+  who=body['reviewer'];ck(type(who)is str and who.startswith('/root/') and who not in r['subject_authors'] and not any(who.casefold().startswith(a.casefold()+'/') for a in r['subject_authors'] if a!='/root'),'genuinely_different_'+str(index)+label,who)
+  ck(type(body['checks_passed']) is int and body['checks_passed']>0 and type(body['checks_failed']) is int and body['checks_failed']==0,'positive_review_counts_'+str(index)+label,r['capsule'])
+  for key in ('tests_executed','target_execution','operational_authority','scientific_authority','native_Parser_executed'):
+   ck(body[key] is False,'review_'+str(index)+label+'_'+key,r['capsule'])
+  for p in r['required_subjects']:ck(p in body['subjects'],'direct_review_subject_'+str(index)+label+'_'+p['sha256'],p)
+ ck(cap['full_proof']==r['full_proof'],'capsule_full_exact_'+str(index),r)
+ ck(len(full['checks'])==full['checks_passed'] and len({x['name'] for x in full['checks']})==len(full['checks']) and all(set(x)=={'name','passed','evidence'} and x['passed'] is True for x in full['checks']),'unique_closed_allpass_'+str(index),r['full_proof'])
+ ck(dt.datetime.fromisoformat(full['created_utc'])<=dt.datetime.fromisoformat(cap['created_utc'])<=now,'review_chronology_'+str(index),r)
+covered=[p for r in cfg['different_reviews'] for p in r['required_subjects']]
+for p in allpins:ck(p in covered,'complete_different_review_coverage_'+p['sha256'],p)
+ck(cfg['once_admission_helper']==pin(R/'prepare_I13_once_admission_003.py'),'same_own_once_metadata_helper',cfg['once_admission_helper'])
+baseline=exact(cfg['retained_Source_baseline'])
+for p in cfg['retained_Source_pins']:ck(pin(p['path'])==p,'retained_unmodified_'+p['sha256'],p)
+proof=save('ROOT_I13_FINAL_NEW_SOURCE_SET_FOCUSED_FULL_PROOF_001.json',dict(schema_version=1,record_type='Root_I13_exact_final_new_Source_set_focused_review',author='/root',created_utc=now.isoformat(),subjects=allpins,checks=checks,checks_passed=len(checks),checks_failed=0,target_execution=False,tests_executed=False,operational_authority=False,scientific_authority=False,native_Parser_executed=False))
+value=dict(schema_version=1,record_type='Root_I13_exact_final_new_Source_set_adoption_for_separate_synthetic_once',author='/root',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),verdict='ACCEPT_EXACT_I13_NEW_SOURCE_FOR_SEPARATE_ONCE_SYNTHETIC_ADMISSION_ONLY',Source_scope=pin(scope_path),protocol_adoption=protocol,manifest=cfg['manifest'],modules=manifest['modules'],APIs=manifest['APIs'],catalogue=manifest['catalogue'],fixtures=manifest['fixtures'],supervisor=cfg['supervisor'],held_composition=cfg['held_composition'],held_composition_API=cfg['held_composition_API'],once_admission_helper=cfg['once_admission_helper'],different_Source_reviews=cfg['different_reviews'],Root_focused_proof=proof,checks_passed=len(checks),checks_failed=0,retained_Source_baseline=cfg['retained_Source_baseline'],retained_Source_pins=cfg['retained_Source_pins'],finite_catalogue=dict(cases=manifest['combined_case_count'],JSON_names_sha256=manifest['combined_case_names_sha256']),separate_fresh_once_scope_required=True,maximum_once_suite_invocations=1,original75_spent_identities_unreplayed=True,old_I0_I12_target_imports_functions_mains_tests_admitted=False,full_I2_G01_closed=False,actual_I7_IO_qualified=False,actual_I8_eligibility_qualified=False,actual_I9_render_semantics_qualified=False,authentic_loader_qualified=False,human_origin_authenticated=False,physical_origin_authenticated=False,recursive_prior_publication_authority=False,current_canonical_authority_qualified=False,actual_family_publication=False,Native8_Parser_runtime_science_admitted=False,current_dated_Source_inventory=dict(present=36,pending=9),frozen_STEP080_inventory=dict(present=35,pending=10),target_execution=False,tests_executed=False,operational_authority=False,scientific_authority=False)
+out=save('ROOT_I13_FINAL_NEW_SOURCE_SET_DIFFERENT_REVIEW_ADOPTION_001.json',value)
+print(json.dumps(dict(Source_adoption=out,Root_proof=proof,checks_passed=len(checks),suite_invoked=False)))

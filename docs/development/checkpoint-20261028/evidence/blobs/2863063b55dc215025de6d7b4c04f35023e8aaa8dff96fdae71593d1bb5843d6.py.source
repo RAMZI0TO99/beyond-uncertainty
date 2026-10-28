@@ -1,0 +1,346 @@
+"""Create corrected complete JSON proposal/catalogue; no target Source entry."""
+import ast
+import hashlib
+import json
+from pathlib import Path
+
+HERE = Path(__file__).parent
+ROOT = Path(r'D:\Aenv\pro2')
+W2 = ROOT / r'WORK\resume-20261025-002\receipt_caller_integration_015'
+
+def pin(path):
+    raw = path.read_bytes()
+    return {'path': str(path), 'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
+
+def read(path):
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError('duplicate key')
+            result[key] = value
+        return result
+    def reject(value):
+        raise ValueError('noninteger token ' + value)
+    return json.loads(path.read_bytes(), object_pairs_hook=pairs, parse_float=reject, parse_constant=reject)
+
+def save(name, value):
+    raw = (json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False) + '\n').encode()
+    if len(raw) > 2097152:
+        raise ValueError('metadata cap')
+    with (HERE / name).open('xb') as handle:
+        handle.write(raw)
+    if (HERE / name).read_bytes() != raw:
+        raise ValueError('readback')
+    return pin(HERE / name)
+
+def schema(fields):
+    return {'builtin_type': 'dict', 'additional_fields_allowed': False,
+            'exact_keys': list(fields), 'field_count': len(fields), 'fields': fields}
+
+def lit(value):
+    return {'builtin_type': type(value).__name__, 'literal': value}
+
+def structural(value):
+    if type(value) is dict:
+        return schema({key: structural(child) for key, child in value.items()})
+    if type(value) is list:
+        return {'builtin_type': 'list', 'exact_length': len(value), 'items_by_ordinal': [structural(child) for child in value]}
+    if type(value) is str:
+        return {'builtin_type': 'str', 'maximum_length': 2097152, 'no_C0_or_surrogates': True}
+    return lit(value)
+
+def literal_constants(path):
+    result = {}
+    for node in ast.parse(path.read_bytes(), filename=str(path)).body:
+        if not isinstance(node, ast.Assign):
+            continue
+        value = node.value
+        if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id in ('frozenset', 'set') and len(value.args) == 1 and not value.keywords:
+            try:
+                value = sorted(ast.literal_eval(value.args[0]))
+            except (ValueError, TypeError):
+                continue
+        else:
+            try:
+                value = ast.literal_eval(value)
+            except (ValueError, TypeError):
+                continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                result[target.id] = value
+    return result
+
+def main():
+    catalogue001 = HERE / 'I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_001.json'
+    proposal001 = HERE / 'I13_PROPOSED_M3_GUARD_AND_SHARED_SELECTED_ROLE_PUBLISHER_PROTOCOL_001.json'
+    c = read(catalogue001)
+    p = read(proposal001)
+    a = read(HERE / 'I13_M3_SIX_ROLE_PROFILE_STATIC_ACTUAL_BYTES_AND_AST_AUDIT_001.json')
+    i2 = literal_constants(Path(a['subjects']['I2_006']['Source']['path']))
+    i8 = literal_constants(Path(a['subjects']['I8_003']['Source']['path']))
+    oldcat = W2 / 'I12_EXACT_RECEIPT_FORMAT_SCHEMA_AND_FIXED_DATA_CATALOGUE_002.json'
+    s = c['schemas']
+    c['record_type'] = 'I13_PROPOSED_exact_M3_and_selected_role_publisher_contract_catalogue'
+    c['predecessor_unadopted_catalogue'] = pin(catalogue001)
+    c['peer_base_catalogue'] = pin(oldcat)
+    peer_dir = HERE.parent / 'canonical_peer_protocol_audit_001'
+    peer_protocol_basis = pin(peer_dir / 'I13_PROPOSED_CANONICAL_PEER_AUTHOR_WRAPPER_AND_PUBLICATION_JOIN_PROTOCOL_001.json')
+    peer_data_candidates = list(peer_dir.glob('*ROLE*DATA*.json'))
+    if len(peer_data_candidates) != 1:
+        raise ValueError('one exact peer role data subject required')
+    c['peer_role_data'] = pin(peer_data_candidates[0])
+    c['peer_base_catalogue_delivery'] = 'Exact original raw bytes supplied as ordinary record2 in the same owned store; no reserialization or module import. Both common and base catalogue rawbytes/records/parsednodes/depth count under existing aggregate limits; no additional node allowance.'
+    s['stage_purpose6'] = schema({'schema_version': lit(2), 'stage': 'stage_enum', 'role': 'nullable_selected_bound_role',
+        'facts': 'fact3', 'inputs': 'exact_sorted_unique_fact3_list', 'output_paths': 'exact_sorted_unique_native_path_list'})
+    s['lease12'] = {'builtin_type': 'dict', 'exact_keys': i2['LEASE_KEYS'], 'field_count': 12,
+        'additional_fields_allowed': False, 'fields': {
+            'schema_version': lit(1), 'record_type': lit('root_local_private_execution_lease'), 'author': lit('/root'),
+            'created_utc': 'utc7', 'decision': lit('authorize_bounded_selected_unit_metadata_and_copied_tests_once'),
+            'lease_end_utc': 'utc7', 'lease_is_owner_deadline': lit(False), 'maximum_lease_seconds': lit(43200),
+            'operational_authority': lit(False), 'owner_master_sha256': 'lower_ascii_hex64', 'owner_review_sha256': 'lower_ascii_hex64',
+            'scope': lit('COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY')}}
+    s['lease_decision20'] = {'builtin_type': 'dict', 'exact_keys': i2['LEASE_DECISION_KEYS'], 'field_count': 20,
+        'additional_fields_allowed': False, 'fields': {
+            'schema_version': lit(2), 'record_type': lit('Root_owner_v2_prospective_lease_issuance_decision'),
+            'author': lit('/root'), 'Root_thread': 'root_uuid', 'created_utc': 'utc6',
+            'current_owner_scope': 'fact3', 'decision': lit('SELECT_NEW_PROSPECTIVE_CLOSED12_LEASE_SOURCE_ONLY'),
+            'design': 'fact3', 'future_canonical_path': 'native_absolute_path', 'lease_is_owner_deadline': lit(False),
+            'native_timestamp_entry': 'fact3', 'old_leases_extended': lit(False), 'operational_authority': lit(False),
+            'owner_master': 'fact3', 'owner_review': 'fact3', 'predecessor_lease': 'fact3',
+            'selected_duration_seconds': lit(43200), 'selected_ordinal': 'positive_builtin_int',
+            'source_family_selected': lit(False), 'target_execution': lit(False)}}
+    s['selection13'] = {'builtin_type': 'dict', 'exact_keys': i2['SELECTION_KEYS'], 'field_count': 13,
+        'additional_fields_allowed': False, 'fields': {
+            'schema_version': lit(2), 'record_type': lit('Root_owner_v2_actual_separate_future45_Source_path_selection'),
+            'author': lit('/root'), 'created_utc': 'utc6', 'current_owner_scope': 'fact3',
+            'current_complete45_inventory': 'fact3', 'current_selection': 'fact3',
+            'derived_launcher_runtime_path': 'native_absolute_path', 'new_canonical_lease': 'fact3',
+            'operational_authority': lit(False), 'rows': 'exact45_selection_row9_list',
+            'selected_Source_nonce': 'lower_ascii_hex32', 'target_execution': lit(False)}}
+    s['selection_row9'] = {'builtin_type': 'dict', 'exact_keys': i2['ROW_KEYS'], 'field_count': 9,
+        'additional_fields_allowed': False, 'fields': {
+            'canonical_path': 'native_absolute_path', 'draft_path': 'nullable_native_absolute_path_only_composer',
+            'must_change_Source_bytes': 'builtin_bool_true_except_composer', 'predecessor': 'fact3',
+            'preparation_Source_author': 'actor_nonroot_or_null_only_composer',
+            'retained_semantic_Source_author': 'actor_root_or_nonroot_or_null_only_composer',
+            'role': 'original_selected45_role', 'selected_ordinal': 'positive_builtin_int_or_null_only_composer',
+            'source_cap': 'exact_role_cap'}}
+    for name, source_name in [('facts21', 'FACT_KEYS'), ('receipt22', 'RECEIPT_KEYS'), ('dependency9', 'DEPENDENCY_KEYS')]:
+        s[name]['exact_keys'] = i2[source_name]
+        s[name]['field_count'] = len(i2[source_name])
+    s['facts21']['fields'] = {
+        'schema_version': lit(2), 'record_type': lit('Root_owner_v2_exact_M3_Source_stage_purpose_and_facts'),
+        'author': lit('/root'), 'Root_thread': 'root_uuid', 'created_utc': 'utc6', 'stage': 'stage_enum',
+        'role': 'nullable_selected_bound_role', 'current_owner_scope': 'fact3', 'tool_support': 'code4',
+        'lease_support': 'lease5', 'selection_support': 'selection3', 'predecessor_inventory': 'fact3',
+        'dependencies': 'complete_ordered_dependency9_list', 'operational_choices': 'stage_specific_operational_path_map',
+        'binding_supports': 'exact_binding9_to_support3_source_map', 'role_selections': 'exact_original3_relative_paths',
+        'source_only': lit(True), 'target_execution': lit(False), 'operational_authority': lit(False),
+        'canonical_publication': lit(False), 'native_Parser_authority': lit(False)}
+    s['receipt22']['fields'] = {
+        'schema_version': lit(2), 'record_type': lit('Root_owner_v2_actual_deferred_M3_Source_draft_author_receipt'),
+        'author': lit('/root'), 'actual_physical_Source_editor': lit('/root'), 'role': 'stage_role', 'created_utc': 'utc6',
+        'Root_future_path_selection': 'fact3', 'current_owner_scope': 'fact3', 'new_canonical_lease': 'fact3',
+        'actual_Source_packet': 'fact3', 'draft': 'fact3', 'predecessor': 'fact3', 'diff': 'fact3',
+        'retained_semantic_Source_author': 'actor_root_or_nonroot', 'steps': 'receipt_steps4',
+        'finite_actual_Source_observations': 'complete_unique_observation12_list',
+        'complete_current_predecessor_byte_inverse': lit(True), 'different_actual_generated_Source_review_pending': lit(True),
+        'target_execution': lit(False), 'operational_authority': lit(False),
+        'original_fixtures_and_runtime_admission': lit(False), 'canonical_publication': lit(False)}
+    s['dependency9']['fields'] = {key: ('selected_role' if key == 'role' else 'fact3') for key in i2['DEPENDENCY_KEYS']}
+    s['receipt_steps4'] = schema({'complete_inverse': 'recorded_role_proof_metadata_dict', 'actual_diff_removed_byte_basis': 'fact3',
+        'actual_check_codec': 'lossless_boolean_label_index_v1', 'metadata_Source_provenance': 'provenance6'})
+    s['provenance6'] = schema({'Source': 'fact3', 'API': 'fact3', 'actual_implementation_Source_editor': 'actor_nonroot',
+        'historical_implementation_Source_editor': 'actor_root_or_nonroot', 'stage_purpose': 'stage_purpose6',
+        'resource_observation': 'resource3'})
+    s['code4'] = schema({key: 'fact3' for key in ('Source', 'API', 'different_review', 'Root_adoption')})
+    s['lossless_boolean_label_index_v1'] = schema({'encoding': lit('lossless_boolean_label_index_v1'),
+        'check_labels': 'unique_nonempty_string_list', 'checks': 'ordered_list_of_closed2_arrays_builtin_true_and_valid_label_index',
+        'actual_serialized_check_count': 'positive_builtin_int_equal_check_length', 'checks_failed': lit(0),
+        'ordered_check_stream_sha256': 'lower_ascii_hex64',
+        'snapshot_phase': lit('before per-artifact receipt serialization; later writer gates execute separately')})
+    # Exact profile data shape derives from retained raw bytes, rather than a filename/tag guess.
+    for role, schema_name in [('profile', 'profile_body57'), ('static', 'static_body20'),
+                              ('metadata_manifest', 'manifest_body23'), ('plan', 'plan_body7'),
+                              ('metadata_binding', 'metadata_binding_body11'), ('phase_binding', 'phase_binding_body7')]:
+        body = read(Path(a['actual_canonical_body_samples'][role]['subject']['path']))
+        s[schema_name] = structural(body)
+        s[schema_name]['derived_from_actual_body'] = a['actual_canonical_body_samples'][role]['subject']
+        for key in ('schema_version', 'record_type', 'scope'):
+            if key in body:
+                s[schema_name]['fields'][key] = lit(body[key])
+    # All source/semantic booleans, numeric budget values, null result cells, nested keysets and list lengths retain literal values.
+    c['guard_body_typing_policy'] = 'Recursive closed actual-body schema; strings may change only as declared metadata and reviewed pin/hash/path joins require. Builtin bool/int/null values, all keysets and list lengths retain literals. No claim that structural format checking rerenders or verifies every semantic string. Static profile SHA joins exact supplied profile and its sourceinput hashes join declared pins. New actual producer issuance remains false.'
+    # Exact purpose proof schema with a new route-specific ABI, retaining established field roles.
+    purpose_proof = i8['I8_PURPOSE_PROOF']
+    new_tags = {
+        'capsule_record_type': 'Independent_Root_owner_v2_selected_role_publication_purpose_Source_review',
+        'full_record_type': 'Independent_Root_owner_v2_selected_role_publication_purpose_full_Source_proof',
+        'adoption_record_type': 'Root_owner_v2_selected_role_publication_purpose_Root_adoption',
+        'review_verdict': 'PASS_ROOT_OWNER_V2_SELECTED_ROLE_SOURCE_PUBLICATION_PURPOSE_ONLY',
+        'adoption_verdict': 'ACCEPT_ROOT_OWNER_V2_SELECTED_ROLE_SOURCE_PUBLICATION_PURPOSE_ONLY'}
+    purpose_proof.update(new_tags)
+    purpose_proof['schema_version'] = 2
+    for key in ('capsule14', 'full16'):
+        purpose_proof[key] = list(purpose_proof[key]) + ['checks_passed']
+    c['publisher_purpose_proof_policy'] = purpose_proof
+    for name, old_name in [('purpose_capsule15', 'capsule14'), ('purpose_full17', 'full16'), ('purpose_adoption11', 'Root_adoption11')]:
+        keys = purpose_proof[old_name]
+        fields = {key: 'purpose_proof_typed_field' for key in keys}
+        for key in ('target_execution', 'operational_authority', 'native_Parser_executed'):
+            if key in fields:
+                fields[key] = lit(False)
+        for key in ('purpose',):
+            if key in fields:
+                fields[key] = 'publisher_purpose12_exact_literal_equality'
+        if 'schema_version' in fields:
+            fields['schema_version'] = lit(2)
+        if 'created_utc' in fields:
+            fields['created_utc'] = 'utc6'
+        if 'subjects' in fields:
+            fields['subjects'] = 'ordered_fact3_list_exact_purpose_then_expected_inputs'
+        if 'checks_failed' in fields:
+            fields['checks_failed'] = lit(0)
+        if 'checks_passed' in fields:
+            fields['checks_passed'] = 'positive_builtin_int_equal_full_checks_length'
+        if 'checks' in fields:
+            fields['checks'] = 'bounded_unique_check3_list_with_exact_required_check_names'
+        if 'reviewer' in fields:
+            fields['reviewer'] = 'actor_nonroot_outside_complete_exclusion_union'
+        if 'source_author' in fields:
+            fields['source_author'] = lit('/root')
+        if 'author' in fields:
+            fields['author'] = lit('/root')
+        if 'scope' in fields:
+            fields['scope'] = 'exact_purpose_fact3'
+        if 'full_proof' in fields:
+            fields['full_proof'] = 'fact3'
+        if 'different_review' in fields:
+            fields['different_review'] = 'fact3'
+        if 'owner_provenance_boundary' in fields:
+            fields['owner_provenance_boundary'] = lit(purpose_proof['provenance_boundary'])
+        if 'subject_reviews' in fields:
+            fields['subject_reviews'] = 'exact_subject_review4_list'
+        if 'record_type' in fields:
+            fields['record_type'] = lit(new_tags['adoption_record_type' if name == 'purpose_adoption11' else ('full_record_type' if name == 'purpose_full17' else 'capsule_record_type')])
+        if 'verdict' in fields:
+            fields['verdict'] = lit(new_tags['adoption_verdict' if name == 'purpose_adoption11' else 'review_verdict'])
+        s[name] = schema(fields)
+    s['check3'] = schema({'name': 'unique_nonempty_string_max512', 'passed': lit(True), 'evidence': 'finite_strict_metadata'})
+    s['subject_review4'] = schema({'subject': 'fact3', 'subject_kind': 'publication_purpose_or_actual_input',
+        'whole_bytes_reviewed': lit(True), 'provenance_reviewed': lit(True)})
+    s['general_proof_required_fields'] = {'builtin_type': 'dict', 'additional_fields_allowed': True,
+        'required_fields': {'schema_version': 'positive_builtin_int', 'record_type': 'nonempty_string',
+            'created_utc': 'utc6', 'reviewer': 'actor_nonroot', 'verdict': 'exact_pass_string_joined_capsule_full',
+            'checks_passed': 'positive_builtin_int_equal_full_checks_length', 'checks_failed': lit(0),
+            'subjects': 'direct_closed_fact3_list_covering_exact_required_subjects', 'target_execution': lit(False),
+            'operational_authority': lit(False), 'native_Parser_executed': lit(False)},
+        'capsule_additional_required_fields': {'full_proof': 'fact3'},
+        'full_additional_required_fields': {'checks': 'nonempty_unique_check3_list_max10000'}}
+    s['general_adoption_required_fields'] = {'builtin_type': 'dict', 'additional_fields_allowed': True,
+        'required_fields': {'schema_version': 'positive_builtin_int', 'record_type': 'nonempty_string',
+            'created_utc': 'utc6', 'author': lit('/root'), 'verdict': 'nonempty_ACCEPT_prefix_string',
+            'subjects': 'exact_required_subjects_including_capsule_full_owner_selection_fact3s',
+            'different_review': 'fact3', 'full_proof': 'fact3', 'target_execution': lit(False),
+            'operational_authority': lit(False), 'native_Parser_executed': lit(False)}}
+    s['finite8_raw_reference12'] = schema({
+        'schema_version': lit(2), 'record_type': lit('Root_owner_v2_finite8_raw_prior_metadata_reference'),
+        'role': 'finite8_role', 'canonical': 'fact3', 'author_receipt': 'fact3', 'request': 'fact3',
+        'publication': 'fact3', 'reconciliation': 'fact3', 'execution_witness': 'fact3',
+        'exact_Source_review': 'fact3', 'Root_Source_adoption': 'fact3', 'source_cap': lit(65536)})
+    c['prior_kind_enum'] = list(c['enums']['author_kind_enum']) + ['finite8_raw_reference_v2']
+    s['prior_descriptor4']['fields']['author_kind'] = 'prior_kind_enum'
+    s['prior_descriptor4']['fields']['publication_packet'] = 'canonical_packet14_or_finite8_raw_reference12_fact3_by_prior_kind'
+    c['finite8_raw_reference_schemas'] = literal_constants(Path(a['subjects']['I7_002']['Source']['path']))['SCHEMAS']
+    # Explicit immutable mechanical ports; no arbitrary function or result-view argument.
+    c['fixed_port_registry'] = {
+        'M3': {'module_name': '_i13_fixed_m3', 'functions': {
+            'validate_M3_complete_stage_output_metadata': ['packet', 'records', 'catalogue_bytes', 'expected_root_thread', 'source_editor', 'now_utc'],
+            'validate_guard_profile_static_descriptor_metadata': ['packet', 'records', 'catalogue_bytes', 'expected_root_thread', 'source_editor', 'now_utc']}},
+        'PEER': {'module_name': '_i13_fixed_peer', 'functions': {
+            'validate_selected_peer_author_packet_metadata': ['packet', 'records', 'catalogue_bytes', 'expected_root_thread', 'source_editor', 'now_utc']}}}
+    c['fixed_port_pin_materialization'] = 'Final publisher Source and inertAPI must literally fix the actual final new M3/peer Source+API fact3s, physical editors and declared module names. New module Source/API full bytes must be present in same ownedstore and bind raw code5 proofs. No placeholder, caller-selected Source path, alternativeAPI or runtime registry replacement. Publish Source frozen after M3/peer Source/APIs, so dependency graph stays acyclic.'
+    c['enums']['validator_enum'].append('selected_peer_author_packet')
+    result = s.pop('result49')
+    result['fields']['charged_metadata_nodes'] = result['fields'].pop('parsed_unique_metadata_nodes')
+    for key in ('full_original_I2_DAG_closed', 'actual_peer_content_qualified', 'current_canonical_authority_qualified'):
+        result['fields'][key] = lit(False)
+    result['exact_keys'] = list(result['fields'])
+    result['field_count'] = len(result['fields'])
+    result['fields']['recursive_prior_publication_authority'] = lit(False)
+    result['fields']['recorded_source_api_mechanical_binding_only'] = lit(True)
+    result['exact_keys'] = list(result['fields'])
+    result['field_count'] = len(result['fields'])
+    assert result['field_count'] == 54
+    s['result54'] = result
+    c['counter_mode'] = 'CONSERVATIVE_SUM_PER_INVOCATION_CACHE'
+    c['counter_composition_policy'] = 'All suppliedrawbytes eagerly bounded; each component caches unique designated decodedJSON by exactpin and charges its complete tree including inertproofextensions, packet/context and allpin snapshots/catalogues into one50000-node counter. Binarycode/diff bytes neednotJSONdecode. Outer publisher conservatively adds its own charged count including fullparsedreturnedresult plus each actualdirect newauthor-kernel result.charged_metadata_nodes; enforce sum<=50000. Duplicate parsing across components may be charged twice, never omitted. Each child receives same complete owned record projection so its256/32MiB guards remain independently enforced. Returned counts are never caller inputs; fixeddirectmodule result must be closed54, builtinints and allpin/kind/role/validator/falseflag joins before addition. No separate catalogue-node allowance. Publisher canonical/prewrite internals use sameowncache and call directauthorport atmostonce per unique rawauthorpacket per invocation; no recursivepublisherport. Charge every actualportcall ifmorethanone, withno omittedcount orresetallowance.'
+    c['lease_and_owner_domain'] = {'lease_duration_seconds': 43200, 'retained_constructor_budget_seconds': 3600,
+        'admission_reserve_seconds': 1200, 'context_runtime_seconds': 600,
+        'scope': 'All are recorded metadata consistency checks; no lease issuance or current original eligibility is granted.'}
+    cat_pin = save('I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_002.json', c)
+    p['predecessor_unadopted_proposal'] = pin(proposal001)
+    p['catalogue'] = cat_pin
+    p['peer_author_protocol_basis'] = peer_protocol_basis
+    p['peer_role_data'] = c['peer_role_data']
+    p['record_type'] = 'I13_PROPOSED_M3_producer_output_guard_dependency_and_shared_selected_role_publication_protocol'
+    p['new_pure_component_partition'] = {
+        'I13_M3': ['encode_I13_contract_record', 'validate_M3_complete_stage_output_metadata', 'validate_guard_profile_static_descriptor_metadata'],
+        'I13_PUBLICATION': ['validate_selected_role_prewrite_metadata', 'validate_selected_role_canonical_dependency_metadata'],
+        'I13_PEER': ['validate_selected_peer_author_packet_metadata'],
+        'independence': 'Three new pure Sources each<=65536, no oldmodule imports or calls, no filesystem/importlib/subprocess/ctypes/IO. Publisher has exactnew ModuleType m3/peer keywordports, never arbitrarycallbacks. Both directauthor-kernels own complete rawgraph metadata validation; immutable fixedcatalogue DATA provided in same ownedstore. Heldcomposition is separately<=65536 andunrun.'}
+    p['literal_public_pure_interfaces'] = [
+        'encode_I13_contract_record(*,kind,value,catalogue_bytes) -> bytes',
+        'validate_M3_complete_stage_output_metadata(*,packet,records,catalogue_bytes,expected_root_thread,source_editor,now_utc) -> bytes',
+        'validate_guard_profile_static_descriptor_metadata(*,packet,records,catalogue_bytes,expected_root_thread,source_editor,now_utc) -> bytes',
+        'validate_selected_peer_author_packet_metadata(*,packet,records,catalogue_bytes,expected_root_thread,source_editor,now_utc) -> bytes',
+        'validate_selected_role_prewrite_metadata(*,packet,records,catalogue_bytes,expected_root_thread,source_editor,now_utc,m3,peer) -> bytes',
+        'validate_selected_role_canonical_dependency_metadata(*,packet,records,catalogue_bytes,expected_root_thread,source_editor,now_utc,m3,peer) -> bytes']
+    for section in ('shared_publication_join_rules', 'strict_types_and_counters', 'guard_profile_static_metadata_rules', 'proof_actor_and_chronology_rules'):
+        p[section] = [text.replace('lease duration<=3600', 'lease durationexact43200').replace('result49', 'result54').replace('closedcapsule14/full16/adoption11', 'closedcapsule15/full17/adoption11').replace('closedcapsule14/full16', 'closedcapsule15/full17') for text in p[section]]
+    p['shared_publication_join_rules'] += [
+        'Corrected original lease policy: closed12 maxduration43200 and exact end-start43200seconds, not retainedconstructor3600seconds. Canonicalfreshlease ordinal/path distinctspent007-010 and exactclosed20decision, dedicated originalleasepublication/candidate/sourceproof joins remain originalI2 policy. owner reserve60,admission1200,context600,both90ages,resource60/RAM1GiB/disk10GiB unchanged.',
+        'Newpublisher calls exactnew M3 orpeer port before accepting anyauthorgraph: M3kind complete_stage entry,guardkind descriptor entry,peerkind selected_peer_author entry. Pass rawpacketbytes and samecomplete recordstore/catalogue/root/sourceeditor/now keywords exactly. No result argument; only returned canonicalbytes closed54 are joined against everyrequest/packet pin,kind,role,stage,source/API and falseflags before conservativecountaddition. Any result mismatch E_LAYER_RESULT; newchild I13MetadataError remains typed knowncode.',
+        'Finite8 prior descriptors are boundedrawdata only, separate prior_kind finite8_raw_reference_v2, never canonicalauthor_kind3. Exact raw_reference12 consumes originalI7request21/publication43/reconciliation26tag and row/dep9/sourceproof/witnesspinjoins. Allpins rawbodiesread/hash/shape, requestoriginalownership exact and samepubrow draft/predecessor/canonical. NoI11call/fullsemantic/physical/nativeproof andno conversionto25/31. structuralstagepositive allowed while recursive_prior_publication_authorityFalse/full_original_I2_DAG_closedFalse; finite8reference cannot dispatch a newpublisherroute.'
+    ]
+    p['draft_support_exact_subjects_by_kind'] = {
+        'M3_stage_receipt22_v2': ['selected_artifact.draft', 'selected_artifact.author_receipt', 'selected_artifact.diff', 'stage_support.facts', 'producer_support.Source', 'producer_support.API'],
+        'selected_peer_receipt27_v2': ['peer_wrapper.peer_packet.draft', 'peer_wrapper.peer_packet.receipt', 'peer_wrapper.peer_packet.actual_content_decision', 'peer_wrapper.peer_packet.content_decision_witness', 'peer_wrapper.peer_packet.inverse', 'producer_support.Source', 'producer_support.API'],
+        'guard_profile_static_v2': ['guard_packet.draft', 'guard_packet.author_receipt', 'guard_author_receipt.diff', 'guard_packet.producer_purpose_support.subject', 'producer_support.Source', 'producer_support.API']}
+    p['shared_publication_join_rules'] = [text.replace('Authorpacket support subjects exactly rawpacketpin; draftsupport subjects cover rawdraft,rawauthorreceipt,rawdiff,rawfacts-or-peer-decision and exactproducer Source/API.', 'Authorpacket support subjects exactly rawpacketpin; draftsupport subjects are the exact per-kind roster in draft_support_exact_subjects_by_kind; peer has no invented diff.').replace('rawresult closedkeys', 'rawresult closed54keys') for text in p['shared_publication_join_rules']]
+    p['result_exact_operation_mappings'] = {
+        'all': 'Exactresult54; record_count actual suppliedrowcount, total_record_bytes sum actualsuppliedbodybytes, charged_metadata_nodes actualchargedcount. mechanical_onlyTrue and all authority/qualificationFalse; canonicalbytesdetached. packet exactunique suppliedrawpublicpacketfact3; source/API/editorpins fromrawsupport, notcallerresults.',
+        'M3_complete_stage_output': 'request/author_receipt/draft/predecessor/canonical/publisher_Source/publisher_API/publisher_purpose/publication/reconciliation null. role=packet.role (normallynull, finite8bound role only); stage exactpacket.stage, validated_stage_roles complete orderedoriginalstage; author_packet=packet. producerpins,owner/lease/selection exactpacket. Publisher selectingM3role checks membership+rawartifactjoin, never require thiswhole-stage result.role==selectedrequestrole.',
+        'guard_profile_static_descriptor': 'role exactguardrole;author_packet=packet;author_receipt/draft/predecessor exactrawguardpacket;stage null;validated_stage_roles=[role];request/canonical/allpublisher/pub/reconfields null.',
+        'selected_peer_author_packet': 'role exactpeerrole;author_packet=packet;author_receipt/draft/predecessor exactinnerpeerpacket;stage null;validated_stage_roles=[role];request/canonical/allpublisher/pub/reconfields null.',
+        'selected_role_prewrite': 'request exactrawrequestpin;author_packet/author_receipt/draft/predecessor exactrequest;role exactrequestrole;stage/validated_stage_roles retainedfromactualdirectauthorresult;canonical null;publisherSource/API exactrequestsupport;publisherpurpose exactpurposepin;pub/recon null.',
+        'selected_role_canonical_dependency': 'Sameexactselectedrequest/author/draft/predecessor/owner/lease/selection/producer/publisher/role/stage joins, canonical exactrawcanonicalpacketcanonical, publication/reconciliation exactrawpacketpins, publisherpurpose fromrawprewritepurpose. recordedpriorgraph only, currentcanonicalauthority/fullDAG remainfalse.'}
+    p['fixed_new_module_port_rules'] = [
+        'Both m3 andpeer supplied objects exact types.ModuleType; exactliteralregistry name and __file__ Source.path, __source_pin__ fact3, __source_bytes__ exactwholeownedSourcebytes, __API_pin__ and __API_bytes__ exactpinnedownedAPIbytes. All rawSource/API code5provenance review/adoption/editorjoins verified independently; actualmechanicalmetadata cannot authenticate a malicioushost.',
+        'Only literalregistry function names allowed. Each exact types.FunctionType, __name__ and __module__ exactregistry, __globals__ is module.__dict__, __code__.co_filename exactSourcepath. Signature exactkeyword-onlylist fromcatalogue and no varargs/varkw/positional/default authority booleans. No arbitrarycallable,lambda,boundmethod,subclassmodule,resultview,Sourcepin override or registryselector.',
+        'Use inspect.signature or codeobject keywordonly metadata only; inspect/ModuleType are stdlib, nofilesystem Source retrieval. Authenticloader, humanorigin and physicalprovenance flags remainfalse even ifallmechanicalchecks pass. NewmoduleAPI falsely claimingthese boundaries refusesE_CODE_SUPPORT.',
+        'Afterdirectcall require type(result)isbytes strictJSON closed54 and exactvalidator/kind/role/packet/authorpacket/owner/lease/selection/draft/predecessor/sourceAPIjoins with allmandatoryfalseflags. Childexceptions mustbe exactregistered newerrorclass withbuiltinstr code in cataloguetypedcodewhitelist; convertknowncode into parent I13MetadataError without changingcode, unexpectedexceptions fail E_LAYER_EXCEPTION. No bool-only success channel.',
+        'Mandatory port controls: wrongModuleType/subclass/name/file/sourcepin/sourcebytes/APIpin/APIbytes;missing/replacedfunction/wrongglobals/module/name/codefilename/signature;callerresult/callback injection;missing/bool/negative/overbudgetreturnedcount;unknownexception/rawKeyError/TypeError conversion;allresultfieldjoins andfalseflags. Positive exactregistry ports remainmetadata-only.'
+    ]
+    p['fixture_interface'] = {'literal_catalogue': 'CASE_CATALOGUE unique nonemptyASCII names, exactliteralAST',
+        'run_signature': 'run(*,m3,publisher,peer,catalogue_bytes)',
+        'return': {'cases': 'orderedlist closed2{name,passed} exactcatalogue', 'passed': 'builtinint equaltruecount',
+                   'failed': 'builtinint0', 'metadata_only': True, 'target_execution': False,
+                   'operational_authority': False, 'scientific_authority': False},
+        'restrictions': 'Only injectednewpuremodules; nooldimports/calls,IO/filesystem/subprocess/native/Parser/Job/science. Eachpositive/refusalcase ownsdeepcopy of allglobalinputs. Source/testsuite require separate genuineSource review+Rootadoption+freshonceScope; existing1089/664/75unreplayed.'}
+    p['typed_failures'] += ['E_FIXED_PORT', 'E_LAYER_RESULT', 'E_LAYER_EXCEPTION']
+    p['held_Source_integration_plan']['fixed_layer_keys'] = ['I13_M3', 'I13_PEER', 'I13_PUBLICATION']
+    p['held_Source_integration_plan']['ports'] = 'Privateports directly invoke new Source-pinned functions with exactkwargs above; publisher receives only fixednewModuleType m3/peer ports afterliteralregistrychecks. Authenticloader/physicalI7/I6/actualI8/I9 remainunqualified andheld. No oldSource bytes changed.'
+    p['open_exact_review_items_before_adoption'] = []
+    p['adoption_subject_policy'] = 'Complete002proposal/catalogue replaceunadopted001. Stablepeerroledata pinned incommoncatalogue; finalgenuinelyreviewed peerprotocol is separately pinned withcommon002 inRootadoption, avoidingbidirectionalhashcycle. peer_author_protocol_basis is datedshape-referenceonly, notautomaticfinalprotocolacceptance. Rootexplicitcounterdecision CONSERVATIVE_SUM_PER_INVOCATION_CACHE/charged_metadata_nodes and finalresult54 apply. No unresolved newTargetSourceauthoringchoices orpermission: all Source stillrequiresdifferentprotocolreview+Rootadoption, and finalnewSource/APIs literallyfix actualportpins beforeSourceacceptance.'
+    p['complete_schema_policy'] = 'Catalogue002 is complete new normative schema/type data; all original I2 roleprooffields marked recordedmetadata are structurally bounded opaque evidence with mandatory wholebyte/provenance Source reviews, not renderersemantics. No later implementationmaypromote them tosemantic/runtime authority. Profile structuraltypes and newpurposeproofstags are exactclosed in002. No ad-hoc eval/DSLcallbacks; exhaustivefixedtype dispatch only.'
+    p['proof_actor_and_chronology_rules'] += [
+        'Catalogue newpurposeproofs are exactcapsule15/full17/adoption11: route-specifictags/verdicts and explicitpositivebuiltinchecks_passed added tobothcapsule/full; allpurpose12literaljoins/checknames/provenanceboundary retained. This is a newABI, not a finite8proof relabel. Generalproof requiredfields remain explicit per catalogue, positivebuiltinchecks_passed equality and allrequiredfalseflags enforced.',
+        'Sharedguard/profile/static and M3 metadata graph passes leave exact full_original_I2_DAG_closed,actual_peer_content_qualified,current_canonical_authority_qualified allFalse. AlreadyfrozenSource36/9 presence is datedinventoryonly.'
+    ]
+    proto_pin = save('I13_PROPOSED_M3_GUARD_AND_SHARED_SELECTED_ROLE_PUBLISHER_PROTOCOL_002.json', p)
+    print(json.dumps({'catalogue': cat_pin, 'proposal': proto_pin}))
+
+if __name__ == '__main__':
+    main()

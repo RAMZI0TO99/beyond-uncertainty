@@ -1,0 +1,48 @@
+"""Own Source-only new producer proof-schema guard; target remains unrun."""
+import ast
+import base64
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+ROOT=Path(__file__).parent;OUT=ROOT/'m3_peer_contracts_016'/'i13'
+def pin(p,raw=None):
+    raw=p.read_bytes()if raw is None else raw
+    return dict(path=str(p),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+def save(p,v):
+    raw=(json.dumps(v,sort_keys=True,indent=2)+'\n').encode();assert len(raw)<=2097152
+    with p.open('xb')as f:f.write(raw)
+    return pin(p,raw)
+old=OUT/'validate_selected_peer_author_packet_metadata_003.py';before=old.read_bytes();text=before.decode()
+helper=r'''
+def _i13_new_code_proofs(graph,support):
+    capsule=graph.s.record(support['different_review'])
+    full_pin=_pin(capsule.get('full_proof'));full=graph.s.record(full_pin)
+    adoption=graph.s.record(support['Root_adoption'])
+    required=('checks_failed','checks_passed','created_utc','native_Parser_executed','operational_authority','record_type','reviewer','schema_version','subjects','target_execution','verdict')
+    for value in (capsule,full):
+        _need(all(key in value for key in required),'E_REVIEW')
+        _need(type(value['schema_version'])is int and value['schema_version']>0 and type(value['record_type'])is str and bool(value['record_type']),'E_REVIEW')
+        _need(value['native_Parser_executed']is False,'E_AUTHORITY')
+        _i13_utc6(value['created_utc']);_pin_list(value['subjects'],True)
+        _need(all(any(_same(p,subject)for p in value['subjects'])for subject in (support['Source'],support['API'])),'E_REVIEW_COVERAGE')
+    required=('author','created_utc','different_review','full_proof','native_Parser_executed','operational_authority','record_type','schema_version','subjects','target_execution','verdict')
+    _need(all(key in adoption for key in required),'E_ADOPTION')
+    _need(type(adoption['schema_version'])is int and adoption['schema_version']>0 and type(adoption['record_type'])is str and bool(adoption['record_type']),'E_ADOPTION')
+    _need(adoption['native_Parser_executed']is False,'E_AUTHORITY')
+    _i13_utc6(adoption['created_utc']);_pin_list(adoption['subjects'],True)
+    _need(_same(_pin(adoption['different_review']),support['different_review'])and _same(_pin(adoption['full_proof']),full_pin),'E_ADOPTION_COVERAGE')
+    expected=(support['Source'],support['API'],support['different_review'],full_pin,graph.scope,graph.selection_pin)
+    _need(all(any(_same(p,subject)for p in adoption['subjects'])for subject in expected),'E_ADOPTION_COVERAGE')
+
+
+'''
+marker='def _i13_wrapper_inputs(graph,wrapper):';assert marker in text;text=text.replace(marker,helper+marker,1)
+needle="    _i13_producer(graph,wrapper['producer_support'])\n";assert needle in text;text=text.replace(needle,needle+"    _i13_new_code_proofs(graph,wrapper['producer_support'])\n",1)
+raw=text.encode();assert len(raw)<=65536
+path=OUT/'validate_selected_peer_author_packet_metadata_004.py';tree=ast.parse(raw);compile(raw,str(path),'exec',dont_inherit=True)
+with path.open('xb')as f:f.write(raw)
+oldapi=OUT/'CURRENT_OWNER_SELECTED_PEER_CANONICAL_AUTHOR_METADATA_INERT_API_003.json';api=json.loads(oldapi.read_bytes());api['Source']=pin(path,raw)
+apipin=save(OUT/'CURRENT_OWNER_SELECTED_PEER_CANONICAL_AUTHOR_METADATA_INERT_API_004.json',api)
+receipt=save(OUT/'I13_PEER_CANONICAL_AUTHOR_SOURCE_AUTHOR_RECEIPT_004.json',dict(schema_version=1,record_type='I13_actual_new_peer004_new_codeproof_schema_Source_successor',author='/root/i2_resume_gap',actual_Source_editor='/root/i2_resume_gap',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),Source=pin(path,raw),API=apipin,before_Source=pin(old,before),before_Source_bytes_base64=base64.b64encode(before).decode(),before_API=pin(oldapi),before_API_bytes_base64=base64.b64encode(oldapi.read_bytes()).decode(),prior_receipt=pin(OUT/'I13_PEER_CANONICAL_AUTHOR_SOURCE_AUTHOR_RECEIPT_003.json'),delta='Only new I13 producer code5 proof schema: required capsule/full/adoption fields, mandatory nativeParserFalse, direct named subject rosters and exact adoption capsule/full references. Original inherited raw20 proof ABI and all algorithms retained.',target_imports=0,target_calls=0,tests_executed=False,target_execution=False,operational_authority=False))
+print(json.dumps(dict(Source=pin(path,raw),API=apipin,receipt=receipt),sort_keys=True))

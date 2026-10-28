@@ -1,0 +1,20 @@
+"""Prepare one fixed next disjoint-group configuration; no admission or child call."""
+import datetime as dt,hashlib,json,os,sys
+from pathlib import Path
+R=Path(__file__).parent;C=R/'m3_peer_contracts_016'
+def pin(p):
+ b=p.read_bytes();assert len(b)<=2097152 and b==p.read_bytes()
+ return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+assert len(sys.argv)==2 and sys.argv[1]in('2','3');n=int(sys.argv[1])
+cfg=json.loads((C/'I13_INPUT_SNAPSHOT_ONCE_ADMISSION_INPUT_001.json').read_bytes())
+prior=C/('ROOT_I13_INPUT_SNAPSHOT%03d_DIFFERENT_SAVED_RESULT_ADOPTION_001.json'%(n-1))
+adopt=json.loads(prior.read_bytes());assert adopt['author']=='/root' and adopt['saved_own_custody_closed']is adopt['snapshot_operation_completed']is True
+assert adopt['claim_reuse_or_replay_authorized']is False
+cfg['previous_snapshot_saved_adoption']=pin(prior)
+source=json.loads((R/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_003.json').read_bytes())
+assert(dt.datetime.fromisoformat(source['interval_end'])-dt.datetime.now(dt.timezone.utc)).total_seconds()>60
+out=C/('I13_INPUT_SNAPSHOT_ONCE_ADMISSION_INPUT_%03d.json'%n);assert not os.path.lexists(out)
+b=(json.dumps(cfg,sort_keys=True,indent=2,allow_nan=False)+'\n').encode()
+with out.open('xb')as h:assert h.write(b)==len(b);h.flush();os.fsync(h.fileno())
+assert out.read_bytes()==b
+print(json.dumps(dict(configuration=pin(out),next_group='I13_INPUT_GROUP_%03d'%n,admitted=False,called=False)))

@@ -1,0 +1,97 @@
+"""Author fixed snapshot-only Root controls from exact inert bytes; no fixture/kernel execution."""
+import ast,datetime as dt,hashlib,json,os,sys
+from pathlib import Path
+R=Path(__file__).parent;C=R/'m3_peer_contracts_016';T=C/'i13';LIMIT=2097152
+def raw(p):
+ p=Path(p);a=p.stat();assert p.is_file() and not p.is_symlink() and a.st_nlink==1 and 0<a.st_size<=LIMIT
+ for q in (p,*p.parents):assert not getattr(q.lstat(),'st_file_attributes',0)&1024
+ b=p.read_bytes();z=p.stat();assert b==p.read_bytes() and len(b)==a.st_size==z.st_size and a.st_mtime_ns==z.st_mtime_ns
+ return b
+def pin(p):
+ p=Path(p);b=raw(p);return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def read(p):return json.loads(raw(p))
+sourcep=R/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_003.json'
+assert pin(sourcep)['sha256']=='726c201dd6349aca56122129acf71b259b821a667c0720a3a4838ffb8aefe1ad'
+source=read(sourcep)
+def reserve():
+ now=dt.datetime.now(dt.timezone.utc)
+ assert source['target_execution'] is source['operational_authority'] is False
+ assert dt.datetime.fromisoformat(source['interval_start'])<=now and (dt.datetime.fromisoformat(source['interval_end'])-now).total_seconds()>60
+def save(p,b):
+ reserve();assert type(b) is bytes and 0<len(b)<=LIMIT and not os.path.lexists(p)
+ with p.open('xb') as h:assert h.write(b)==len(b);h.flush();os.fsync(h.fileno())
+ assert raw(p)==b;return pin(p)
+def wire(v):return (json.dumps(v,sort_keys=True,indent=2,allow_nan=False)+'\n').encode()
+assert len(sys.argv)==3
+fp=Path(sys.argv[1]);assert fp==T/'exercise_M3_guard_and_publisher_metadata_memory_015.py'
+fixture=pin(fp);assert fixture['sha256']==sys.argv[2]
+oldp=C/'ROOT_I13_ONCE_MEMORY_SUPERVISOR_011.py'
+assert pin(oldp)['sha256']=='31fb4a50fa93bbbec7f34ee3cfd2f7cf86ea3410473be6786cc52d82afc69a5e'
+old=raw(oldp).decode();tree=ast.parse(old);assign={};funs={}
+for n in tree.body:
+ if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name):
+  try:assign[n.targets[0].id]=ast.literal_eval(n.value)
+  except (ValueError,TypeError):pass
+ if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef)):funs[n.name]=ast.get_source_segment(old,n)
+sources=assign['SOURCES'];apis=assign['APIS'];catalogue=assign['CATALOGUE'];basis=assign['FIXTURES']['m3_publisher']
+for x in list(sources.values())+list(apis.values())+[catalogue,basis]:assert pin(x['path'])==x
+m3const={}
+for n in ast.parse(raw(sources['m3']['path'])).body:
+ if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id in ('I2_SOURCE','CATALOGUE_PIN'):
+  m3const[n.targets[0].id]=ast.literal_eval(n.value)
+assert m3const['CATALOGUE_PIN']==catalogue and pin(m3const['I2_SOURCE']['path'])==m3const['I2_SOURCE']
+protocolp=C/'m3_protocol_audit_001/input_node_readset_ledger_protocol_proposal_001/I13_PROPOSED_FIXED_M3_INPUT_NODE_AND_SOURCE_READSET_LEDGER_PROTOCOL_002.json'
+assert pin(protocolp)['sha256']=='3f5956127c9a6e56dfced9209fbf6f28c013526147a2191f4904429c85c2f898'
+adoptp=R/'ROOT_I13_FIXED_INPUT_NODE_LEDGER_PROTOCOL002_DIFFERENT_SOURCE_REVIEW_ADOPTION_001.json'
+assert pin(adoptp)['sha256']=='a2dbe90c868b55e8f0b647d3a6809c9ca39549bb402e2a7441e3f850b3088ff0'
+inputs=dict(fixture_basis=basis,m3_Source=sources['m3'],m3_API=apis['m3'],publisher_Source=sources['publisher'],
+ publisher_API=apis['publisher'],peer_Source=sources['peer'],peer_API=apis['peer'],catalogue=catalogue,protocol=pin(protocolp))
+stages=dict(capture_template='templates',metadata_manifest='manifest',plan='capture',capture_bound='capture',metadata_binding='capture',phase_binding='phase_binding')
+roles=list(stages)
+plan=dict(schema_version=1,record_type='Root_I13_exact_fixed_input_snapshot_disjoint_role_Source_plan',author='/root',
+ created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),protocol_adoption=pin(adoptp),fixture=fixture,Source_inputs=inputs,
+ fixed_roles=roles,maximum_roles_per_snapshot=2,maximum_route_ledgers_per_graph=2,
+ groups=[dict(group_id='I13_INPUT_GROUP_%03d'%(i+1),roles=roles[i*2:i*2+2]) for i in range(3)],
+ snapshot_calls_admitted=0,automatic_retry_permitted=False,old936_qualification=False,
+ target_execution=False,operational_authority=False,scientific_authority=False,actual_family_publication=False)
+planp=T/'I13_FIXED6_INPUT_SNAPSHOT_DISJOINT_ROLE_SOURCE_PLAN_002.json'
+planpin=save(planp,wire(plan))
+budgets=dict(total_seconds=60,wait_seconds=50,cleanup_seconds=10,reap_seconds=5,stdout_maximum_bytes=2097152,stderr_maximum_bytes=2097152)
+scopekeys=('schema_version','record_type','author','created_utc','interval_start','interval_end','operation',
+ 'maximum_snapshot_invocations','source_scope','protocol_adoption','source_adoption','modules','APIs','catalogue','fixture',
+ 'supervisor','runtime','prelaunch','outputs','budgets','target_execution','operational_authority','scientific_authority',
+ 'actual_family_publication','role_plan','role_group_id')
+values=dict(SOURCES=sources,APIS=apis,CATALOGUE=catalogue,FIXTURE=fixture,ROLE_PLAN=planpin,ROLE_PLAN_VALUE=plan,
+ SOURCE_SCOPE=pin(sourcep),PROTOCOL_ADOPTION=pin(adoptp),SOURCE_INPUTS=inputs,M3_I2_SOURCE=m3const['I2_SOURCE'],
+ LEDGER_LIMITS=dict(record_count=256,rawbytes=33554432,perrecord=2097152,output=2097152,source_node_guard=50000,depth=48),
+ ROLE_STAGES=stages,SOURCE_SITE_IDS=[x['id'] for x in read(protocolp)['reference_Source_sites']],BUDGETS=budgets,SCOPE_KEYS=scopekeys,OUTPUT_KEYS=('claim','child_entry','child_result','stdout','stderr','supervisor_result'),
+ HOLDS=('target_execution','operational_authority','scientific_authority','actual_family_publication'))
+constants='\n'.join(name+' = '+repr(v) for name,v in values.items())+"\nOWNED_PARENT_ROOT = Path(__file__).parent / 'owned_input_snapshot_runs'\n"
+templatep=R/'I13_INPUT_SNAPSHOT_SUPERVISOR_CUSTOM_SOURCE_003.py.source';template=raw(templatep).decode()
+assert template.count('@@CONSTANTS@@')==template.count('@@PARENT_LAUNCH_AND_CUSTODY@@')==1
+part=funs['parent'];begin=part.index("    outputs = value['outputs']");end=part.index('    catalogue_valid = False')
+custody=part[begin:end]
+custody=custody.replace('suite_invocations_maximum','snapshot_invocations_maximum').replace('I13_once_scope_claim','I13_once_input_snapshot_scope_claim').replace('I13_owned_once_memory_supervisor_result','I13_owned_once_data_only_input_snapshot_supervisor_result')
+common=('need','wire','utc','pairs','bad_number','decode','ordinary','read_pin','read_limited','fact','occurs','write_new')
+header='"""Fixed one-use data-only input snapshot supervisor. Unrun pending exact Source admission."""\nimport datetime as dt\nimport hashlib,types,json,os,re,subprocess,sys,threading,time\nfrom pathlib import Path\n\n'
+body=template.split('@@CONSTANTS@@',1)[1]
+body=constants+body.replace('@@PARENT_LAUNCH_AND_CUSTODY@@',custody.rstrip())
+supraw=(header+'\n\n'.join(funs[x] for x in common)+'\n\n'+body).encode()
+ast.parse(supraw);assert len(supraw)<=65536 and '@@' not in supraw.decode()
+supp=C/'ROOT_I13_ONCE_INPUT_SNAPSHOT_SUPERVISOR_002.py';suppin=save(supp,supraw)
+admissionp=R/'prepare_I13_input_snapshot_once_admission_003.py';ast.parse(raw(admissionp))
+out=C/'ROOT_I13_INPUT_SNAPSHOT_ROOT_CONTROLS002_SOURCE_AUTHOR_FREEZE_001.json'
+receipt=dict(schema_version=1,record_type='Root_I13_input_snapshot_Root_controls_Source_author_freeze',author='/root',
+ created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),Source_scope=pin(sourcep),protocol_adoption=pin(adoptp),
+ Source_inputs=inputs,new_fixture=fixture,products=dict(supervisor=suppin,role_plan=planpin,admission_helper=pin(admissionp)),
+ own_metadata_author_Source=pin(__file__),custom_Source_template=pin(templatep),previous_supervisor=pin(oldp),
+ exact_reused_common_functions=list(common),common_AST_complements_exact=True,
+ custody_reused_from_parent_outputs_through_child_result_parse=True,
+ only_custody_identifier_changes=['suite_invocations_maximum->snapshot_invocations_maximum','I13_once_scope_claim->I13_once_input_snapshot_scope_claim',
+ 'I13_owned_once_memory_supervisor_result->I13_owned_once_data_only_input_snapshot_supervisor_result'],
+ previous_supervisor_unchanged=pin(oldp)['sha256']=='31fb4a50fa93bbbec7f34ee3cfd2f7cf86ea3410473be6786cc52d82afc69a5e',
+ fixture_or_kernel_builds_calls_or_execs=0,metadata_only=True,tests_executed=False,target_execution=False,actual_family_publication=False,
+ operational_authority=False,scientific_authority=False,Native8=False,Parser=False,runtime=False,science=False,
+ claim_reuse_or_replay_authorized=False)
+rp=save(out,wire(receipt))
+print(json.dumps(dict(author_freeze=rp,products=receipt['products'],calls=0)))

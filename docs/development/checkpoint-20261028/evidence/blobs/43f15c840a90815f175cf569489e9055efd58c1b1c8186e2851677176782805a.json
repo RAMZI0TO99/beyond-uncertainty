@@ -1,0 +1,619 @@
+{
+  "Source_evidence": [
+    {
+      "end_line": 108,
+      "exact_UTF8_lines": "def _tree(q1, counter, depth=0, pin=None, parts=()):\n _need(depth <= 48, 'E_DEPTH')\n counter[0] += 1\n _need(counter[0] <= 50000, 'E_NODE_BUDGET')\n if q1 is None or type(q1) in (bool, int):\n  return\n if type(q1) is str:\n  _need(not any((55296 <= ord(c) <= 57343 for c in q1)), 'E_CONTEXT_VALUE')\n  if any((ord(c) < 32 for c in q1)) and (not _opaque(pin, parts)):\n   _need(_same(pin, INVENTORY_PIN) and parts == LF_PARTS and (len(q1.encode('utf8')) == 367) and (_sha(q1.encode('utf8')) == LF_SHA) and (q1.count('\\n') == 10) and all((ord(c) >= 32 or c == '\\n' for c in q1)), 'E_CONTEXT_VALUE')\n  return\n if type(q1) is list:\n  for i, child in enumerate(q1):\n   _tree(child, counter, depth + 1, pin, parts + (str(i),))\n  return\n if type(q1) is dict:\n  for key, child in q1.items():\n   _need(type(key) is str, 'E_CONTEXT_VALUE')\n   _tree(key, counter, depth + 1, pin, parts + ('@key:' + key,))\n   _tree(child, counter, depth + 1, pin, parts + (key,))\n  return\n raise I13MetadataError('E_CONTEXT_VALUE')\ndef _pairs(items):\n out = {}\n for key, q1 in items:\n  _need(key not in out, 'E_JSON_DUPLICATE')\n  out[key] = q1\n return out\ndef _bad_number(token):\n raise I13MetadataError('E_JSON_NUMBER')\ndef _decode(raw, counter, pin=None):\n _need(type(raw) is bytes and 0 < len(raw) <= CAP and (not raw.startswith(b'\\xef\\xbb\\xbf')), 'E_JSON')\n try:\n  q1 = json.loads(raw.decode('utf8'), object_pairs_hook=_pairs, parse_float=_bad_number, parse_constant=_bad_number)\n except (UnicodeError, ValueError, RecursionError, OverflowError) as error:\n  if type(error) is I13MetadataError:\n   raise\n  raise I13MetadataError('E_JSON') from None\n _tree(q1, counter, pin=pin)",
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_selected_role_publisher_metadata_004.py",
+      "purpose": "charged tree semantics and whole decode",
+      "start_line": 70
+    },
+    {
+      "end_line": 147,
+      "exact_UTF8_lines": " def record(q2, pin, cap=CAP):\n  raw = q2.body(pin, cap)\n  key = pin['path']\n  if key not in q2.cache:\n   q2.cache[key] = _decode(raw, q2.count, pin)\n  return q2.cache[key]",
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_selected_role_publisher_metadata_004.py",
+      "purpose": "per-path cache",
+      "start_line": 142
+    },
+    {
+      "end_line": 334,
+      "exact_UTF8_lines": " def __init__(q2, packet, records, catalogue_bytes, root, editor, now):\n  q2.s = _Store(records)\n  _tree({'root': root, 'editor': editor, 'now': now}, q2.s.count)\n  _type(root, 'root_uuid', {'enums': {}, 'schemas': {}, 'ROLE_SOURCE_CAPS': {}})\n  _actor(editor, False)\n  q2.now, q2.root, q2.editor = (_time(now), root, editor)\n  _need(type(catalogue_bytes) is bytes and len(catalogue_bytes) == CATALOGUE_PIN['bytes'] and (_sha(catalogue_bytes) == CATALOGUE_PIN['sha256']), 'E_CATALOGUE_PIN')\n  _need(q2.s.body(CATALOGUE_PIN) == catalogue_bytes, 'E_CATALOGUE_PIN')\n  q2.c = q2.s.record(CATALOGUE_PIN)\n  q2.base = q2.s.record(q2.c['peer_base_catalogue'])\n  spent = q2.base['spent_pin75']\n  _need(type(spent) is list and len(spent) == 75, 'E_SPENT_IDENTITY')\n  spent_hashes = {x['sha256'] for x in spent}\n  _need(all((p['sha256'] not in spent_hashes for p, b in q2.s.entries.values())), 'E_SPENT_IDENTITY')\n  q2.packet_pin = q2.s.locate(packet)\n  q2.p = q2.s.record(q2.packet_pin)\n  q2.excluded = {'/root', ACTUAL_SOURCE_EDITOR, '/root/i2_resume_gap', editor}\n  q2.primed = set()\n  q2.rows = {}\n  q2.collect(q2.p, q2.packet_pin)",
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_selected_role_publisher_metadata_004.py",
+      "purpose": "fixed common/base decodes",
+      "start_line": 315
+    },
+    {
+      "end_line": 372,
+      "exact_UTF8_lines": " def prime(q2, q1, edge=None):\n  if type(q1) is dict:\n   if set(q1) == {'path', 'bytes', 'sha256'}:\n    if edge not in META_EDGES | LEASE_EDGES:\n     return\n    q2.s.body(q1)\n    if edge not in ('source', 'canonical', 'subject') and q1['path'] not in q2.primed and (not _same(q1, CATALOGUE_PIN)) and (not _same(q1, q2.c['peer_base_catalogue'])):\n     q2.primed.add(q1['path'])\n     raw = q2.s.record(q1)\n     q2.collect(raw, q1, review_root=edge in ('different_review', 'full_proof', 'different_current_owner_scope_Source_review', 'different_lease_Source_review', 'actual_canonical_delta_Source_review', 'reconciliation_review', 'tool_review'))\n     if edge in ('different_review', 'full_proof', 'Root_adoption', 'current_owner_scope_Root_adoption', 'different_current_owner_scope_Source_review', 'different_lease_Source_review', 'candidate_Root_adoption', 'actual_canonical_delta_Source_review', 'canonical_delta_Root_adoption', 'reconciliation_review', 'reconciliation_Root_adoption', 'tool_review', 'tool_Root_adoption'):\n      for q4 in _list(raw.get('subjects'), 2003, 1):\n       q2.s.body(_pin(q4))\n     if edge != 'API':\n      q2.prime(raw)\n    return\n   if set(q1) == {'canonical', 'separate_Root_decision', 'different_review', 'Root_adoption', 'original_publication'}:\n    q2.prime(q1['canonical'], 'lease_record')\n   for key, child in q1.items():\n    q2.prime(child, key)\n  elif type(q1) is list:\n   for child in q1:\n    q2.prime(child, edge)",
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_selected_role_publisher_metadata_004.py",
+      "purpose": "recursive prime all author receipts",
+      "start_line": 350
+    },
+    {
+      "end_line": 552,
+      "exact_UTF8_lines": "def _direct(g, key, module, name, raw, expected, records, catalogue_bytes, now_utc):\n try:\n  result = module.__dict__[name](packet=raw, records=records, catalogue_bytes=catalogue_bytes, expected_root_thread=g.root, source_editor=g.editor, now_utc=now_utc)\n except Exception as error:\n  cls = module.__dict__[g.c['fixed_port_registry'][key]['error_class']]\n  code = getattr(error, 'code', None) if type(error) is cls else None\n  if type(code) is str and code in g.c['fixed_port_registry'][key]['typed_error_codes']:\n   raise I13MetadataError(code) from None\n  raise I13MetadataError('E_LAYER_EXCEPTION') from None\n _need(type(result) is bytes, 'E_LAYER_RESULT')\n view = _decode(result, g.s.count)\n try:\n  _schema(view, 'result54', g.c)\n except I13MetadataError:\n  raise I13MetadataError('E_LAYER_RESULT') from None\n _need(all((_same(view.get(k), v) for k, v in expected.items())), 'E_LAYER_RESULT')\n _need(type(view['charged_metadata_nodes']) is int and 0 <= view['charged_metadata_nodes'] <= 50000 and (view['record_count'] == len(g.s.entries)) and (view['total_record_bytes'] == g.s.total), 'E_LAYER_RESULT')\n g.s.count[0] += view['charged_metadata_nodes']\n _need(g.s.count[0] <= 50000, 'E_NODE_BUDGET')\n return view",
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_selected_role_publisher_metadata_004.py",
+      "purpose": "combined child charge and unchanged 50k cap",
+      "start_line": 533
+    },
+    {
+      "end_line": 660,
+      "exact_UTF8_lines": "def _m3(packet, records, catalogue_bytes, expected_root_thread, source_editor, now_utc):\n  g = _Graph(packet,records,catalogue_bytes,expected_root_thread,source_editor,now_utc)\n  g.now_text = now_utc\n  p = g.p\n  _schema(p,'m3_packet16',g.c)\n  for a in p['artifacts']:\n    if a['role'] in ('metadata_manifest','plan','metadata_binding','phase_binding'):\n      g.collect(g.s.record(a['draft'],g.c['ROLE_SOURCE_CAPS'][a['role']]))\n  _need(p['Root_thread'] == g.root, 'E_ROOT_THREAD')\n  g.prime(p)\n  owner, lease, selection = p['current_owner_support'],p['new_lease_support'],p['Root_future_path_selection_support']\n  g.common(owner,lease,selection)\n  g.code(p['producer_support'],(I2_SOURCE,I2_API,ACTUAL_SOURCE_EDITOR))\n  stage, role = p['stage'],p['role']\n  expected_roles = [role] if stage == 'phase_bound' else g.c['M3_complete_stage_roles'][stage]\n  _need(stage != 'phase_bound' or role in [r for r in _enum(g.c,'finite8_role') if r.endswith('_bound')], 'E_STAGE_GROUP')\n  _need(stage == 'phase_bound' or role is None, 'E_STAGE_GROUP')\n  artifacts = p['artifacts']\n  _need([a['role'] for a in artifacts] == expected_roles, 'E_STAGE_GROUP')\n  returned = g.s.record(p['stage_return'])\n  _schema(returned,'stage_return14',g.c)\n  _need(returned['stage'] == stage and _same(returned['artifacts'],artifacts) and _same(returned['current_owner_scope'],owner['current_owner_scope']) and _same(returned['Root_selection'],selection['selection']) and _same(returned['lease'],lease['canonical']), 'E_STAGE_GROUP')\n  facts_pin = p['stage_support']['facts']\n  facts = g.s.record(facts_pin)\n  _schema(facts,'facts21',g.c)\n  _need(facts['stage'] == stage and _same(facts['role'],role) and facts['Root_thread'] == g.root and _same(facts['current_owner_scope'],owner['current_owner_scope']) and _same(facts['lease_support'],lease) and _same(facts['selection_support'],selection) and _same(facts['tool_support'],{k:p['producer_support'][k] for k in ('Source','API','different_review','Root_adoption')}) and _same(facts['predecessor_inventory'],INVENTORY_PIN), 'E_STAGE_FACTS')\n  inventory = g.s.record(INVENTORY_PIN)\n  _need(type(inventory.get('roles')) is list and len(inventory['roles']) == 17 and inventory.get('future_Source_bytes_generated') is False, 'E_STAGE_FACTS')",
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_M3_guard_contract_metadata_009.py",
+      "purpose": "child common and mandatory inventory",
+      "start_line": 633
+    },
+    {
+      "end_line": 704,
+      "exact_UTF8_lines": "  for a in artifacts:\n    selected = g.rows[a['role']]\n    _need(a['draft']['path'] == selected['draft_path'] and a['proposed_canonical_path'] == selected['canonical_path'] and _same(a['predecessor'],selected['predecessor']), 'E_STAGE_GROUP')\n    draft = g.s.body(a['draft'],selected['source_cap'])\n    g.s.body(a['predecessor'],selected['source_cap'])\n    _need(a['draft']['sha256'] != a['predecessor']['sha256'], 'E_STAGE_RECEIPT')\n    receipt = g.s.record(a['author_receipt'])\n    _schema(receipt,'receipt22',g.c)\n    _need(receipt['role'] == a['role'] and _same(receipt['draft'],a['draft']) and _same(receipt['predecessor'],a['predecessor']) and _same(receipt['diff'],a['diff']) and _same(receipt['actual_Source_packet'],facts_pin) and _same(receipt['current_owner_scope'],owner['current_owner_scope']) and _same(receipt['Root_future_path_selection'],selection['selection']) and _same(receipt['new_canonical_lease'],lease['canonical']) and receipt['retained_semantic_Source_author'] == selected['retained_semantic_Source_author'], 'E_STAGE_RECEIPT')\n    g.s.body(a['diff'])\n    here = I2_SOURCE['path'].rsplit('\\\\',1)[0]\n    _need(a['author_receipt']['path'] == here+'\\\\stage_receipts\\\\ROOT_CURRENT_OWNER_'+a['role'].upper()+'_ACTUAL_M3_SOURCE_DRAFT_AUTHOR_RECEIPT_001.json' and a['diff']['path'] == here+'\\\\source_diffs\\\\'+a['draft']['path'].rsplit('\\\\',1)[1]+'.diff', 'E_STAGE_PURPOSE')\n    output_paths += [a['draft']['path'],a['author_receipt']['path'],a['diff']['path']]\n    provenance = receipt['steps']['metadata_Source_provenance']\n    _need(_same(provenance['Source'],I2_SOURCE) and _same(provenance['API'],I2_API) and provenance['actual_implementation_Source_editor'] == ACTUAL_SOURCE_EDITOR and _same(provenance['stage_purpose'],purpose), 'E_STAGE_RECEIPT')\n    _resource(provenance['resource_observation'],g.now)\n    _codec(receipt['steps']['actual_check_codec'])\n    _observations(g,receipt['finite_actual_Source_observations'])\n    observed = [{key:o[key] for key in ('path','bytes','sha256')} for o in receipt['finite_actual_Source_observations']]\n    _need(all(any(_same(pin,o) for o in observed) for pin in purpose['inputs']), 'E_OBSERVATION')\n    _need(_time(facts['created_utc']) <= _time(receipt['created_utc']) <= g.now, 'E_CHRONOLOGY')\n    if a['role'] in ('metadata_manifest','plan','metadata_binding','phase_binding'):\n      body = g.s.record(a['draft'],selected['source_cap'])\n      schema = {'metadata_manifest':'manifest_body23','plan':'plan_body7','metadata_binding':'metadata_binding_body11','phase_binding':'phase_binding_body7'}[a['role']]\n      _schema(body,schema,g.c)\n      _body_joins(g,a['role'],body,g.s.record(a['predecessor']),facts,dependency_pins,artifact_map,lease['canonical'])\n  _need(len({x.casefold() for x in output_paths}) == len(output_paths) and purpose['stage'] == stage and _same(purpose['role'],role) and _same(purpose['facts'],facts_pin) and purpose['output_paths'] == sorted(output_paths), 'E_STAGE_PURPOSE')\n  _need(not {pin['path'].casefold() for pin in purpose['inputs']} & {path.casefold() for path in output_paths}, 'E_STAGE_PURPOSE')\n  for pin in purpose['inputs']:\n    g.s.body(pin)\n  declared = _declared(facts)+_declared(owner)+[facts_pin,I2_SOURCE,I2_API]+[a['predecessor'] for a in artifacts]\n  _need(all(any(_same(pin,actual) for actual in purpose['inputs']) for pin in declared), 'E_STAGE_PURPOSE')",
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_M3_guard_contract_metadata_009.py",
+      "purpose": "all artifact receipts and exact purpose inputs",
+      "start_line": 673
+    },
+    {
+      "end_line": 395,
+      "exact_UTF8_lines": "        self.roles=[role]if stage=='phase_bound'else self.cat['M3_complete_stage_roles'][stage]\n        self.deps={};descriptors=[];required={role[:-6]+'_template','capture_bound','metadata_binding','metadata_bound_review'}if stage=='phase_bound'else set(self.cat['original_required_dependencies'][stage])\n        for dep in sorted(required):descriptors.append(self.prior(dep))\n        artifacts=[];drafts={}\n        for name in self.roles:\n            row=self.rows[name];before=_fixed('predecessor_'+name)[1]\n            if name in ('metadata_manifest','plan','metadata_binding','phase_binding'):drafts[name]=_ow_json(before)\n            else:drafts[name]=b'# synthetic unissued I13 recorded Source output '+name.encode()+b'\\n'\n        bindings={};supports={};choices={};selections={}\n        if stage=='templates':\n            inv=_ow_json(_fixed('M3_inventory17')[1]);choices=copy.deepcopy(inv['capture_six_assignment_ABI'].get('safe_operational_choices',{}))\n            # Exact choice keys are schema-issued and values are inert safe relative paths.\n            choices={name:{key:'synthetic/'+str(i)+'.data'for i,key in enumerate(desc['exact_keys'])}for name,desc in self.cat['schemas']['templates_operational_choices']['fields'].items()}\n        if stage=='capture':\n            previous=_ow_json(_fixed('predecessor_plan')[1]);renew={'guard_profile_sha256':'profile','guard_harness_static_review_sha256':'static','preparer_static_review_sha256':'metadata_peer'}\n            for key in previous['bindings']:\n                sp=self.deps[renew[key]]if key in renew else o.p('binding_'+key)\n                sr,sa=o.proof('binding_proof_'+key,[sp],5,6);supports[key]=dict(source=sp,different_review=sr,Root_adoption=sa);bindings[key]=sp['sha256']",
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\exercise_M3_guard_and_publisher_metadata_memory_012.py",
+      "purpose": "capture dependencies and nine separate binding proofs",
+      "start_line": 378
+    },
+    {
+      "end_line": 431,
+      "exact_UTF8_lines": "        facts=dict(schema_version=2,record_type='Root_owner_v2_exact_M3_Source_stage_purpose_and_facts',author='/root',Root_thread=o.value('owner')['Root_thread'],created_utc=_ow_time(14),stage=stage,role=role,current_owner_scope=o.scope,tool_support={k:self.code[k]for k in ('Source','API','different_review','Root_adoption')},lease_support=self.lease,selection_support=self.selection,predecessor_inventory=o.p('M3_inventory17'),dependencies=[d['dependency']for d in descriptors],operational_choices=choices,binding_supports=supports,role_selections=selections,source_only=True,target_execution=False,operational_authority=False,canonical_publication=False,native_Parser_authority=False)\n        facts_pin=o.add('stage_facts',facts)\n        declared=_ow_pins(facts)+_ow_pins(self.owner)+[facts_pin,source,api]+[a['predecessor']for a in artifacts]\n        inputs=sorted({p['path']:p for p in declared}.values(),key=lambda p:p['path']);outputs=sorted(path for a in artifacts for path in (a['draft']['path'],a['author_receipt']['path'],a['diff']['path']))\n        purpose=dict(schema_version=2,stage=stage,role=role,facts=facts_pin,inputs=inputs,output_paths=outputs);purpose_pin=o.add('stage_purpose',purpose)\n        extra=dict(exact_M3_Source_stage_purpose=purpose);pr,pa=o.proof('generation_purpose',[facts_pin]+inputs,14,15,extra);ps=dict(subject=purpose_pin,different_review=pr,Root_adoption=pa)\n        stage_support=dict(facts=facts_pin,different_review=pr,Root_adoption=pa) # Same exact synthetic general Source proof event, subjects/purpose/actor/time.\n        for a in artifacts:\n            name=a['role'];observations=[]\n            for pin in inputs:\n                cap=next((r['source_cap']for r in self.rows.values()if pin['path']in(r['canonical_path'],r['draft_path'],r['predecessor']['path'])),2097152)\n                full=o.observation(pin,cap,16,o.recorded_birth(pin));observations.append({k:full[k]for k in('path','sha256','bytes','cap','path9','descriptor9','observed_utc')})\n                observations[-1].update(two_read_match=True,full_path9_independently_stable=True)\n            # Exact observation9 spelling comes from the fixed adopted catalogue.\n            observations=[{k:([0,1,2,3,6,7,8]if k=='shared_identity_indexes'else x[k])for k in self.cat['schemas']['M3_read_observation9']['exact_keys']}for x in observations]\n            checks=[[True,'synthetic_declared_byte_and_shape_check']];wire=(json.dumps(checks,sort_keys=True,ensure_ascii=False,allow_nan=False,indent=2)+'\\n').encode()\n            codec=dict(encoding='lossless_boolean_label_index_v1',check_labels=[checks[0][1]],checks=[[True,0]],actual_serialized_check_count=1,checks_failed=0,ordered_check_stream_sha256=hashlib.sha256(wire).hexdigest(),snapshot_phase='before per-artifact receipt serialization; later writer gates execute separately')\n            provenance=dict(Source=source,API=api,actual_implementation_Source_editor='/root/project_architecture',historical_implementation_Source_editor='/root/m3_source_editor',stage_purpose=purpose,resource_observation=dict(observed_utc=_ow_time(16),available_RAM_bytes=1073741824,free_disk_bytes=10737418240))\n            receipt=dict(schema_version=2,record_type='Root_owner_v2_actual_deferred_M3_Source_draft_author_receipt',author='/root',actual_physical_Source_editor='/root',created_utc=_ow_time(16),role=name,draft=a['draft'],predecessor=a['predecessor'],diff=a['diff'],actual_Source_packet=facts_pin,current_owner_scope=o.scope,Root_future_path_selection=self.selection['selection'],new_canonical_lease=self.lease['canonical'],retained_semantic_Source_author=self.rows[name]['retained_semantic_Source_author'],steps=dict(complete_inverse=dict(predecessor=a['predecessor'],recorded_complete_inverse=True),actual_diff_removed_byte_basis=a['predecessor'],actual_check_codec=codec,metadata_Source_provenance=provenance),finite_actual_Source_observations=observations,complete_current_predecessor_byte_inverse=True,different_actual_generated_Source_review_pending=True,canonical_publication=False,original_fixtures_and_runtime_admission=False,target_execution=False,operational_authority=False)",
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\exercise_M3_guard_and_publisher_metadata_memory_012.py",
+      "purpose": "declared inputs and repeated receipt subtree layout",
+      "start_line": 413
+    },
+    {
+      "end_line": 269,
+      "exact_UTF8_lines": "    def observation(self, pin, cap, seconds, born):\n        raw = [101,abs(int(pin['sha256'][:8],16))+1,pin['bytes'],_ow_ns(seconds),_ow_ns(seconds),32768,1,32,born]\n        return dict(path=pin['path'],bytes=pin['bytes'],sha256=pin['sha256'],cap=cap,path9=raw,descriptor9=copy.deepcopy(raw),raw9=copy.deepcopy(raw),shared_descriptor7=[raw[i] for i in (0,1,2,3,6,7,8)],shared_identity_indexes=[0,1,2,3,6,7,8],two_read_match=True,both_full_API9_independently_stable=True,observed_utc=_ow_time(seconds))",
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\I13_NEW_OUTER_ENVELOPE_FIXTURE_HELPER_009.py.source",
+      "purpose": "raw9 width and shared identity width",
+      "start_line": 267
+    }
+  ],
+  "actual_family_publication": false,
+  "checks": [
+    {
+      "evidence": [
+        {
+          "bytes": 65507,
+          "path": "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_selected_role_publisher_metadata_004.py",
+          "sha256": "f1df1975bee9c7fcd546f4c94f9d09a6371165aea83b6dcaa783f0ad7d7dd6bc"
+        },
+        {
+          "bytes": 63213,
+          "path": "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_M3_guard_contract_metadata_009.py",
+          "sha256": "b91eefd28fb8d120addd510949e2cca82b310379da7fa81ec3ddd435285d49f2"
+        },
+        {
+          "bytes": 535712,
+          "path": "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\exercise_M3_guard_and_publisher_metadata_memory_012.py",
+          "sha256": "6095dd20159a172e1ab2585d9d5d515ce1f64ed16dd5b5f480f5a2e4a15d6ea0"
+        },
+        {
+          "bytes": 32098,
+          "path": "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\I13_NEW_OUTER_ENVELOPE_FIXTURE_HELPER_009.py.source",
+          "sha256": "ff7f5bd066262d05ea17e519ca2cc53dcd581b63c8f5e52b50d121fe4e2b0d93"
+        },
+        {
+          "bytes": 219028,
+          "path": "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\m3_protocol_audit_001\\I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_007.json",
+          "sha256": "d565de0ef802629303403570437e951247c0bc6b16d2a9c8276d56aa2aa3b9ea"
+        },
+        {
+          "bytes": 63218,
+          "path": "D:\\Aenv\\pro2\\WORK\\resume-20261025-002\\receipt_caller_integration_015\\I12_EXACT_RECEIPT_FORMAT_SCHEMA_AND_FIXED_DATA_CATALOGUE_002.json",
+          "sha256": "e1521b008e4cb5deac47fcd3586310c052b71635ade957c85ef59749221bc67d"
+        },
+        {
+          "bytes": 41560,
+          "path": "D:\\Aenv\\pro2\\WORK\\resume-20261007-001\\generation\\observer010_lease009_root_001\\ROOT_SOURCE022_LEASE010_SEPARATE_FUTURE45_SOURCE_PATH_SELECTION_001.json",
+          "sha256": "67a20a299561fd163385e06f101c32dcd70e8bf380af6185f7c9abc02a85b47d"
+        },
+        {
+          "bytes": 154055,
+          "path": "D:\\Aenv\\pro2\\WORK\\resume-20261007-001\\generation\\step079_M3_unbound_source_preparation_001\\STEP079_M3_CURRENT_SLOT_AND_ABI_INVENTORY_001.json",
+          "sha256": "65739d2493a33a270ccf15a7d24e4e90fdf2d82300d2f5b392795e5bf84cd9b9"
+        },
+        {
+          "bytes": 1717,
+          "path": "D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\metadata3-producer-core-prep001\\SOURCE_BINDING_PLAN_017.json",
+          "sha256": "e13d61e2294a1a0065744aef952a5d7de83c3c33459ebda2607efa87aef0a9f0"
+        }
+      ],
+      "name": "all_subjects_current_whole_pins_verified",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "publisher",
+        "_tree",
+        70,
+        91
+      ],
+      "name": "publisher_charged_tree_counts_container_key_value_nodes",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "publisher",
+        "_Store.record"
+      ],
+      "name": "publisher_cache_decodes_each_distinct_body_once",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "publisher",
+        "_Graph.__init__"
+      ],
+      "name": "publisher_mandatory_common_and_base_decoded",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "publisher",
+        "_Graph.common"
+      ],
+      "name": "publisher_current_synthetic_selection_decoded",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "M3",
+        "_tree",
+        70,
+        91
+      ],
+      "name": "M3_charged_tree_counts_container_key_value_nodes",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "M3",
+        "_Store.record"
+      ],
+      "name": "M3_cache_decodes_each_distinct_body_once",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "M3",
+        "_Graph.__init__"
+      ],
+      "name": "M3_mandatory_common_and_base_decoded",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "M3",
+        "_Graph.common"
+      ],
+      "name": "M3_current_synthetic_selection_decoded",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\m3_protocol_audit_001\\I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_007.json",
+        9373
+      ],
+      "name": "common_catalogue_cost_exact",
+      "passed": true
+    },
+    {
+      "evidence": [
+        {
+          "bytes": 63218,
+          "path": "D:\\Aenv\\pro2\\WORK\\resume-20261025-002\\receipt_caller_integration_015\\I12_EXACT_RECEIPT_FORMAT_SCHEMA_AND_FIXED_DATA_CATALOGUE_002.json",
+          "sha256": "e1521b008e4cb5deac47fcd3586310c052b71635ade957c85ef59749221bc67d"
+        },
+        2259
+      ],
+      "name": "base_catalogue_cost_exact",
+      "passed": true
+    },
+    {
+      "evidence": [
+        {
+          "bytes": 154055,
+          "path": "D:\\Aenv\\pro2\\WORK\\resume-20261007-001\\generation\\step079_M3_unbound_source_preparation_001\\STEP079_M3_CURRENT_SLOT_AND_ABI_INVENTORY_001.json",
+          "sha256": "65739d2493a33a270ccf15a7d24e4e90fdf2d82300d2f5b392795e5bf84cd9b9"
+        },
+        6004
+      ],
+      "name": "inventory_cost_exact",
+      "passed": true
+    },
+    {
+      "evidence": [
+        {
+          "bytes": 41560,
+          "path": "D:\\Aenv\\pro2\\WORK\\resume-20261007-001\\generation\\observer010_lease009_root_001\\ROOT_SOURCE022_LEASE010_SEPARATE_FUTURE45_SOURCE_PATH_SELECTION_001.json",
+          "sha256": "67a20a299561fd163385e06f101c32dcd70e8bf380af6185f7c9abc02a85b47d"
+        },
+        1126
+      ],
+      "name": "old45_rows_cost_exact",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\exercise_M3_guard_and_publisher_metadata_memory_012.py",
+        "_new_base"
+      ],
+      "name": "synthetic_selection_rows_keep_node_type_shape",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\exercise_M3_guard_and_publisher_metadata_memory_012.py",
+        "_new_base",
+        "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\m3_protocol_audit_001\\I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_007.json",
+        "selection13"
+      ],
+      "name": "selection_shape13_four_pins_and_eight_scalars",
+      "passed": true
+    },
+    {
+      "evidence": [
+        {
+          "container": 1,
+          "eight_scalar_values": 8,
+          "four_fact3_values": 28,
+          "keys": 13,
+          "rows": 1126
+        }
+      ],
+      "name": "synthetic_selection_cost_1176",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "plan",
+        "capture_bound",
+        "metadata_binding"
+      ],
+      "name": "capture_exact_three_distinct_receipts",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "capture_template",
+        "metadata_manifest",
+        "profile",
+        "static",
+        "metadata_peer"
+      ],
+      "name": "capture_exact_five_prior_dependencies",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "coordination_peer_reply_sha256",
+        "coordination_root_response_sha256",
+        "guard_harness_static_review_sha256",
+        "guard_profile_sha256",
+        "preparer_static_review_sha256",
+        "raw_source_sha256",
+        "source_manifest_sha256",
+        "source_peer_sha256",
+        "source_projection_sha256"
+      ],
+      "name": "capture_binding_roster_nine_with_six_carried_sources",
+      "passed": true
+    },
+    {
+      "evidence": [
+        {
+          "bytes": 1582,
+          "path": "D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\root-coordination-unit006-source001\\PRO3_UNIT006_CONDITIONAL_SOURCE_ACK_001.json",
+          "sha256": "d924ef0efecdc60aabc01a1fa17cbc5945dbe42c30a3bbb01a4e0c31a74c4a47"
+        },
+        {
+          "bytes": 1383,
+          "path": "D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\root-coordination-unit006-source001\\ROOT_UNIT006_SOURCE_PREPARATION_RESPONSE_002.json",
+          "sha256": "5684132f0ce1f28bced2e15d717406cbe88bd319a2092e515195609adb0b3714"
+        },
+        {
+          "bytes": 210452,
+          "path": "D:\\Aenv\\pro2\\resume-2026-10-01-30h-001\\raw-consumer-binding-integration-prep005\\inputs\\raw004-source.bytes",
+          "sha256": "da64c4ea68e86bbcd28f7fbccd60baa765cc534afa532c14cd7cb39de782b211"
+        },
+        {
+          "bytes": 723621,
+          "path": "D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\consumer005-guard006-runtime-prep001\\inputs\\SOURCE_STAGED_MANIFEST_005.json",
+          "sha256": "169d559bdb54c32dce439bd815dd1e28e895b65826db3e7d4310315b8a5edabc"
+        },
+        {
+          "bytes": 24627,
+          "path": "D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\consumer005-guard006-runtime-prep001\\inputs\\ACTUAL_SOURCE_CAPSULE_005.json",
+          "sha256": "4c81e41d926eea61805eac23b5c616931fa3c86b4db1e794f8f28a2f04c26fa8"
+        },
+        {
+          "bytes": 20160,
+          "path": "D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\consumer005-guard006-runtime-prep001\\SOURCE_INPUTS_PROJECTION_006.json",
+          "sha256": "aa5e63a985ceda562be395f8f85c8e71baeafd102a3854f5b2299b153f836072"
+        }
+      ],
+      "name": "six_fixed_binding_source_paths_are_distinct",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\exercise_M3_guard_and_publisher_metadata_memory_012.py",
+        391,
+        395
+      ],
+      "name": "capture_binding_proofs_two_unique_pins_for_each_binding",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\exercise_M3_guard_and_publisher_metadata_memory_012.py",
+        435,
+        452
+      ],
+      "name": "each_prior_declares_exact_four_unique_input_paths",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\exercise_M3_guard_and_publisher_metadata_memory_012.py",
+        413,
+        417
+      ],
+      "name": "declaration_inputs_deduplicate_whole_pin_paths",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\I13_NEW_OUTER_ENVELOPE_FIXTURE_HELPER_009.py.source",
+        76,
+        83
+      ],
+      "name": "all_created_paths_must_be_unique_before_hypothetical_success",
+      "passed": true
+    },
+    {
+      "evidence": [
+        {
+          "binding_six_fixed_plus_eighteen_reviews_and_adoptions": 24,
+          "facts_and_three_predecessors": 4,
+          "owner_scope_review_adoption": 3,
+          "prior_five_times_four_unique": 20,
+          "tool4_lease5_selection3_inventory1": 13
+        }
+      ],
+      "name": "capture_declared_input_roster_conservative_64",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\exercise_M3_guard_and_publisher_metadata_memory_012.py",
+        417
+      ],
+      "name": "purpose_inputs_are_that_same_roster",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\exercise_M3_guard_and_publisher_metadata_memory_012.py",
+        430,
+        431
+      ],
+      "name": "each_receipt_embeds_complete_same_purpose_inputs",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\exercise_M3_guard_and_publisher_metadata_memory_012.py",
+        420,
+        431
+      ],
+      "name": "each_receipt_has_one_observation_for_each_input",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\m3_protocol_audit_001\\I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_007.json",
+        "M3_read_observation9",
+        "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\exercise_M3_guard_and_publisher_metadata_memory_012.py",
+        427
+      ],
+      "name": "observation_is_exact9_with_two_raw9_and_shared7",
+      "passed": true
+    },
+    {
+      "evidence": [
+        {
+          "fact3_components": [
+            1,
+            3,
+            3
+          ],
+          "observation_components": [
+            1,
+            9,
+            6,
+            20,
+            8
+          ]
+        }
+      ],
+      "name": "observation44_and_fact3_7_exact_charge",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_M3_guard_contract_metadata_009.py",
+        673,
+        680
+      ],
+      "name": "child_explicitly_decodes_every_artifact_receipt",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_selected_role_publisher_metadata_004.py",
+        350,
+        372,
+        664,
+        678
+      ],
+      "name": "parent_prime_recurses_into_author_and_receipt_edges",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_M3_guard_contract_metadata_009.py",
+        659,
+        662
+      ],
+      "name": "child_inventory_decode_mandatory_before_success",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_selected_role_publisher_metadata_004.py",
+        549,
+        551
+      ],
+      "name": "parent_adds_child_total_without_counter_reset",
+      "passed": true
+    },
+    {
+      "evidence": [
+        {
+          "artifacts": 3,
+          "inputs": 64,
+          "observation": 44,
+          "purpose_fact3": 7
+        }
+      ],
+      "name": "capture_receipt_subtrees_each_cache_at_least_9792",
+      "passed": true
+    },
+    {
+      "evidence": [
+        {
+          "combined_lower_bound": 51204,
+          "common_plus_base_per_cache": 11632,
+          "mandatory_child_inventory": 6004,
+          "receipt_subtrees_per_cache": 9792,
+          "selection_per_cache": 1176,
+          "unchanged_cap": 50000
+        }
+      ],
+      "name": "capture_parent_combined_lower_bound_51204_exceeds50000",
+      "passed": true
+    },
+    {
+      "evidence": [
+        {
+          "capture_roles": [
+            "plan",
+            "capture_bound",
+            "metadata_binding"
+          ],
+          "template_roles": [
+            "capture_template",
+            "WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_template",
+            "SUPERVISE_ROOT_METADATA_BEFORE_template",
+            "WRITE_ROOT_METADATA_AFTER_AUTHORIZATION_template",
+            "SUPERVISE_ROOT_METADATA_AFTER_template"
+          ]
+        }
+      ],
+      "name": "observed_template_pair_is_a_different_stage",
+      "passed": true
+    }
+  ],
+  "checks_failed": 0,
+  "checks_passed": 37,
+  "claim_limit": "Source-only conservative arithmetic for the current capture-stage parent composition with three outputs and unchanged kernels. Hypothetical success requires at least 51,204 combined charged nodes before many further mandatory costs, exceeding the unchanged 50,000 combined cap. Earlier guards may reject first; no runtime guard/cost was measured, no claim about a particular saved first guard follows. This is not the templates-stage capture_template pair observed with E_NODE_BUDGET in attempt006; its distinct roster/output count needs separate analysis. No target/fixture/helper function was called, no cache/counter reset, sharing, guard, schema, result, port, cap, or Source edit is proposed or accepted by this accounting.",
+  "created_utc": "2026-10-25T15:22:08.268830+00:00",
+  "native_Parser_executed": false,
+  "omitted_nonnegative_costs": [
+    "record ingestion and context",
+    "parent/child packet bodies and all other receipt fields",
+    "owner and lease bodies and their proofs",
+    "stage facts, purpose, generic proofs and adoptions",
+    "role drafts/predecessors and port APIs",
+    "parent purpose/publication/reconciliation and proofs",
+    "child result and parent decode/output result"
+  ],
+  "operational_authority": false,
+  "record_type": "Independent_I13_capture_stage_node_lower_bound_Source_full_proof",
+  "reviewer": "/root/i13_final_review",
+  "schema_version": 1,
+  "scientific_authority": false,
+  "static_accounting": {
+    "artifact_count": 3,
+    "cap": 50000,
+    "child_inventory": 6004,
+    "combined_lower_bound": 51204,
+    "common_base_per_cache": 11632,
+    "fact3_nodes": 7,
+    "input_count": 64,
+    "input_roster_categories": {
+      "binding_six_fixed_plus_eighteen_reviews_and_adoptions": 24,
+      "facts_and_three_predecessors": 4,
+      "owner_scope_review_adoption": 3,
+      "prior_five_times_four_unique": 20,
+      "tool4_lease5_selection3_inventory1": 13
+    },
+    "observation9_nodes": 44,
+    "receipt_subtrees_per_cache": 9792,
+    "synthetic_selection_per_cache": 1176
+  },
+  "subjects": [
+    {
+      "bytes": 65507,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_selected_role_publisher_metadata_004.py",
+      "sha256": "f1df1975bee9c7fcd546f4c94f9d09a6371165aea83b6dcaa783f0ad7d7dd6bc"
+    },
+    {
+      "bytes": 63213,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_M3_guard_contract_metadata_009.py",
+      "sha256": "b91eefd28fb8d120addd510949e2cca82b310379da7fa81ec3ddd435285d49f2"
+    },
+    {
+      "bytes": 535712,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\exercise_M3_guard_and_publisher_metadata_memory_012.py",
+      "sha256": "6095dd20159a172e1ab2585d9d5d515ce1f64ed16dd5b5f480f5a2e4a15d6ea0"
+    },
+    {
+      "bytes": 32098,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\I13_NEW_OUTER_ENVELOPE_FIXTURE_HELPER_009.py.source",
+      "sha256": "ff7f5bd066262d05ea17e519ca2cc53dcd581b63c8f5e52b50d121fe4e2b0d93"
+    },
+    {
+      "bytes": 219028,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\m3_protocol_audit_001\\I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_007.json",
+      "sha256": "d565de0ef802629303403570437e951247c0bc6b16d2a9c8276d56aa2aa3b9ea"
+    },
+    {
+      "bytes": 63218,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261025-002\\receipt_caller_integration_015\\I12_EXACT_RECEIPT_FORMAT_SCHEMA_AND_FIXED_DATA_CATALOGUE_002.json",
+      "sha256": "e1521b008e4cb5deac47fcd3586310c052b71635ade957c85ef59749221bc67d"
+    },
+    {
+      "bytes": 41560,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261007-001\\generation\\observer010_lease009_root_001\\ROOT_SOURCE022_LEASE010_SEPARATE_FUTURE45_SOURCE_PATH_SELECTION_001.json",
+      "sha256": "67a20a299561fd163385e06f101c32dcd70e8bf380af6185f7c9abc02a85b47d"
+    },
+    {
+      "bytes": 154055,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261007-001\\generation\\step079_M3_unbound_source_preparation_001\\STEP079_M3_CURRENT_SLOT_AND_ABI_INVENTORY_001.json",
+      "sha256": "65739d2493a33a270ccf15a7d24e4e90fdf2d82300d2f5b392795e5bf84cd9b9"
+    },
+    {
+      "bytes": 1717,
+      "path": "D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\metadata3-producer-core-prep001\\SOURCE_BINDING_PLAN_017.json",
+      "sha256": "e13d61e2294a1a0065744aef952a5d7de83c3c33459ebda2607efa87aef0a9f0"
+    }
+  ],
+  "target_execution": false,
+  "tests_executed": false,
+  "verdict": "PASS_I13_SOURCE_ONLY_CAPTURE_STAGE_CONSERVATIVE_NODE_LOWER_BOUND_ONLY"
+}

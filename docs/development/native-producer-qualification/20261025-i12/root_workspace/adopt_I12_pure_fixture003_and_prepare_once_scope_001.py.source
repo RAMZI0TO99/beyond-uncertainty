@@ -1,0 +1,146 @@
+"""Root stdlib-only Source adoption and fresh synthetic scope metadata authoring."""
+import ast
+import datetime as dt
+import hashlib
+import json
+import os
+from pathlib import Path
+
+R = Path(r'D:\Aenv\pro2\WORK\resume-20261025-002')
+W = R / 'receipt_caller_integration_015'
+
+
+def pin(path):
+    raw = path.read_bytes()
+    return dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+
+
+def read(fact):
+    p = Path(fact['path'])
+    assert pin(p) == fact
+    return p.read_bytes()
+
+
+def save(path, value):
+    raw = (json.dumps(value, indent=2, sort_keys=True, allow_nan=False) + '\n').encode()
+    assert 0 < len(raw) <= 2097152
+    with path.open('xb') as h:
+        assert h.write(raw) == len(raw)
+        h.flush()
+        os.fsync(h.fileno())
+    return pin(path)
+
+
+def occurs(value, fact):
+    if type(value) is dict:
+        if value == fact:
+            return True
+        return any(occurs(x, fact) for x in value.values())
+    return type(value) is list and any(occurs(x, fact) for x in value)
+
+
+def review(path, expected_sha, expected_count, reviewer):
+    assert pin(path)['sha256'] == expected_sha
+    value = json.loads(path.read_bytes())
+    assert value['reviewer'] == reviewer and value['verdict'].startswith('PASS_')
+    assert type(value['checks_passed']) is int and value['checks_passed'] == expected_count
+    assert type(value['checks_failed']) is int and value['checks_failed'] == 0
+    assert all(value[k] is False for k in ('target_execution', 'tests_executed', 'operational_authority', 'scientific_authority', 'actual_family_publication'))
+    full = json.loads(read(value['full_proof']))
+    checks = full['checks']
+    assert len(checks) == expected_count and all(x['passed'] is True for x in checks)
+    assert len({x['name'] for x in checks}) == len(checks)
+    assert full['reviewer'] == reviewer and full['verdict'] == value['verdict']
+    assert type(full['checks_failed']) is int and full['checks_failed'] == 0
+    return value
+
+
+now = dt.datetime.now(dt.timezone.utc)
+source_scope = R / 'ROOT_CURRENT_I12_RECEIPT_CALLER_SOURCE_SCOPE_001.json'
+ss = json.loads(source_scope.read_bytes())
+assert ss['target_execution'] is False and ss['operational_authority'] is False
+assert dt.datetime.fromisoformat(ss['interval_start']) <= now and (dt.datetime.fromisoformat(ss['interval_end']) - now).total_seconds() > 660
+modules = {k: pin(W / 'i12' / name) for k, name in (
+    ('formats', 'receipt_contract_formats_003.py'),
+    ('single', 'validate_generic_single_receipt_metadata_003.py'),
+    ('peer', 'validate_selected_peer_receipt_metadata_004.py'))}
+assert [p['sha256'] for p in modules.values()] == [
+    'd446e4018df9ca37afc234b16cf7ac264c01e28a3aaa55b8c753cf236641ef42',
+    '0badfa9012cd1809aead5ecf9f6a44bb0872280df35915d6757f8365d31d8da2',
+    'e21b14859bf6e128afb87452aff49f096ebc396d4885525bb59df6012cbf6a4c']
+assert all(0 < p['bytes'] <= 65536 for p in modules.values())
+catalogue = pin(W / 'I12_EXACT_RECEIPT_FORMAT_SCHEMA_AND_FIXED_DATA_CATALOGUE_002.json')
+assert catalogue['bytes'] == 63218 and catalogue['sha256'] == 'e1521b008e4cb5deac47fcd3586310c052b71635ade957c85ef59749221bc67d'
+fixture = pin(W / 'i12/test_outside8_receipt_contract_memory_only_003.py')
+assert fixture['bytes'] == 1758333 and fixture['sha256'] == 'dd18a28df15e7104d90311c107fcd2dfafe126b020d3e6580dfb7025847ca4ca'
+supervisor = pin(W / 'ROOT_I12_ONCE_MEMORY_SUPERVISOR_003.py')
+assert supervisor['bytes'] == 22253 and supervisor['sha256'] == 'd665d6ae908866575e63b989c4a6b2afe7cce46fdbe267bfa598c5835d1b0817'
+outer = pin(R / 'ROOT_CAPTURE_I12_ONCE_SUPERVISOR_EXECUTION_002.py')
+assert outer['bytes'] == 6925 and outer['sha256'] == '43baaf74ddbbf743eae96bbd8c004cfc05a55c85163c5df904e6b1ae12450d1b'
+fixture_review_path = W / 'fixture_source_review_002/INDEPENDENT_I12_FIXTURE003_STATIC_SOURCE_CAPSULE_001.json'
+fv = review(fixture_review_path, 'e1fb26946dc27e412de928de522afc1a836eae7841650212b168b6378a725e05', 3263, '/root/project_architecture')
+supervisor_review_path = W / 'supervisor_source_different_review_002/INDEPENDENT_I12_SUPERVISOR003_OUTER002_SOURCE_CAPSULE_001.json'
+sv = review(supervisor_review_path, 'acf17f6686d97881110064908b0d5fb0618f8232269c723753a6c04d5117314a', 77, '/root/i2_resume_gap')
+assert all(occurs(fv, p) for p in (*modules.values(), fixture))
+assert all(occurs(sv, p) for p in (supervisor, outer))
+ft = ast.parse(read(fixture))
+case_specs = ast.literal_eval(next(n.value for n in ft.body if isinstance(n, ast.Assign) and
+    any(isinstance(t, ast.Name) and t.id == 'CASE_CATALOGUE' for t in n.targets)))
+names = [c['name'] for c in case_specs]
+assert len(names) == 1089 and len(set(names)) == 1089
+positive = sum(c['expected'] == 'PASS' for c in case_specs)
+assert positive == 177
+lf_hash = hashlib.sha256(('\n'.join(names) + '\n').encode()).hexdigest()
+json_hash = hashlib.sha256(json.dumps(names, separators=(',', ':'), ensure_ascii=True).encode()).hexdigest()
+assert lf_hash == '803dcd7d5ff30cd4d7c047cd3f6fbcca96532129e2feeb9510ae2995066b83db'
+assert json_hash == 'bab65d3db0775715f6b89bdc361fff299e88d2f31ff6e63715d9c185e1cb17fe'
+st = ast.parse(read(supervisor))
+constants = {n.targets[0].id: n.value for n in st.body if isinstance(n, ast.Assign) and
+             len(n.targets) == 1 and isinstance(n.targets[0], ast.Name)}
+assert ast.literal_eval(constants['SOURCES']) == modules and ast.literal_eval(constants['CATALOGUE']) == catalogue
+assert ast.literal_eval(constants['FIXTURE']) == fixture
+assert ast.literal_eval(constants['EXPECTED_CASE_COUNT']) == 1089
+assert ast.literal_eval(constants['EXPECTED_CASE_NAMES_SHA256']) == json_hash
+budgets = dict(total_seconds=60, wait_seconds=50, cleanup_seconds=10, reap_seconds=5,
+               stdout_maximum_bytes=2097152, stderr_maximum_bytes=2097152)
+kernel_adoptions = [pin(W / x) for x in (
+    'ROOT_I12_KERNEL003_DIFFERENT_SOURCE_REVIEW_ADOPTION_001.json',
+    'ROOT_I12_PEER004_NOMINAL_DOMAIN_CORRECTION_DIFFERENT_SOURCE_REVIEW_ADOPTION_001.json')]
+protocol = pin(W / 'ROOT_I12_FORMAT_PROTOCOL002_DIFFERENT_SOURCE_REVIEW_ADOPTION_001.json')
+adoption = dict(schema_version=1, record_type='Root_I12_exact_pure_fixture003_supervisor003_outer002_Source_adoption',
+    author='/root', created_utc=dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds'),
+    verdict='ACCEPT_EXACT_PURE_I12_SOURCE_FOR_SEPARATE_ONCE_SYNTHETIC_ADMISSION_ONLY',
+    source_scope=pin(source_scope), protocol_adoption=protocol, prior_kernel_Source_adoptions=kernel_adoptions,
+    modules=modules, catalogue=catalogue, fixture=fixture, supervisor=supervisor, outer_wrapper=outer,
+    different_fixture_Source_review=pin(fixture_review_path), fixture_full_proof=fv['full_proof'],
+    different_supervisor_outer_Source_review=pin(supervisor_review_path), supervisor_full_proof=sv['full_proof'],
+    independent_Source_checks=dict(fixture=3263, supervisor_outer=77, failed=0),
+    finite_catalogue=dict(cases=1089, positive=177, expected_refusals=912, LF_names_sha256=lf_hash, JSON_names_sha256=json_hash),
+    exact_scope='Only new formats003/single003/peer004 and fresh fixture003 may later enter the separately declared synthetic-memory once child; emitter stays unrun. Caller/I2 and I0-I11 target imports/functions/mains/tests stay unadmitted.',
+    budgets=budgets, current_dated_Source_inventory=dict(present=36,pending=9), frozen_STEP080_inventory=dict(present=35,pending=10),
+    separate_once_scope_required=True, original75_spent_identities_unreplayed=True,
+    caller_I2_entry_admitted=False, full_I2_G01_closed=False, Native8_Parser_runtime_science_admitted=False,
+    target_execution=False, tests_executed=False, actual_family_publication=False, operational_authority=False, scientific_authority=False)
+adoption_path = W / 'ROOT_I12_PURE_FIXTURE003_SUPERVISOR003_OUTER002_SOURCE_ADOPTION_001.json'
+adoption_pin = save(adoption_path, adoption)
+release_report = R / 'coordination/ROOT_PRO3_RELEASE005_FULL_CUSTODY_RELEASE_REPORT_001.json'
+rv = json.loads(release_report.read_bytes())
+assert rv['peer_report']['custody_released'] is True and rv['peer_results_accepted'] is False and rv['new_grant_issued'] is False
+owned = W / 'owned_memory_runs/attempt001'
+assert not os.path.lexists(owned)
+owned.mkdir(parents=True)
+runtime = Path(r'C:\Users\aladdin-alyanai\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe')
+now = dt.datetime.now(dt.timezone.utc)
+scope = dict(schema_version=1, record_type='Root_I12_once_owned_synthetic_memory_scope', author='/root',
+    created_utc=now.isoformat(timespec='microseconds'), interval_start=now.isoformat(timespec='microseconds'),
+    interval_end=(now+dt.timedelta(minutes=10)).isoformat(timespec='microseconds'), operation='NEW_I12_SYNTHETIC_MEMORY_TEST_ONLY',
+    maximum_suite_invocations=1, source_scope=pin(source_scope), protocol_adoption=protocol, source_adoption=adoption_pin,
+    modules=modules, catalogue=catalogue, fixture=fixture, supervisor=supervisor, runtime=pin(runtime),
+    outputs={k:str(owned/n) for k,n in (
+        ('claim','SCOPE_CLAIM_001.json'), ('child_entry','CHILD_ENTRY_001.json'), ('child_result','CHILD_RESULT_001.json'),
+        ('stdout','CHILD_STDOUT_001.txt'), ('stderr','CHILD_STDERR_001.txt'), ('supervisor_result','SUPERVISOR_RESULT_001.json'))},
+    budgets=budgets, target_execution=False, operational_authority=False, scientific_authority=False, actual_family_publication=False)
+scope_path = W / 'ROOT_I12_ONCE_SYNTHETIC_MEMORY_SCOPE_001.json'
+scope_pin = save(scope_path, scope)
+print(json.dumps(dict(Source_adoption=adoption_pin, once_scope=scope_pin, once_outputs=str(owned), suite_invoked=False,
+                      reported_peer_custody_release=pin(release_report))))

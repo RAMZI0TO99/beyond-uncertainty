@@ -92,6 +92,24 @@ class SyntheticBundle:
         self.manifest["directory_layout"] = pin
         self.save_manifest()
 
+    def set_document_overlay(self, frozen=b"synthetic frozen document\r\n", prefix=b"reviewed prefix\r\n"):
+        canonical = json.loads((self.repo / "continuation/canonical-source.json").read_bytes())
+        pin = self.put_pin("PROJECT_STATE.md", frozen)
+        pin["origin"] = "exact_accepted_STEP080_primary_snapshot"
+        canonical["files"].append(pin)
+        self.put_pin("continuation/canonical-source.json", json.dumps(canonical).encode())
+        current = prefix + frozen
+        self.put_pin("PROJECT_STATE.md", current)
+        record = {"schema_version": 1, "record_type": "canonical_source_document_prefix_overlays",
+                  "overlays": [{"path": pin["path"], "frozen_bytes": len(frozen),
+                                "frozen_sha256": sha(frozen), "prefix_bytes": len(prefix),
+                                "current_bytes": len(current), "current_sha256": sha(current)}]}
+        self.save_overlays(record)
+        return record, frozen, current
+
+    def save_overlays(self, record):
+        self.put_pin("continuation/canonical-source-overlays.json", json.dumps(record).encode())
+
     def run_cli(self, *arguments):
         with mock.patch.object(tool, "REPO", self.repo), \
                 mock.patch("sys.argv", ["continuation.py", *arguments]), \
@@ -284,6 +302,122 @@ class ContinuationTests(unittest.TestCase):
     def test_canonical_source_corruption_refused(self):
         (self.repo / "synthetic-canonical.txt").write_bytes(b"corrupted")
         with self.assertRaises(ValueError):
+            tool.verify_canonical()
+
+    def test_document_overlay_verifies_current_bytes_and_restores_frozen_snapshot(self):
+        frozen = b"synthetic frozen STEP080 document\r\n"
+        bundle = SyntheticBundle(self.base / "overlay-roundtrip", logical=[("PROJECT_STATE.md", frozen, 0o644)])
+        _, _, current = bundle.set_document_overlay(frozen=frozen)
+        with mock.patch.object(tool, "REPO", bundle.repo), mock.patch.object(tool, "CHUNK", 7):
+            self.assertEqual(tool.verify_canonical(), 2)
+        bundle.run_cli("restore", "--destination", str(bundle.destination))
+        self.assertEqual((bundle.destination / "PROJECT_STATE.md").read_bytes(), frozen)
+        self.assertEqual((bundle.repo / "PROJECT_STATE.md").read_bytes(), current)
+        bundle.run_cli("verify", "--workspace", str(bundle.destination))
+
+    def test_document_overlay_refuses_unrecorded_prefix_suffix_and_length_changes(self):
+        _, frozen, current = self.bundle.set_document_overlay()
+        mutations = [b"X" + current[1:], current[:-1] + b"X", current + b"X", current[:-1], frozen]
+        for data in mutations:
+            with self.subTest(data=data):
+                (self.repo / "PROJECT_STATE.md").write_bytes(data)
+                with self.assertRaises(ValueError):
+                    tool.verify_canonical()
+
+    def test_document_overlay_cannot_repin_a_changed_frozen_suffix(self):
+        record, _, current = self.bundle.set_document_overlay()
+        changed = current[:-1] + b"X"
+        (self.repo / "PROJECT_STATE.md").write_bytes(changed)
+        record["overlays"][0]["current_sha256"] = sha(changed)
+        self.bundle.save_overlays(record)
+        with self.assertRaisesRegex(ValueError, "frozen canonical document suffix differs"):
+            tool.verify_canonical()
+
+    def test_document_overlay_refuses_malformed_schema_counts_hashes_and_paths(self):
+        record, _, _ = self.bundle.set_document_overlay()
+        cases = [[], {}, dict(record, schema_version=True), dict(record, schema_version=2),
+                 dict(record, record_type="other"), dict(record, extra=False),
+                 dict(record, overlays={}), dict(record, overlays=[None])]
+        for field, value in [("path", "unknown.md"), ("path", "project_state.md"),
+                             ("path", "../PROJECT_STATE.md"), ("path", 0),
+                             ("frozen_bytes", True), ("frozen_bytes", -1),
+                             ("prefix_bytes", 0), ("prefix_bytes", 1.5),
+                             ("current_bytes", 1), ("current_bytes", "100"),
+                             ("frozen_sha256", "0" * 64), ("current_sha256", "A" * 64),
+                             ("current_sha256", None)]:
+            changed = json.loads(json.dumps(record))
+            changed["overlays"][0][field] = value
+            cases.append(changed)
+        changed = json.loads(json.dumps(record))
+        changed["overlays"][0]["extra"] = False
+        cases.append(changed)
+        for candidate in cases:
+            with self.subTest(candidate=candidate):
+                self.bundle.save_overlays(candidate)
+                with self.assertRaises(ValueError):
+                    tool.verify_canonical()
+
+    def test_document_overlay_rejects_duplicate_paths_and_duplicate_json_keys(self):
+        record, _, _ = self.bundle.set_document_overlay()
+        record["overlays"].append(dict(record["overlays"][0]))
+        self.bundle.save_overlays(record)
+        with self.assertRaisesRegex(ValueError, "duplicate canonical document overlay"):
+            tool.verify_canonical()
+        self.bundle.put_pin("continuation/canonical-source-overlays.json",
+                            b'{"schema_version":1,"schema_version":1,"record_type":"canonical_source_document_prefix_overlays","overlays":[]}')
+        with self.assertRaisesRegex(ValueError, "duplicate JSON key"):
+            tool.verify_canonical()
+
+    def test_document_overlay_refuses_ordinary_code_and_wrong_document_origin(self):
+        record, _, current = self.bundle.set_document_overlay()
+        canonical_path = self.repo / "continuation/canonical-source.json"
+        canonical = json.loads(canonical_path.read_bytes())
+        for name, origin in [("src/example.py", "exact_accepted_STEP080_primary_snapshot"),
+                             ("PROJECT_STATE.md", "ordinary_source")]:
+            with self.subTest(name=name, origin=origin):
+                candidate = json.loads(json.dumps(canonical))
+                candidate["files"][-1].update(path=name, origin=origin)
+                self.bundle.put_pin("continuation/canonical-source.json", json.dumps(candidate).encode())
+                record["overlays"][0]["path"] = name
+                self.bundle.save_overlays(record)
+                self.bundle.put_pin(name, current)
+                with self.assertRaisesRegex(ValueError, "not an allowed frozen document"):
+                    tool.verify_canonical()
+
+    def test_document_overlay_metadata_reads_are_bounded(self):
+        self.bundle.set_document_overlay()
+        for name in ("MAX_CANONICAL_METADATA_BYTES", "MAX_OVERLAY_METADATA_BYTES"):
+            with self.subTest(limit=name), mock.patch.object(tool, name, 8):
+                with self.assertRaisesRegex(ValueError, "metadata exceeds size bound"):
+                    tool.verify_canonical()
+
+    def test_document_overlay_reparse_metadata_and_document_are_refused(self):
+        self.bundle.set_document_overlay()
+        original_lstat = Path.lstat
+
+        class ReparseStat:
+            def __init__(self, actual):
+                self.actual = actual
+                self.st_file_attributes = getattr(actual, "st_file_attributes", 0) | 0x400
+            def __getattr__(self, name):
+                return getattr(self.actual, name)
+
+        for relative in ("continuation", "continuation/canonical-source.json",
+                         "continuation/canonical-source-overlays.json", "PROJECT_STATE.md"):
+            protected = str(self.repo / relative).casefold()
+            def fake_lstat(candidate, *args, **kwargs):
+                actual = original_lstat(candidate, *args, **kwargs)
+                normalized = str(candidate).removeprefix("\\\\?\\").casefold()
+                return ReparseStat(actual) if normalized == protected else actual
+            with self.subTest(path=relative), mock.patch.object(Path, "lstat", fake_lstat):
+                with self.assertRaisesRegex(ValueError, "reparse path refused"):
+                    tool.verify_canonical()
+
+    def test_canonical_overlay_is_optional_and_unlisted_sources_remain_exact(self):
+        self.assertEqual(tool.verify_canonical(), 1)
+        self.bundle.set_document_overlay()
+        (self.repo / "synthetic-canonical.txt").write_bytes(b"corrupted")
+        with self.assertRaisesRegex(ValueError, "payload SHA/size mismatch"):
             tool.verify_canonical()
 
     def test_decompressed_index_budget_is_enforced(self):

@@ -1,0 +1,54 @@
+"""Root adoption of independently saved documentation reviews only."""
+from pathlib import Path
+import json, hashlib, datetime as dt, os
+O=Path('D:/Aenv/pro2/WORK/docs-publication-20261028-001')
+B='docs/development/checkpoint-20261028'
+def read(p):
+    assert p.is_file() and not p.is_symlink() and p.stat().st_size<=2097152,str(p)
+    return p.read_bytes()
+def pin(b):return {'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()}
+def js(x):return (json.dumps(x,sort_keys=True,indent=2)+'\n').encode()
+def write(p,b):
+    with p.open('xb') as f:f.write(b);f.flush();os.fsync(f.fileno())
+    assert read(p)==b
+scope=json.loads(read(O/'PUBLICATION_SCOPE.json'))
+assert dt.datetime.now(dt.timezone.utc)+dt.timedelta(seconds=60)<dt.datetime.fromisoformat(scope['end_utc'])
+names=[
+ 'review-evidence/INDEPENDENT_EVIDENCE_COPY_AND_FACT_REVIEW_CAPSULE_001.json',
+ 'review-docs/INDEPENDENT_DOCUMENTATION_CANDIDATE_CAPSULE_003.json']
+for folder in ('review-docs-final','review-evidence-final'):
+    found=[p for p in (O/folder).glob('*CAPSULE*.json') if (lambda v:v.get('verdict')=='PASS' and v.get('checks_failed')==0)(json.loads(read(p)))]
+    assert len(found)==1,(folder,len(found))
+    names.append(str(found[0].relative_to(O)))
+caps=[];prior=[]
+finalpin=pin(read(O/'CANDIDATE_FINAL.json'))
+for name in names:
+    p=O/name;b=read(p);v=json.loads(b)
+    expected='PASS_CONTENT_AND_DOCUMENTATION_PENDING_NOTED_PUBLICATION_PRECONDITIONS' if name=='review-docs/INDEPENDENT_DOCUMENTATION_CANDIDATE_CAPSULE_003.json' else 'PASS'
+    assert v['verdict']==expected and v['checks_failed']==0,name
+    if '-final/' in name:
+        assert finalpin['sha256'] in json.dumps(v) and str(finalpin['bytes']) in json.dumps(v), 'final manifest not pinned'
+    reviewer=v.get('reviewer',v.get('author'))
+    assert reviewer in ('/root/docs_publication_map','/root/current_evidence_inventory')
+    row={'path':str(p),**pin(b),'reviewer':reviewer,'checks_passed':v['checks_passed'],'saved_verdict':v['verdict']}
+    (caps if '-final/' in name else prior).append(row)
+assert len({x['reviewer'] for x in caps})==2
+extra=[]
+for folder in ('review-docs-final','review-evidence-final'):
+    for p in sorted((O/folder).iterdir()):
+        if not p.is_file():continue
+        name=p.name+('.source' if p.suffix=='.py' else '')
+        extra.append({'source_path':str(p),'path':B+'/audit/'+folder+'/'+name,**pin(read(p))})
+for name in ('CANDIDATE_FINAL.json','adopt_documentation_reviews.py'):
+    p=O/name
+    extra.append({'source_path':str(p),'path':B+'/audit/'+name+('.source' if p.suffix=='.py' else ''),**pin(read(p))})
+record={'record_type':'Root_independent_documentation_review_adoption','author':'/root',
+ 'created_utc':dt.datetime.now(dt.timezone.utc).isoformat(),
+ 'accepted_for_documentation_publication_only':True,'candidate_manifest':finalpin,
+ 'review_capsules':caps,'prior_review_capsules':prior,'additional_metadata':extra,
+ 'project_subject_test_native_capture_science_execution':False,
+ 'Source005_qualified':False,'Source015_adopted':False,'bootstrap004_accepted':False,
+ 'original_guards_caps_and_spent_identities_unchanged':True,
+ 'no_new_frozen_checkpoint_or_operational_admission':True}
+write(O/'REVIEW_ADOPTION.json',js(record))
+print(json.dumps({'review_capsules':len(caps),'additional_metadata':len(extra),'accepted':'documentation publication only'}))

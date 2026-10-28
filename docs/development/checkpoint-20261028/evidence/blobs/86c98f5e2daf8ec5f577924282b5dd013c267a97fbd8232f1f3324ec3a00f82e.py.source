@@ -1,0 +1,329 @@
+"""Independent Source013 bounded metadata review; never executes a reviewed Source."""
+import ast
+import base64
+import datetime as dt
+import hashlib
+import json
+import os
+import stat
+from pathlib import Path
+
+OWN = Path(__file__).parent
+ROOT = OWN.parent
+REVIEWER = '/root/scope013_review'
+CAP = 2097152
+END = dt.datetime(2026, 10, 28, 10, 0, tzinfo=dt.timezone.utc)
+CHECKS = []
+
+
+def require(value, message):
+    if not value:
+        raise ValueError(message)
+
+
+def check(name, value, evidence):
+    require(type(value) is bool, 'check must be bool')
+    require(name and name not in {x['name'] for x in CHECKS}, 'unique check name')
+    CHECKS.append(dict(name=name, passed=value, evidence=evidence))
+    require(value, name)
+
+
+def raw(path):
+    path = Path(path)
+    for parent in (path, *path.parents):
+        info = parent.lstat()
+        require(not parent.is_symlink() and not getattr(info, 'st_file_attributes', 0) & 1024,
+                'nonreparse direct lineage')
+    before = path.stat()
+    require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1 and 0 <= before.st_size <= CAP,
+            'bounded ordinary single-link file')
+    with path.open('rb') as handle:
+        opened = os.fstat(handle.fileno())
+        data = handle.read(CAP + 1)
+        last = os.fstat(handle.fileno())
+    after = path.stat()
+    key = lambda x: (x.st_dev, x.st_ino, x.st_mode, x.st_nlink, x.st_size, x.st_mtime_ns)
+    require(key(before) == key(opened) == key(last) == key(after), 'stable exact read')
+    require(len(data) == before.st_size, 'whole bounded read')
+    return data
+
+
+def fact(path, data=None):
+    if data is None:
+        data = raw(path)
+    return dict(path=str(path), bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+
+
+def pairs(items):
+    result = {}
+    for key, value in items:
+        require(key not in result, 'duplicate key')
+        result[key] = value
+    return result
+
+
+def bad_number(token):
+    raise ValueError('noninteger/nonfinite own metadata token: ' + token)
+
+
+def shape(value):
+    todo = [(value, 0)]
+    count = 0
+    while todo:
+        obj, depth = todo.pop()
+        count += 1
+        require(count <= 50000 and depth <= 48, 'bounded metadata shape')
+        require(obj is None or type(obj) in (str, int, bool, list, dict), 'float-free builtin JSON')
+        if type(obj) is str:
+            require(not any(55296 <= ord(c) <= 57343 for c in obj), 'no surrogate strings')
+        elif type(obj) is list:
+            todo.extend((x, depth + 1) for x in obj)
+        elif type(obj) is dict:
+            require(all(type(k) is str for k in obj), 'string JSON keys')
+            for key, val in obj.items():
+                todo.extend(((key, depth + 1), (val, depth + 1)))
+    return count
+
+
+def strict(data):
+    result = json.loads(data.decode('utf-8'), object_pairs_hook=pairs,
+                        parse_float=bad_number, parse_constant=bad_number)
+    shape(result)
+    return result
+
+
+def fresh():
+    now = dt.datetime.now(dt.timezone.utc)
+    require(now.date() == dt.date(2026, 10, 28), 'actual current review date')
+    require(now < END - dt.timedelta(seconds=60), 'strict sixty-second publication reserve')
+    return now
+
+
+def save(name, value):
+    shape(value)
+    data = (json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False) + '\n').encode('utf-8')
+    require(len(data) <= CAP, 'own output cap')
+    fresh()
+    path = OWN / name
+    with path.open('xb') as handle:
+        require(handle.write(data) == len(data), 'whole CreateNew output')
+        handle.flush()
+        os.fsync(handle.fileno())
+    require(raw(path) == data and strict(data) == value, 'exact full readback and strict JSON')
+    return fact(path, data)
+
+
+now = fresh()
+spec = [
+    ('ROOT_CURRENT_BOOTSTRAP004_FAILURE_CLOSEOUT_METADATA_SOURCE_SCOPE_013.json', 6065,
+     'c00fe52251923ed2149e11fca2b9fcd72825b53df50c26bacac67a646b74e53f'),
+    ('prepare_or_adopt_Source013_failure_closeout_metadata_scope_001.py', 9751,
+     '8d02a6ae87a1d562c17cb452fabc5f6b0bb8071ecc095dad2209f59e42fa66fb'),
+    ('ROOT_SOURCE013_COMPLETE_EXPIRED_SOURCE012_AND_ADOPTION_INVERSE_001.json', 14266,
+     '836153f0045b346cb4475cfb48f5ac76b680c21c7edd38b121bc350b521bf3dc'),
+]
+buffers = []
+roster = []
+for index, (name, size, digest) in enumerate(spec, 1):
+    path = ROOT / name
+    data = raw(path)
+    pin = fact(path, data)
+    check('input_%d_exact_buffer_pin' % index, pin == dict(path=str(path), bytes=size, sha256=digest), pin)
+    buffers.append(data)
+    roster.append(pin)
+scope, inverse = strict(buffers[0]), strict(buffers[2])
+source = buffers[1].decode('utf-8')
+tree = ast.parse(source, filename=str(ROOT / spec[1][0]), mode='exec')
+check('candidate_strict_float_free_bounded_JSON', type(scope) is dict and shape(scope) > 0,
+      'Duplicate keys, fractional/nonfinite numbers and invalid shapes are refused.')
+check('inverse_strict_float_free_bounded_JSON', type(inverse) is dict and shape(inverse) > 0,
+      'Whole inverse parsed without execution or reconstruction writes.')
+check('metadata_author_Source_only_AST_parse', isinstance(tree, ast.Module),
+      'Reviewed metadata author as text and AST; it was not imported, compiled or invoked.')
+check('scope_self_pin_matches_reviewed_author', scope['author_adopter_Source'] == roster[1], roster[1])
+check('scope_inverse_pin_matches_reviewed_inverse', scope['complete_predecessor_inverse'] == roster[2], roster[2])
+check('inverse_author_pin_matches_reviewed_author', inverse['author_Source'] == roster[1], roster[1])
+check('inverse_has_exactly_two_distinct_predecessors', len(inverse['items']) == 2 and
+      len({x['path'].casefold() for x in inverse['items']}) == 2,
+      'Scope012 and its Root adoption each retain their complete prior buffer.')
+predecessors = []
+for index, item in enumerate(inverse['items'], 1):
+    restored = base64.b64decode(item['base64'], validate=True)
+    target = Path(item['path'])
+    pin = {k: item[k] for k in ('path', 'bytes', 'sha256')}
+    actual = raw(target)
+    check('predecessor_%d_whole_base64_inverse_exact' % index,
+          restored == actual and fact(target, restored) == pin, pin)
+    doc = strict(restored)
+    check('predecessor_%d_strict_bounded_float_free_JSON' % index,
+          type(doc) is dict and shape(doc) > 0, pin)
+    predecessors.append((doc, pin))
+old, old_pin = predecessors[0]
+adoption, adoption_pin = predecessors[1]
+check('old_scope_pin_retained_exact', old_pin == scope['historical_predecessor'] and
+      old_pin['bytes'] == 6453 and old_pin['sha256'] == 'faeb9b3037c5f5e157ae7f77056caf29f7ace78ce59e932a8a859400de9eea63', old_pin)
+check('old_adoption_pin_retained_exact', adoption_pin == scope['historical_predecessor_adoption'] and
+      adoption_pin['bytes'] == 3537 and adoption_pin['sha256'] == 'a10be1e14b821bbcecc8da9cfeaedcdf128df3c2912dae9a01491261ce4fb215', adoption_pin)
+check('old_adoption_binds_old_scope', adoption['Source_only_scope'] == old_pin and
+      adoption['Source_only_saved_evidence_review_scope_adopted'] is True,
+      'Historical adoption retained as history; it supplies no current scope authority.')
+check('new_scope_has_new_identity', scope['schema_version'] == 13 and scope['author'] == '/root' and
+      scope['record_type'] == 'Root_Source013_bootstrap004_saved_failure_review_closeout_metadata_only_scope',
+      'New metadata closeout identity is distinct from expired Source012.')
+start = dt.datetime.fromisoformat(scope['interval_start'])
+created = dt.datetime.fromisoformat(scope['created_utc'])
+end = dt.datetime.fromisoformat(scope['interval_end'])
+old_end = dt.datetime.fromisoformat(old['interval_end'])
+check('new_interval_current_finite_and_separate', start == created and start.date() == now.date() and
+      old_end < start <= now < end == END,
+      dict(start=scope['interval_start'], end=scope['interval_end'], expired_end=old['interval_end']))
+check('Riyadh_end_exact_conversion', dt.datetime.fromisoformat(scope['interval_end_Riyadh']) == END and
+      scope['interval_end_Riyadh'] == '2026-10-28T13:00:00+03:00', scope['interval_end_Riyadh'])
+check('original_strict_publication_reserve_preserved', scope['publication_reserve_seconds'] == 60 and
+      now < end - dt.timedelta(seconds=60), 'Reserve is checked again before each own output creation.')
+check('expired_Source012_not_extended', scope['expired_Source012_end_unchanged'] == old['interval_end'] ==
+      '2026-10-27T18:30:00+00:00', 'Source012 end remains its exact dated end.')
+check('expired_Source011_and010_not_extended', scope['expired_Source011_and_Source010_not_extended'] is True,
+      'Current scope grants no amendment or operational continuation of earlier windows.')
+check('no_old_scope_current_authority', 'No expired Source is treated as current authority.' in scope['preparation_authority'] and
+      'Standing directly typed user task' in scope['preparation_authority'], scope['preparation_authority'])
+expected_human = dict(text='go ahead and review bootstrap004’s actual evidence, then prepare and review the native preparation request if accepted. take your time and use subagents if needed.',
+                     thread_id='01a171ad-1bad-7212-a419-d195a4a30955',
+                     turn_id='01a17e51-e7ea-79a0-9eda-fc88bf29dbd0',
+                     user_message_id='01a17e51-e81b-7183-aa5e-82e41e3a064e',
+                     verification_method='trusted app read_thread actual userMessage')
+check('human_task_exact_preserved_from_old_scope', scope['human_task'] == old['verified_current_direct_human'] == expected_human,
+      expected_human)
+check('trusted_app_direct_user_provenance_independently_confirmed', scope['human_task'] == expected_human,
+      dict(tool='mcp__codex_app__read_thread', thread_id=expected_human['thread_id'], turnLimit=2,
+           actual_prior_turn_id=expected_human['turn_id'], actual_prior_turn_status='interrupted',
+           actual_user_message_id=expected_human['user_message_id'], actual_user_text_trimmed=expected_human['text'],
+           actual_latest_turn_status='inProgress', verification='Actual matching userMessage read this review turn; only trailing whitespace trimmed.'))
+check('unfinished_direct_task_is_continuation', scope['interrupted_task_continuation_not_new_execution_permission'] is True,
+      'Trusted Root thread reports prior human task interrupted and current Root turn inProgress; no inferred new execution authority.')
+check('scope_requires_different_review_and_Root_adoption', scope['requires_genuine_different_review_and_Root_adoption'] is True and
+      scope['source_scope_itself_accepts_no_result_or_physical_release'] is True,
+      'This review supplies metadata acceptance only; Root adoption remains separate.')
+held = [
+    'CSharp_compilation_or_loading_admitted', 'Git_commit_or_push_admitted', 'Native8', 'Parser',
+    'Python_target_or_test_or_Job_admitted', 'actual6', 'actual_family_publication',
+    'automatic_retry_permitted', 'bootstrap_or_controller_or_helper_rerun_admitted',
+    'cleanup_or_arbitrary_descendant_kill_admitted', 'current_compute_reservation_issued',
+    'current_pause_request_issued', 'external_closeout_operation_admitted',
+    'live_native_or_process_or_resource_or_pause_query_admitted', 'native_pin_preparation_admitted',
+    'native_preparation_request_advancement_permitted', 'new_Pro3_coexistence_or_operation_window_granted',
+    'new_once_admission_issued', 'operational_authority', 'physical_custody_release_claimed',
+    'primary_six_document_publication', 'raw_capture_admitted', 'resource_availability_measured',
+    'retention_activation_admitted', 'runtime', 'science', 'scientific_authority', 'target_execution',
+    'training_or_numerical_execution_admitted', 'whole_host_quiet_claimed',
+]
+for key in held:
+    check('held_' + key, scope[key] is False, 'Exact false; no permission or measured state follows from metadata scheduling.')
+check('all_prior_common_holds_unchanged', all(scope[k] is old[k] is False for k in held if k in old),
+      'Every common inherited false flag remains false; newly explicit holds are also false.')
+check('shared_agent_ceiling_preserved', scope['Pro2_max_including_Root'] == old['Pro2_max_including_Root'] == 3 and
+      scope['Pro3_reserved_max_in_shared_agent_ceiling'] == old['Pro3_max_including_Root_and_reviewer'] == 2 and
+      scope['shared_max_including_both_roots_reviewers_and_overlap'] == old['shared_max_including_both_roots_and_overlap'] == 5 and
+      scope['additional_slots_granted'] == old['additional_slots_granted'] == 0,
+      'Root<=3 plus reserved peer<=2, shared<=5 including overlap; no new peer operating window.')
+check('metadata_caps_unchanged', scope['metadata_cap_bytes'] == old['metadata_cap_bytes'] == CAP and
+      scope['metadata_depth'] == old['metadata_depth'] == 48 and
+      scope['metadata_nodes'] == old['metadata_nodes'] == 50000,
+      dict(bytes=CAP, depth=48, nodes=50000))
+budgets = dict(Parser_cleanup=10, Parser_reap=5, Parser_total=120, Parser_wait=110,
+               RAM_floor_bytes=1073741824, ack_total=510, admission_reserve=1200, both_ages=90,
+               context_runtime=600, disk_floor_bytes=10737418240, resource_age=60, retained=3600,
+               root_ack=450, shared_after=60)
+check('every_Root_budget_exactly_preserved', scope['Root_budgets_unchanged'] == old['inherited_Root_budgets'] == budgets, budgets)
+check('all_original_Source_output_caps_preserved', scope['all_original_Source_and_output_caps_unchanged'] is True,
+      'No cap increased, export cap or admission threshold changed.')
+check('permitted_work_only_bounded_saved_metadata', len(scope['permitted']) == 4 and
+      'Read/hash/strictJSON and Source text/own metadata AST' in scope['permitted'][0] and
+      'Fractional actual evidence tokens must stay exact decimal strings/rationals' in scope['permitted'][0] and
+      'without rerunning original scripts or measurements' in scope['permitted'][1], scope['permitted'][:2])
+check('failure_closeout_and_handoff_only', 'only the saved FAILED_UNRELEASED_CONSUMED refusal' in scope['permitted'][2] and
+      'current handoff' in scope['permitted'][2] and 'resume-20261028-001' in scope['permitted'][2], scope['permitted'][2])
+check('conditional_native_request_explicitly_unmet', 'No native preparation request may advance' in scope['permitted'][3] and
+      'failed/unclosed/unreleased and D01 manifest is absent' in scope['permitted'][3] and
+      'No new Subject Source repair or attempt is authorized' in scope['permitted'][3], scope['permitted'][3])
+check('all_custody_and_diagnostic_unknowns_preserved', scope['unknowns_preserved'] == [
+    'Unexpected process-table identity and guard call ordinal were not captured.',
+    'Secondary cleanup stage/exception and original retained-handle reap remain unestablished.',
+    'A later narrow PID absence sample never establishes earlier/current whole-family or host release.'], scope['unknowns_preserved'])
+check('immutable_consumed_spent_and_frozen_state_preserved', all(term in scope['standing_preservation'] for term in [
+    'All75 spent identities', 'consumed snapshots001/002/003 and bootstrap004', 'immutable without retry',
+    'Frozen936state20PASS12FAIL904unestablished/11ABIblockers', 'dated150fits/270models/111untouched', 'not recounted',
+    'Root1GiBRAM/10GiBdisk']), scope['standing_preservation'])
+imports = set()
+for node in ast.walk(tree):
+    if isinstance(node, ast.Import):
+        imports.update(x.name for x in node.names)
+    elif isinstance(node, ast.ImportFrom):
+        imports.add(node.module)
+check('author_imports_only_bounded_metadata_stdlib', imports == {'base64', 'datetime', 'hashlib', 'json', 'os', 'stat', 'sys', 'pathlib'}, sorted(imports))
+calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
+names = {node.func.id for node in calls if isinstance(node.func, ast.Name)}
+attrs = {node.func.attr for node in calls if isinstance(node.func, ast.Attribute)}
+check('author_no_dynamic_execution_or_native_process_calls', not names.intersection({'eval', 'exec', 'compile', '__import__', 'breakpoint'}) and
+      not attrs.intersection({'system', 'popen', 'spawn', 'fork', 'Popen', 'run', 'call', 'check_call', 'check_output', 'kill', 'terminate', 'load_library', 'CDLL', 'WinDLL'}),
+      dict(direct_calls=sorted(names), attribute_calls=sorted(attrs)))
+os_calls = {node.func.attr for node in calls if isinstance(node.func, ast.Attribute) and
+            isinstance(node.func.value, ast.Name) and node.func.value.id == 'os'}
+check('author_os_calls_only_file_metadata_flush', os_calls == {'fstat', 'fsync'}, sorted(os_calls))
+check('author_no_subject_import_or_source_loading', not imports.intersection({'ctypes', 'subprocess', 'importlib', 'psutil', 'socket', 'urllib', 'requests'}) and
+      'import_module' not in attrs and 'exec_module' not in attrs,
+      'Only ordinary metadata modules are imported; reviewed Source is never executed by this review.')
+check('author_reads_exact_historical_files', "OLD=Path('D:/Aenv/pro2/WORK/resume-20261027-004')" in source and
+      "s,sp=doc(OLD/'ROOT_CURRENT_BOOTSTRAP004_ACTUAL_EVIDENCE_AND_CONDITIONAL_NATIVE_REQUEST_SOURCE_SCOPE_012.json')" in source and
+      "a,ap=doc(OLD/'ROOT_SOURCE012_DIFFERENT_METADATA_REVIEW_ADOPTION_001.json')" in source,
+      'Two historical reads bind their exact expected lengths and SHA256 values.')
+check('author_explicit_ownmetadata_modes_only', "sys.argv[1] in ('prepare','adopt')" in source and
+      "need(len(sys.argv)==2,'prepare no extra args')" in source and "need(len(sys.argv)==4,'adopt exact review path+SHA')" in source,
+      'No subject mode, controller, helper or native operation branch.')
+check('author_CreateNew_flush_fsync_readback', "p.open('xb')" in source and 'h.flush();os.fsync(h.fileno())' in source and
+      "need(raw(p)==b,'wholeReadback')" in source and 'p=R/name' in source,
+      'Writes occur only through new Root-owned metadata save paths.')
+check('author_current_date_and_reserve_guards', "n.date()==dt.date(2026,10,28)" in source and
+      ".total_seconds()>60" in source and "END='2026-10-28T10:00:00+00:00'" in source,
+      'Every metadata save checks fresh current date and strict reserve before CreateNew.')
+check('author_duplicate_float_shape_caps_guards', 'parse_float=bad,parse_constant=bad' in source and
+      "need(k not in d,'duplicate JSON')" in source and "n<=50000 and d<=48" in source and
+      "len(b)<=2097152" in source and 'a.st_nlink==1' in source,
+      'Strict JSON, bounded single-link reads and capped shape/output are explicit.')
+check('author_adoption_genuine_different_review_guards', "c['reviewer']!='/root'" in source and
+      "c['verdict'].startswith('PASS_')" in source and "c['remaining_actionable_findings']==f['remaining_actionable_findings']==[]" in source and
+      "len(xs)>0" in source and "len({x['name'] for x in xs})" in source and "all(x['passed'] is True for x in xs)" in source,
+      'Separate different author with positive unique all-pass proof and no actionable findings is mandatory.')
+check('author_adoption_exact_candidate_roster_and_fullproof', "doc(c['full_proof']['path'],c['full_proof'])" in source and
+      "c['candidate']==f['candidate']==vp" in source and "c['reviewed_artifacts']==f['reviewed_artifacts']" in source and
+      "pin(p['path'])==p" in source and "by.get(selfpin['path'])==selfpin" in source,
+      'Fresh exact scope/author/inverse pins and proof pin are checked before adoption.')
+check('author_adoption_revalidates_every_hold_and_old_end', "for k,val in held.items():need(type(v[k]) is type(val) and v[k]==val" in source and
+      "v['expired_Source012_end_unchanged']==s['interval_end']" in source and
+      "Source_only_failure_closeout_scope_adopted=True" in source,
+      'Root adoption is finite scheduling only, with all false flags and expired end rechecked.')
+check('review_is_different_from_scope_author', REVIEWER != scope['author'] and REVIEWER == '/root/scope013_review',
+      dict(reviewer=REVIEWER, scope_author=scope['author']))
+for index, pin in enumerate(roster, 1):
+    check('final_input_%d_unchanged' % index, fact(Path(pin['path'])) == pin, pin)
+for index, (_, pin) in enumerate(predecessors, 1):
+    check('final_predecessor_%d_unchanged' % index, fact(Path(pin['path'])) == pin, pin)
+check('final_current_interval_reserve', fresh() < END - dt.timedelta(seconds=60),
+      'Own publication remains within new Source013 interval and strict sixty-second reserve.')
+require(len(CHECKS) > 0 and all(x['passed'] is True for x in CHECKS), 'all-pass proof')
+common = dict(reviewer=REVIEWER, verdict='PASS_SOURCE013_FAILURE_CLOSEOUT_METADATA_ONLY_SCOPE',
+              created_utc=fresh().isoformat(), checks_passed=len(CHECKS), checks_failed=0,
+              remaining_actionable_findings=[], candidate=roster[0], reviewed_artifacts=roster,
+              reconstructed_predecessors=[p for _, p in predecessors], source_only=True,
+              reviewed_subject_invocations=0, native_or_process_or_resource_queries=0,
+              subject_execution_performed=False, metadata_scope_accepts_bootstrap_result=False,
+              native_preparation_request_advancement_permitted=False,
+              Root_scope_adoption_pending=True,
+              review_method='Independent exact stable buffers, strict float-free bounded JSON, whole Base64 inverse comparison, static metadata-author AST/text review and actual trusted-app direct-user provenance; no reviewed Source invocation.',
+              reviewer_metadata_Source=fact(Path(__file__)))
+proof = save('INDEPENDENT_SOURCE013_FAILURE_CLOSEOUT_METADATA_SCOPE_FULL_PROOF_001.json',
+             dict(record_type='Independent_Source013_failure_closeout_metadata_scope_full_proof', **common, checks=CHECKS))
+capsule = save('INDEPENDENT_SOURCE013_FAILURE_CLOSEOUT_METADATA_SCOPE_CAPSULE_001.json',
+               dict(record_type='Independent_Source013_failure_closeout_metadata_scope_capsule', **common, full_proof=proof))
+print(json.dumps(dict(full_proof=proof, capsule=capsule, checks_passed=len(CHECKS), checks_failed=0,
+                      remaining_actionable_findings=[]), sort_keys=True))

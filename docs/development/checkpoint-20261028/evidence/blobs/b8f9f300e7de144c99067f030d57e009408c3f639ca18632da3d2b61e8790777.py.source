@@ -1,0 +1,35 @@
+"""Root Source-only all-port pin successor author; no composition import."""
+import ast,base64,datetime as dt,hashlib,json
+from pathlib import Path
+R=Path(__file__).parent;C=R/'m3_peer_contracts_016';T=C/'i13';cache={}
+def raw(p):
+ p=Path(p);key=str(p.resolve()).casefold()
+ if key not in cache:
+  with p.open('rb') as h:b=h.read(2097153)
+  assert 0<len(b)<=2097152;cache[key]=b
+ return cache[key]
+def pin(p):
+ p=Path(p);b=raw(p);return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def save(p,b):
+ assert len(b)<=2097152
+ with p.open('xb') as h:assert h.write(b)==len(b)
+ return pin(p)
+def wire(v):return (json.dumps(v,sort_keys=True,indent=2,allow_nan=False)+'\n').encode()
+inp=C/'I13_HELD_COMPOSITION_BINDING_INPUT_003.json';cfg=json.loads(raw(inp))
+before=T/'current_owner_M3_peer_held_composition_003.py';ab=T/'CURRENT_OWNER_M3_PEER_SEPARATE_HELD_COMPOSITION_INERT_API_003.json';old=json.loads(raw(ab))
+assert pin(before)['sha256']=='1f3d403e7175402a7d8f43ded6de57af0ae29421100f5b149c29e91c2b2113d9' and pin(ab)['sha256']=='59d021b35dd2be67094414bceb27408c24fbd1bdd081486320082291445d9138'
+assert set(cfg)=={'schema_version','fixed_sources','protocol','catalogue'} and cfg['schema_version']==3 and cfg['protocol']==old['protocol'] and cfg['catalogue']==old['catalogue']
+assert set(cfg['fixed_sources'])=={'m3','peer','publisher'}
+for key,pair in cfg['fixed_sources'].items():
+ assert set(pair)=={'Source','API'} and pair!=old['fixed_sources'][key]
+ for p in pair.values():assert Path(p['path']).resolve().is_relative_to(T.resolve()) and pin(Path(p['path']))==p
+ assert json.loads(raw(Path(pair['API']['path'])))['Source']==pair['Source'] and pair['Source']['bytes']<=65536
+text=raw(before).decode('utf8');tree=ast.parse(text);a=next(n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='FIXED_SOURCES' for t in n.targets));assert ast.literal_eval(a.value)==old['fixed_sources']
+lines=text.splitlines(keepends=True);lines[a.lineno-1:a.end_lineno]=['FIXED_SOURCES = '+repr(cfg['fixed_sources'])+'\n'];source=''.join(lines).encode('utf8')
+def nofixed(t):
+ t.body=[n for n in t.body if not(isinstance(n,ast.Assign) and any(isinstance(x,ast.Name) and x.id=='FIXED_SOURCES' for x in n.targets))];return ast.dump(t,include_attributes=False)
+assert len(source)<=65536 and nofixed(ast.parse(raw(before)))==nofixed(ast.parse(source))
+p=T/'current_owner_M3_peer_held_composition_004.py';compile(ast.parse(source),str(p),'exec');sp=save(p,source)
+api=dict(old);api.update(schema_version=4,Source=sp,fixed_sources=cfg['fixed_sources']);ap=save(T/'CURRENT_OWNER_M3_PEER_SEPARATE_HELD_COMPOSITION_INERT_API_004.json',wire(api))
+v=dict(schema_version=1,record_type='Root_I13_composition004_all_fixed_port_pin_Source_successor',author='/root',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),binding_input=pin(inp),before_Source=pin(before),before_API=pin(ab),after_Source=sp,after_API=ap,complete_before_Source_base64=base64.b64encode(raw(before)).decode(),complete_before_API_base64=base64.b64encode(raw(ab)).decode(),all_function_AST_unchanged=True,only_FIXED_SOURCES_AST_assignment_changed=True,composition_metadata_route_executed=False,actual_entries_unconditionally_held=True,target_execution=False,tests_executed=False,operational_authority=False,scientific_authority=False)
+rp=save(C/'ROOT_I13_COMPOSITION004_ALL_PORT_PIN_SOURCE_SUCCESSOR_RECEIPT_001.json',wire(v));print(json.dumps(dict(Source=sp,API=ap,receipt=rp,target_execution=False)))

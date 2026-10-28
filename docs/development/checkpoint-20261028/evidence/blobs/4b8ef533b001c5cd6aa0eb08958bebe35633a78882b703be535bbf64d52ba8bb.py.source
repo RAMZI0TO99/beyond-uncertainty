@@ -1,0 +1,88 @@
+"""Source-only additive authoring. Never imports or executes target Source."""
+import ast
+import base64
+import datetime
+import hashlib
+import json
+from pathlib import Path
+
+ROOT = Path(r'D:\Aenv\pro2\WORK\resume-20261025-003')
+OUT = ROOT / 'm3_peer_contracts_016' / 'i13'
+OLD = OUT / 'validate_selected_peer_author_packet_metadata_005.py'
+NEW = OUT / 'validate_selected_peer_author_packet_metadata_006.py'
+OLD_API = OUT / 'CURRENT_OWNER_SELECTED_PEER_CANONICAL_AUTHOR_METADATA_INERT_API_005.json'
+NEW_API = OUT / 'CURRENT_OWNER_SELECTED_PEER_CANONICAL_AUTHOR_METADATA_INERT_API_006.json'
+RECEIPT = OUT / 'I13_PEER_CANONICAL_AUTHOR_SOURCE_AUTHOR_RECEIPT_006.json'
+
+def pin(path, body=None):
+    body = path.read_bytes() if body is None else body
+    return {'path': str(path), 'bytes': len(body), 'sha256': hashlib.sha256(body).hexdigest()}
+
+def write_new(path, body):
+    assert not path.exists(), path
+    with path.open('xb') as stream:
+        stream.write(body)
+    assert path.read_bytes() == body
+
+old = OLD.read_bytes()
+assert pin(OLD, old)['sha256'] == '49a0cccdf61b40f647c67e2be11b921f2f18f9c88593c041b3a9b95e8cb5f775'
+before = "    required=('author','created_utc','different_review','full_proof','native_Parser_executed','operational_authority','record_type','schema_version','subjects','target_execution','verdict')\n"
+added = """    checks=full.get('checks')
+    _need(type(checks)is list and 0<len(checks)<=10000,'E_REVIEW')
+    for check in checks:
+        _closed(check,('name','passed','evidence'),'E_REVIEW')
+        _need(type(check['name'])is str and 0<len(check['name'])<=512 and check['passed']is True,'E_REVIEW')
+"""
+text = old.decode('utf-8')
+assert text.count(before) == 1
+new = text.replace(before, added + before).encode('utf-8')
+assert len(new) <= 65536
+compile(new, str(NEW), 'exec', ast.PyCF_ONLY_AST)
+old_ast = ast.parse(old)
+new_ast = ast.parse(new)
+old_regions = {n.name: n for n in old_ast.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))}
+new_regions = {n.name: n for n in new_ast.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))}
+assert old_regions.keys() == new_regions.keys()
+changed = [name for name in old_regions if ast.dump(old_regions[name], include_attributes=False) != ast.dump(new_regions[name], include_attributes=False)]
+assert changed == ['_i13_new_code_proofs'], changed
+assert new.replace(added.encode(), b'', 1) == old
+write_new(NEW, new)
+api_before = OLD_API.read_bytes()
+api = json.loads(api_before)
+assert len(api) == 14
+api['Source'] = pin(NEW, new)
+api_bytes = (json.dumps(api, ensure_ascii=True, sort_keys=True, indent=2) + '\n').encode()
+assert len(api_bytes) <= 2097152
+write_new(NEW_API, api_bytes)
+lines = new.splitlines(keepends=True)
+regions = []
+for node in new_ast.body:
+    if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+        raw = b''.join(lines[node.lineno - 1:node.end_lineno])
+        regions.append({'name': node.name, 'first_line': node.lineno, 'last_line': node.end_lineno,
+                        'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest(),
+                        'AST_sha256': hashlib.sha256(ast.dump(node, include_attributes=False).encode()).hexdigest()})
+receipt = {
+    'schema_version': 2,
+    'record_type': 'I13_actual_peer006_new_producer_closed_check3_Source_successor',
+    'author': '/root/i2_resume_gap', 'actual_Source_editor': '/root/i2_resume_gap',
+    'created_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds'),
+    'Source': pin(NEW, new), 'API': pin(NEW_API, api_bytes),
+    'before_Source': pin(OLD, old), 'before_Source_bytes_base64': base64.b64encode(old).decode(),
+    'before_API': pin(OLD_API, api_before), 'before_API_bytes_base64': base64.b64encode(api_before).decode(),
+    'prior_receipt': pin(OUT / 'I13_PEER_CANONICAL_AUTHOR_SOURCE_AUTHOR_RECEIPT_005.json'),
+    'common_catalogue': pin(ROOT / 'm3_peer_contracts_016' / 'm3_protocol_audit_001' / 'I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_005.json'),
+    'exact_delta': 'Only _i13_new_code_proofs adds full.checks nonempty list<=10000, each exact check3 {name,passed,evidence}, builtin nonempty name<=512 and passedTrue. Inherited raw20 proof ABI and every other function/class are unchanged; API.Source updated.',
+    'changed_function_names': changed,
+    'inverse_remove_exact_utf8_text': added,
+    'whole_before_inverse_verified': True,
+    'scope': 'Source authoring and AST/compile metadata only; no target import/call or fixture execution',
+    'regions': regions,
+    'target_execution': False, 'operational_authority': False,
+    'scientific_authority': False, 'native_Parser_executed': False,
+    'actual_producer_issued': False, 'actual_family_publication': False,
+}
+receipt_bytes = (json.dumps(receipt, ensure_ascii=True, sort_keys=True, indent=2) + '\n').encode()
+assert len(receipt_bytes) <= 2097152
+write_new(RECEIPT, receipt_bytes)
+print(json.dumps({'Source': pin(NEW), 'API': pin(NEW_API), 'receipt': pin(RECEIPT), 'changed': changed}, sort_keys=True))

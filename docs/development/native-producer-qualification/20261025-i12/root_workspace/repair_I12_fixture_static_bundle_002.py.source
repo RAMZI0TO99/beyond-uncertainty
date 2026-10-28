@@ -1,0 +1,239 @@
+"""Own additive fixture Source/literal author. Never imports or runs targets."""
+import ast
+import copy
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+
+ROOT=Path(__file__).parent
+BASE=ROOT/'receipt_caller_integration_015'
+OUT=BASE/'i12'
+CAP=2097152
+def pin(path,raw=None):
+    raw=path.read_bytes() if raw is None else raw
+    return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+def save(path,value):
+    raw=(json.dumps(value,sort_keys=True,indent=2)+'\n').encode()
+    assert len(raw)<=CAP
+    with path.open('xb') as f:f.write(raw)
+    return pin(path,raw)
+def T(s,f='000000'):return '2026-10-25T00:00:'+str(s).zfill(2)+'.'+f+'+00:00'
+
+prior=ROOT/'I12_FRESH_FINITE_CASE_CATALOGUE_METADATA_003.json'
+d=json.loads(prior.read_text(encoding='utf8'))
+c=json.loads((BASE/'I12_EXACT_RECEIPT_FORMAT_SCHEMA_AND_FIXED_DATA_CATALOGUE_002.json').read_text(encoding='utf8'))
+audit=json.loads((BASE/'I12_ACTUAL_HISTORICAL_DECLARATION_ISSUED_SAMPLE_AND_CONSUMER_GAP_AUDIT_001.json').read_text(encoding='utf8'))
+closure={}
+def add(name,expected='PASS',finding='F02',kind='single',role='writer',route='graph',**kw):
+    assert name not in {r['name'] for r in d['cases']}
+    row=dict(name=name,expected=expected,category='STATIC_'+finding,route=route,kind=kind,role=role,first_typed_guard=expected if expected!='PASS' else 'Exact positive metadata result assertions',**kw)
+    d['cases'].append(row);closure.setdefault(finding,[]).append(name)
+def opcase(name,expected,label,path,value,**kw):
+    add(name,expected,operations=[['set',label,path,value]],**kw)
+def swap(name,expected,label,path,**kw):
+    add(name,expected,operations=[['swap',label,path]],**kw)
+
+# F01: only format-only uncaptured descriptor roles get explicit synthetic data.
+closure['F01']=[r['name'] for r in d['cases'] if r['category']=='P_FORMAT36']
+for part in ('capsule','full'):
+    opcase('proof_checks_failed_bool_'+part,'E_REVIEW','canonical_'+part,['checks_failed'],True)
+add('proof_duplicate_check_names_coherent_count','E_REVIEW',special='duplicate_checks')
+
+# F03: every actually consumed review edge, independent of optional author list.
+for label in ('constructor','emitter','selection','draft','generation','reconciliation'):
+    add('actor_fixed_editor_'+label+'_review','E_REVIEWER',finding='F03',special='reviewer',actor='/root/i2_resume_gap',proofs=[label])
+for label in ('content','proposal'):
+    add('actor_fixed_editor_peer_'+label+'_review','E_REVIEWER',finding='F03',kind='peer',role='phase_peer',special='reviewer',actor='/root/i2_resume_gap',proofs=[label])
+for label in ('constructor','selection'):
+    add('actor_fixed_editor_peer_'+label+'_review','E_REVIEWER',finding='F03',kind='peer',role='phase_peer',special='reviewer',actor='/root/i2_resume_gap',proofs=[label])
+for label in ('content','proposal'):
+    add('actor_peer_content_author_'+label+'_review','E_REVIEWER',finding='F03',kind='peer',role='phase_peer',special='reviewer',actor='/root/i12_synthetic_content_author',proofs=[label])
+for actor,suffix in (('/root/project_architecture','same'),('/root/Project_Architecture','case'),('/root/project_architecture/child','descendant'),('/root','Root')):
+    add('actor_caller_editor_'+suffix,'E_ACTOR' if actor=='/root' else 'E_REVIEWER',finding='F03',special='reviewer',actor=actor)
+
+spent=c['spent_pin75'];archive={p['path'] for p in c['archival_spent2']}
+nonempty=next(i+2 for i,p in enumerate(spent) if p['bytes']>0 and p['path'] not in archive)
+archindex=next(i+2 for i,p in enumerate(spent) if p['path'] in archive)
+opcase('spent_unknown_exact_identity','E_SPENT_IDENTITY','publication',['actual_paired_metadata_inputs',2,'path'],r'D:\I12\unknown_spent_identity.json',finding='F04')
+add('ordinary_zero_bytes_coherent_vectors','E_PIN_BYTES',finding='F04',special='observation_mutation',index=0,field='bytes',value=0,coherent_vectors=True)
+add('spent_zero_nonempty_identity_coherent_vectors','E_SPENT_IDENTITY',finding='F04',special='observation_mutation',index=nonempty,field='bytes',value=0,coherent_vectors=True)
+opcase('ordinary_archive4MiB_cap_refused','E_PIN_BYTES','publication',['actual_paired_metadata_inputs',0,'cap'],4194304,finding='F04')
+opcase('spent_archive_exact_cap_wrong','E_SPENT_IDENTITY','publication',['actual_paired_metadata_inputs',archindex,'cap'],2097152,finding='F04')
+
+for key in ('raw9','path9','descriptor9'):
+    for mode,value in (('nonlist',{}),('length8',[1]*8),('boolitem',[True,2,1,3,4,33152,1,0,5])):
+        opcase('ordinary_'+key+'_'+mode,'E_OBSERVATION','publication',['actual_paired_metadata_inputs',0,key],value,finding='F05')
+opcase('ordinary_raw9_differs_path9','E_OBSERVATION','publication',['actual_paired_metadata_inputs',0,'raw9',0],99,finding='F05')
+for field,value in (('nlink',2),('reparse',1024)):
+    add('ordinary_coherent_'+field,'E_OBSERVATION',finding='F05',special='observation_mutation',index=0,field=field,value=value,coherent_vectors=True)
+add('ordinary_wrong_declared_authenticated_role_cap','E_OBSERVATION',finding='F05',special='observation_mutation',index=0,field='cap_delta',value=1)
+add('ordinary_required_draft_observation_missing','E_OBSERVATION_COVERAGE',finding='F05',special='spents_remove',index=0)
+for key in ('raw9','path9','descriptor9'):
+    opcase('spent_'+key+'_malformed_vector','E_OBSERVATION','publication',['actual_paired_metadata_inputs',nonempty,key],[1]*8,finding='F05')
+
+# F06: actual differing key sets, rather than only a record_type string mutation.
+add('single_request_replaced_with_publication29_shape','E_UNSUPPORTED_PUBLICATION_ABI',finding='F06',special='wrong_graph_abi',label='request',replacement='publication')
+add('single_publication_replaced_with_request14_shape','E_UNSUPPORTED_PUBLICATION_ABI',finding='F06',special='wrong_graph_abi',label='publication',replacement='request')
+for label in ('request','publication'):
+    opcase('single_graph_'+label+'_schema1_same_owner_tag','E_VERSION',label,['schema_version'],1,finding='F06')
+    add('single_graph_'+label+'_Source024_schema1_not_relabelled','E_SCHEMA',finding='F06',special='legacy_Source024_shape',label=label)
+
+# F07: one exact field edge at a time points to a supplied distinct valid clone.
+single_edges=[]
+for label in ('generation_facts','publication_facts','generation_decision','publication_decision','generation','publication'):
+    for key in ('current_owner_scope','Root_selection','tool_source'):single_edges.append((label,[key]))
+for label in ('generation_facts','publication_facts','generation','publication'):
+    single_edges.extend((label,[key]) for key in ('predecessor',))
+    single_edges.append((label,['lawful_lease_support','canonical']))
+for label in ('generation_facts','publication_facts'):
+    single_edges.extend((label,[key]) for key in ('tool_review','tool_Root_adoption','selection_review','selection_Root_adoption','stage_decision'))
+for label in ('generation','publication'):
+    single_edges.extend((label,[key]) for key in ('tool_Source_review','tool_Root_adoption','draft','actual_Root_late_facts'))
+for label in ('generation_decision','publication_decision'):single_edges.append((label,['lawful_lease']))
+single_edges.append(('publication_facts',['publication_request']))
+single_edges.extend(('request',[key]) for key in ('current_owner_scope','Root_selection','draft','Source_review','Root_adoption'))
+single_edges.extend(('publication_facts',['stage_support',key]) for key in ('draft','generation_receipt'))
+single_edges.append(('publication',['original_request']))
+single_edges.extend(('publication',['details',key]) for key in ('generation_receipt','different_draft_Source_review','Root_draft_adoption','original_request'))
+for label,path in single_edges:
+    swap('single_valid_pin_swap_'+label+'_'+'_'.join(path),'E_SINGLE_JOIN',label,path,finding='F07')
+for key in ('canonical_Source','exact_draft_Source','initial_actual_Root_request','initial_actual_canonical_publication_receipt','initial_actual_execution_witness','current_owner_scope','Root_future_path_selection','new_canonical_lease','prior_actual_publisher_Source','actual_canonical_delta_Source_review','canonical_delta_Root_adoption'):
+    swap('recon_valid_pin_swap_'+key,'E_RECONCILIATION_JOIN','reconciliation',[key],finding='F07')
+peer_edges=[]
+for label in ('receipt','decision','serialization','inverse'):peer_edges.append((label,['current_owner_scope'],'E_PEER_JOIN'))
+peer_edges.extend(('receipt',[key],'E_PEER_JOIN') for key in ('Root_future_path_selection','new_canonical_lease','draft','predecessor','actual_genuine_content_proposal','actual_genuine_content_decision','actual_Root_content_adoption','actual_Root_serialization_witness','actual_complete_predecessor_inverse'))
+peer_edges.extend(('packet',[support,key],'E_PEER_JOIN') for support,key in (('content_support','decision'),('proposal_support','proposal')))
+peer_edges.extend((label,['selection'],'E_PEER_JOIN') for label in ('serialization','inverse'))
+peer_edges.extend(('serialization',[key],'E_PEER_JOIN') for key in ('proposal','selected_draft','content_Root_adoption','proposal_Root_adoption'))
+peer_edges.extend(('receipt',[key,0],'E_PEER_INPUTS') for key in ('actual_recipe_Source_support','actual_current_Source_inputs'))
+for label,path,expected in peer_edges:
+    swap('peer_valid_pin_swap_'+label+'_'+'_'.join(map(str,path)),expected,label,path,finding='F07',kind='peer',role='metadata_peer')
+swap('peer_valid_pin_swap_inverse_draft','E_INVERSE','inverse',['draft'],finding='F07',kind='peer',role='metadata_peer')
+# Inverse predecessor self-consistency is checked by its closed constructor first.
+swap('peer_valid_pin_swap_inverse_predecessor','E_INVERSE','inverse',['predecessor'],finding='F07',kind='peer',role='metadata_peer')
+
+# F08: exact100ns edge violations, leaving earlier observed times/order coherent.
+for name,label,second in [('canonical_full_after_capsule','canonical_full',41),('canonical_capsule_after_adoption','canonical_capsule',42),('canonical_adoption_after_recon','canonical_adoption',43),('recon_full_after_capsule','reconciliation_full',45),('recon_capsule_after_adoption','reconciliation_capsule',46)]:
+    opcase('chronology_tick_'+name,'E_CHRONOLOGY',label,['created_utc'],T(second,'0000001'),finding='F08')
+add('chronology_tick_recon_adoption_after_now','E_CHRONOLOGY',finding='F08',post='argument',field='now_utc',value=T(45,'9999999'))
+for name,label,second in [('code_after_decision','constructor_adoption',10),('decision_after_content_full','decision',20),('content_full_after_capsule','content_full',21),('content_capsule_after_adoption','content_capsule',22),('content_adoption_after_proposal_full','content_adoption',24),('proposal_full_after_capsule','proposal_full',25),('proposal_capsule_after_adoption','proposal_capsule',26),('proposal_adoption_after_witness','proposal_adoption',30),('witness_after_inverse','serialization',31),('inverse_after_receipt','inverse',32)]:
+    opcase('peer_chronology_tick_'+name,'E_CHRONOLOGY',label,['created_utc'],T(second,'0000001'),finding='F08',kind='peer',role='phase_peer')
+add('peer_chronology_tick_receipt_after_now','E_CHRONOLOGY',finding='F08',kind='peer',role='phase_peer',post='argument',field='now_utc',value=T(31,'9999999'))
+for prefix,kind,role in (('canonical','single','writer'),('content','peer','metadata_peer')):
+    for part in ('capsule','full','adoption'):
+        for flag in ('physical_IO_qualified','human_review_authenticated'):
+            opcase('optional_proof_'+prefix+'_'+part+'_'+flag+'_true','E_AUTHORITY',prefix+'_'+part,[flag],True,finding='F09',kind=kind,role=role)
+for field in ('I9_qualified','environment_qualified','qualified','admitted','physical_IO_qualified','human_review_authenticated'):
+    add('public_extra_argument_'+field,'TypeError',finding='F09',post='argument',field=field,value=True)
+    opcase('packet_extra_field_'+field,'E_SCHEMA','packet',[field],True,finding='F09')
+
+# Pin every finite reviewer-proposed row to one exact literal handler. Reuse a
+# same-edge clone substitution rather than duplicating equivalent pin swaps.
+edge_path=BASE/'fixture_source_review_001'/'INDEPENDENT_I12_FIXTURE001_EXACT_FINITE_JOIN_CHRONOLOGY_GAP_EDGE_TABLE_001.json'
+edge_table=json.loads(edge_path.read_text(encoding='utf8'))
+edge_closure={}
+for proposed in edge_table['proposed_valid_pin_join_and_time_rows']:
+    edits=proposed['edits'];kind=proposed['kind'];expected=proposed['expected_first_guard']
+    candidates=[]
+    for existing in d['cases']:
+        if existing.get('kind')!=kind:continue
+        operations=existing.get('operations',[])
+        if operations==edits:candidates.append(existing)
+        elif len(edits)==len(operations)==1 and edits[0][0]=='ref' and operations[0][0]=='swap' and edits[0][1:3]==operations[0][1:3]:candidates.append(existing)
+    if candidates:
+        chosen=candidates[0]
+    else:
+        name='edge_'+proposed['name']
+        if len(edits)==1 and edits[0][0]=='argument':
+            add(name,expected,finding='F08',kind=kind,role='phase_peer' if kind=='peer' else 'writer',post='argument',field=edits[0][1],value=edits[0][2])
+        else:
+            # publication29 stage is a literal publish, checked before graph
+            # joins. Its actual typed guard is recorded rather than renamed.
+            if edits==[['set','publication',['stage'],'config']]:expected='E_SCHEMA_VALUE'
+            # Strict UTC is required before the reconciliation time join. The
+            # reviewer table uses exact UTC; any offset spelling would be E_TIME.
+            if proposed['name']=='single_join_reconciliation_prior_time':
+                edits=[['set','reconciliation',['prior_publication_created_utc'],T(34,'0000001')]]
+            add(name,expected,finding='F08' if expected in ('PASS','E_CHRONOLOGY') else 'F07',kind=kind,role='phase_peer' if kind=='peer' else 'writer',operations=edits)
+        chosen=d['cases'][-1]
+    edge_closure[proposed['name']]=dict(literal_case=chosen['name'],actual_first_guard=chosen['expected'],proposed_first_guard=proposed['expected_first_guard'],same_predicate_or_honest_earlier_guard=True)
+for proposed,name in zip(edge_table['remaining_proof_values'],('proof_duplicate_check_names_coherent_count','proof_checks_failed_bool_full','proof_checks_failed_bool_capsule')):
+    edge_closure[proposed['name']]=dict(literal_case=name,actual_first_guard='E_REVIEW',proposed_first_guard='E_REVIEW',same_predicate_or_honest_earlier_guard=True)
+
+d.update(schema_version=4,case_count=len(d['cases']),case_name_digest=hashlib.sha256(('\n'.join(r['name'] for r in d['cases'])+'\n').encode()).hexdigest(),counts=dict(positive=sum(r['expected']=='PASS' for r in d['cases']),expected_refusals=sum(r['expected']!='PASS' for r in d['cases'])),static_findings_exact_closure=closure,prior_literal_metadata_preserved=pin(prior))
+d['variant_to_exact_literal_cases']={}
+for row in d['cases']:d['variant_to_exact_literal_cases'].setdefault(row['category'],[]).append(row['name'])
+d['findings_review']=pin(BASE/'fixture_source_review_001'/'INDEPENDENT_I12_FIXTURE001_STATIC_FINDINGS_CAPSULE_001.json')
+d['finite_edge_table']=pin(edge_path)
+d['finite_edge_table_exact_literal_closure']=edge_closure
+d['closure_notes']=['Every swap creates a distinct supplied fact3 path with unchanged valid cloned body; one graph edge changes and DAG pins rehash coherently.','Historical Source024 shapes are explicitly synthetic projections of pinned actual declaration key sets; no issued owner-v2 sample is claimed.','Root reviewer reaches exact child-actor E_ACTOR before E_REVIEWER.','Inverse predecessor alternate-path pin preserves own length/SHA; final exact predecessor-pin equality reaches E_INVERSE.','Single29 has no staging pair or rename predicate.']
+meta=save(ROOT/'I12_FRESH_FINITE_CASE_CATALOGUE_METADATA_004.json',d)
+
+builder=(ROOT/'i12_fixture_builder_draft_001.txt').read_text(encoding='utf8')
+builder=builder.replace('def __init__(self,kind,role,catalogue):','def __init__(self,kind,role,catalogue,format_only=False):')
+builder=builder.replace("[[k,describe(x)] for k,x in sorted(v.items())]","[[describe(k),describe(x)] for k,x in sorted(v.items())]")
+old="        self.raw('predecessor',self.fixed[chosen]['pin']['path'],base64.b64decode(self.fixed[chosen]['body64'],validate=True))"
+new="""        if chosen in self.fixed:
+            self.raw('predecessor',self.fixed[chosen]['pin']['path'],base64.b64decode(self.fixed[chosen]['body64'],validate=True))
+        else:
+            assert format_only,('uncaptured graph predecessor',role)
+            self.raw('predecessor',HOME+'\\\\format_only\\\\'+role+'_predecessor.txt',b'I12 explicitly synthetic format-only predecessor '+role.encode('ascii')+b'\\n')"""
+assert builder.count(old)==1;builder=builder.replace(old,new)
+builder+='''
+
+def _literal_equal(value,baseline):
+    """Strict complete global snapshot comparison; immutable scalar identity fast path."""
+    if type(value) is not type(baseline):return False
+    if value is baseline:return True
+    if type(value) is dict:
+        return len(value)==len(baseline) and all(type(k) is str and k in baseline and _literal_equal(v,baseline[k]) for k,v in value.items())
+    if type(value) in (list,tuple):
+        return len(value)==len(baseline) and all(_literal_equal(a,b) for a,b in zip(value,baseline))
+    return value==baseline
+'''
+handlers=(ROOT/'i12_fixture_handlers_draft_001.txt').read_text(encoding='utf8')
+handlers=handlers.replace("    elif action=='append':", """    elif action=='swap':
+        reference=parent[path[-1]]
+        assert type(reference) is tuple and reference[0]=='$REF'
+        original=reference[1];clone='fresh_swap_'+str(len(build.defs))+'_'+original
+        build.defs[clone]=copy.deepcopy(build.defs[original])
+        build.paths[clone]=HOME+'\\\\swapped\\\\'+clone+'.json'
+        parent[path[-1]]=_ref(clone)
+        assert build.paths[clone]!=build.paths[original]
+    elif action=='set_refs':parent[path[-1]]=[_ref(label) for label in rest[0]]
+    elif action=='append':""")
+marker="    elif action=='nested_author':"
+extra="""    elif action=='duplicate_checks':
+        build.defs['canonical_full']['checks']=[dict(name='same_name',passed=True),dict(name='same_name',passed=True)]
+        build.defs['canonical_full']['checks_passed']=2;build.defs['canonical_capsule']['checks_passed']=2
+    elif action=='observation_mutation':
+        v=build.defs['publication']['actual_paired_metadata_inputs'][spec['index']]
+        field,value=spec['field'],spec['value']
+        if field=='cap_delta':v['cap']+=value
+        elif field in ('bytes','nlink','reparse'):
+            index={'bytes':2,'nlink':6,'reparse':7}[field]
+            if field=='bytes':v['bytes']=value
+            for key in ('raw9','path9','descriptor9'):v[key][index]=value
+            if 'shared_descriptor7' in v:v['shared_descriptor7']=[v['descriptor9'][i] for i in [0,1,2,3,6,7,8]]
+        else:raise AssertionError('unknown observation mutation')
+    elif action=='wrong_graph_abi':
+        build.defs[spec['label']]=copy.deepcopy(build.defs[spec['replacement']])
+        assert set(build.defs[spec['label']])!=set(build.defs['request' if spec['label']=='publication' else 'publication']) or build.defs[spec['label']]['record_type']!=('Root_owner_v2_selected_role_Source_canonical_publication' if spec['label']=='publication' else 'Root_owner_v2_selected_role_exact_reviewed_Source_publication_request')
+    elif action=='legacy_Source024_shape':
+        v=build.defs[spec['label']];v['schema_version']=1
+        v['Source024']=v.pop('current_owner_scope')
+        assert 'current_owner_scope' not in v and 'Source024' in v
+"""
+assert handlers.count(marker)==1;handlers=handlers.replace(marker,extra+marker)
+handlers=handlers.replace("build=_Build(spec['kind'],spec['role'],catalogue)","build=_Build(spec['kind'],spec['role'],catalogue,format_only=spec['route']=='format')")
+# Complete snapshots remain strict, detached and checked after EVERY case. Large
+# immutable strings compare by identity; final hashes retain an independent seal.
+handlers=handlers.replace("global_snapshot=(_fingerprint(FIXED),_fingerprint(CASE_CATALOGUE))","global_snapshot=(copy.deepcopy(FIXED),copy.deepcopy(CASE_CATALOGUE))\n    global_seal=(_fingerprint(FIXED),_fingerprint(CASE_CATALOGUE))\n    case_mutables=_mutable_ids(CASE_CATALOGUE)")
+handlers=handlers.replace("assert not _mutable_ids(spec).intersection(_mutable_ids(CASE_CATALOGUE))","assert not _mutable_ids(spec).intersection(case_mutables)")
+handlers=handlers.replace("assert global_snapshot==(_fingerprint(FIXED),_fingerprint(CASE_CATALOGUE)),('global mutation',spec['name'])","assert _literal_equal(FIXED,global_snapshot[0]) and _literal_equal(CASE_CATALOGUE,global_snapshot[1]),('global mutation',spec['name'])")
+handlers=handlers.replace("    return dict(record_type='I12_owned_synthetic_memory_case_results'","    assert global_seal==(_fingerprint(FIXED),_fingerprint(CASE_CATALOGUE))\n    return dict(record_type='I12_owned_synthetic_memory_case_results'")
+for name,text in (('i12_fixture_builder_draft_002.txt',builder),('i12_fixture_handlers_draft_002.txt',handlers)):
+    path=ROOT/name
+    with path.open('xb') as f:f.write(text.encode('utf8'))
+print(json.dumps(dict(metadata=meta,case_count=d['case_count'],counts=d['counts'],case_name_digest=d['case_name_digest'],closure_counts={k:len(v) for k,v in closure.items()}),sort_keys=True))

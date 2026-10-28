@@ -1,0 +1,59 @@
+"""Own pre-freeze Source editing/AST metadata author; target never imported/called."""
+import ast
+import hashlib
+import json
+from pathlib import Path
+ROOT=Path(__file__).parent
+BASE=ROOT/'receipt_caller_integration_015'
+SRC=BASE/'i12'
+catalogue=json.loads((BASE/'I12_EXACT_RECEIPT_FORMAT_SCHEMA_AND_FIXED_DATA_CATALOGUE_002.json').read_text(encoding='utf8'))
+companion=json.loads((BASE/'I12_EXACT_PACKET_RESULT_ACTOR_AND_REFERENCE_TYPE_CLOSURE_COMPANION_001.json').read_text(encoding='utf8'))
+types=tuple(sorted({t for s in catalogue['schemas'].values() for t in s['fields'].values()}))
+globals_text='\nKNOWN_TYPE_DESCRIPTORS = '+repr(types)+'\nSINGLE_UNWIRED = '+repr(tuple(companion['result_constants']['single_unwired_obligations']))+'\nPEER_UNWIRED = '+repr(tuple(companion['result_constants']['peer_unwired_obligations']))+'\n'
+extra='''    if typ in ('builtin_int0','builtin_int75'):
+        _need(type(value) is int and value==(0 if typ=='builtin_int0' else 75), 'E_SCHEMA_VALUE'); return
+    if typ.startswith('nonnegative_builtin_int<='):
+        _need(type(value) is int and 0<=value<=int(typ.split('<=')[1]), 'E_SCHEMA_VALUE'); return
+    if typ == 'builtin_bool equal role==phase_peer':
+        _need(type(value) is bool and value==(context['role']=='phase_peer'), 'E_SCHEMA_VALUE'); return
+    if typ == 'exact ordered list from companion by result kind':
+        expected=list(PEER_UNWIRED if context['record_type']=='I12_selected_peer_author_receipt_metadata_view' else SINGLE_UNWIRED)
+        _need(_same(value,expected), 'E_SCHEMA_VALUE'); return
+'''
+observation='''    if name in ('recorded_observation12','fixed_spent_observation10'):
+        for key in ('raw9','path9','descriptor9'):
+            _need(len(value[key])==9, 'E_OBSERVATION')
+        a,b=value['path9'],value['descriptor9']
+        _need(value['raw9']==a and a[2]==b[2]==value['bytes'] and a[6]==b[6]==1 and a[5]&0o170000==b[5]&0o170000==0o100000 and not(a[7]&0x400 or b[7]&0x400) and all(a[i]==b[i] for i in catalogue['ordinary_observation_shared7']), 'E_OBSERVATION')
+        if name=='recorded_observation12':
+            _pin({k:value[k] for k in ('path','bytes','sha256')},value['cap'])
+            _need(value['shared_identity_indexes']==catalogue['ordinary_observation_shared7'] and value['shared_descriptor7']==[b[i] for i in catalogue['ordinary_observation_shared7']], 'E_OBSERVATION')
+        else:
+            fixed={p['path']:p for p in catalogue['spent_pin75']}
+            archive={p['path'] for p in catalogue['archival_spent2']}
+            _need(value['path'] in fixed, 'E_SPENT_IDENTITY')
+            pin=fixed[value['path']]
+            _need(value['bytes']==pin['bytes'] and value['sha256']==pin['sha256'] and value['cap']==(4194304 if value['path'] in archive else CAP), 'E_SPENT_IDENTITY')
+'''
+history=BASE/'pre_freeze_draft_history_001'
+history.mkdir(exist_ok=True)
+rows=[]
+for name in ('receipt_contract_formats_001.py','validate_generic_single_receipt_metadata_001.py','validate_selected_peer_receipt_metadata_001.py'):
+    path=SRC/name;old=path.read_bytes()
+    with (history/(name+'.draft')).open('xb') as f:f.write(old)
+    text=old.decode('utf8')
+    text=text.replace('\n\nclass I12Error',globals_text+'\n\nclass I12Error',1)
+    text=text.replace('    if typ in catalogue[\'schemas\']:',"    _need(type(typ) is str and typ in KNOWN_TYPE_DESCRIPTORS, 'E_UNSUPPORTED_FIELD_TYPE')\n    if typ in catalogue['schemas']:",1)
+    text=text.replace("    raise I12Error('E_UNSUPPORTED_FIELD_TYPE')",extra+"    raise I12Error('E_UNSUPPORTED_FIELD_TYPE')",1)
+    marker="        _typed(value[key],typ,catalogue,value)\n    return value"
+    assert marker in text
+    text=text.replace(marker,"        _typed(value[key],typ,catalogue,value)\n"+observation+"    return value",1)
+    if name!='receipt_contract_formats_001.py':
+        text=text.replace("        _closed(value,self.c['schemas'][self.c['result_schema_names']['peer' if peer else 'single']]['fields'],'E_RESULT_SCHEMA')", "        _schema(value,self.c['result_schema_names']['peer' if peer else 'single'],self.c)")
+    raw=text.encode('utf8');assert len(raw)<=65536
+    ast.parse(raw);compile(raw,str(path),'exec',dont_inherit=True)
+    path.write_bytes(raw)
+    rows.append(dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest(),old_saved=dict(path=str(history/(name+'.draft')),bytes=len(old),sha256=hashlib.sha256(old).hexdigest())))
+out=ROOT/'I12_PRE_FREEZE_SOURCE_EDIT_READBACK_001.json'
+with out.open('xb') as f:f.write((json.dumps(dict(record_type='I12_own_pre_freeze_Source_refinement_readback',author='/root/i2_resume_gap',rows=rows,target_imports=0,target_calls=0,tests_executed=False),sort_keys=True,indent=2)+'\n').encode())
+print(json.dumps(rows,sort_keys=True))

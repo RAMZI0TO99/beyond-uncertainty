@@ -1,0 +1,221 @@
+"""Own documentation byte preparation only; never imports project programs."""
+from pathlib import Path
+import datetime as dt
+import hashlib
+import json
+import os
+import stat
+import subprocess
+
+ROOT = Path('D:/Aenv/pro2')
+REPO = ROOT / 'github-portable-20261012-001'
+OUT = ROOT / 'WORK/docs-publication-20261028-001'
+CAND = OUT / 'candidate'
+BASE = 'docs/development/checkpoint-20261028'
+LIMIT = 2 * 1024 * 1024
+
+def read(p):
+    s = p.lstat()
+    assert stat.S_ISREG(s.st_mode) and not p.is_symlink(), str(p)
+    assert s.st_size <= LIMIT, ('file bound', str(p), s.st_size)
+    b = p.read_bytes()
+    assert len(b) == s.st_size and p.read_bytes() == b, ('content changed', str(p))
+    return b
+
+def pin(b):
+    return {'bytes': len(b), 'sha256': hashlib.sha256(b).hexdigest()}
+
+def write(p, b):
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open('xb') as f:
+        f.write(b)
+        f.flush()
+        os.fsync(f.fileno())
+    assert p.read_bytes() == b
+
+def js(v):
+    return (json.dumps(v, indent=2, sort_keys=True, ensure_ascii=True) + '\n').encode()
+
+def git(*args):
+    return subprocess.check_output(['git', '-C', str(REPO), *args])
+
+assert not CAND.exists(), 'fresh candidate only'
+now = dt.datetime.now(dt.timezone.utc)
+scope = {'record_type':'documentation_and_Git_publication_only', 'author':'/root',
+    'user_request':'push to the repo after you update the docs and the handoff',
+    'created_utc':now.isoformat(), 'end_utc':(now+dt.timedelta(hours=2)).isoformat(),
+    'reserve_seconds':60, 'Root_max_agents':3, 'peer_reserved':2, 'shared_max':5,
+    'scope':'Prepare and independently review additive documentation and inert saved-evidence copies, verify exact bytes, commit and normal fast-forward push to existing origin/main.',
+    'old_Source_windows_extended':False, 'Source015_adopted':False,
+    'subject_execution_or_test_or_capture_or_native_or_science_authorized':False,
+    'metadata_method':'Ordinary content reads and exact byte-copy/readback only. No native metadata stability, physical custody, Source015 guard repair or host-quiet qualification.'}
+write(OUT/'PUBLICATION_SCOPE.json',js(scope))
+status = git('status','--porcelain=v1','-z','--untracked-files=all').split(b'\0')
+baseline=[]
+for entry in status:
+    if not entry: continue
+    rel=entry[3:].decode('utf-8')
+    baseline.append({'status':entry[:2].decode(), 'path':rel, **pin(read(REPO/rel))})
+assert len(baseline)==409, ('unexpected prior status',len(baseline))
+assert not git('diff','--cached','--name-only').strip(), 'existing staged work'
+write(OUT/'BEFORE.json',js({'head':git('rev-parse','HEAD').decode().strip(), 'existing_changes':baseline}))
+
+sources=[]
+trees=['resume-20261025-003','resume-20261027-001','resume-20261027-002','resume-20261027-003','resume-20261027-004','resume-20261028-001']
+for tree in trees:
+    folder=ROOT/'WORK'/tree
+    for p in sorted(folder.rglob('*')):
+        assert not p.is_symlink(), str(p)
+        if p.is_file(): sources.append(p)
+extra=[
+ 'resume-20261025-001/ROOT_MANAGED146_ACTUAL_CREATION_DIFFERENT_REVIEW_FINAL_ADOPTION_001.json',
+ 'resume-20261025-001/publication_review_001/INDEPENDENT_ACTUAL_MANAGED146_CREATION_CAPSULE_001.json',
+ 'resume-20261025-001/publication_review_001/INDEPENDENT_ACTUAL_MANAGED146_CREATION_FULL_PROOF_001.json',
+ 'resume-20261025-002/ROOT_I12_MANAGED260_ACTUAL_CREATION_DIFFERENT_REVIEW_FINAL_ADOPTION_001.json',
+ 'resume-20261025-002/final_actual_creation_review_001/INDEPENDENT_I12_SAVED_ACTUAL_CREATION_CAPSULE_001.json',
+ 'resume-20261025-002/final_actual_creation_review_001/INDEPENDENT_I12_SAVED_ACTUAL_CREATION_FULL_PROOF_001.json',
+ 'resume-20261025-002/publication_001/ROOT_I12_ACTUAL_MANAGED_CREATION_RECEIPT_001.json']
+sources += [ROOT/'WORK'/p for p in extra]
+adoption=json.loads(read(ROOT/'WORK/resume-20261028-001/ROOT_BOOTSTRAP004_ACTUAL_FAILURE_REVIEW_ADOPTION_AND_NATIVE_REQUEST_HOLD_001.json'))
+external=[row for row in adoption['all_saved_input_F3'] if row['path'].lower().startswith('d:\\aenv\\pro3\\')]
+assert len(external)==15, len(external)
+for row in external:
+    p=Path(row['path']); assert pin(read(p))=={k:row[k] for k in ('bytes','sha256')}
+    sources.append(p)
+sources=sorted(set(sources),key=lambda p:str(p).casefold())
+rows=[]
+for p in sources:
+    b=read(p); f3=pin(b)
+    suffix=p.suffix.lower()
+    if suffix in ('.py','.ps1','.bat','.cmd','.sh','.exe','.dll','.pyc'): suffix += '.source'
+    elif suffix not in ('.json','.txt','.md','.source','.log','.patch','.diff'): suffix = '.bin.source'
+    rel=f"{BASE}/evidence/blobs/{f3['sha256']}{suffix}"
+    target=CAND/rel
+    if not target.exists(): write(target,b)
+    else: assert read(target)==b
+    rows.append({'original_path':str(p), 'archive_path':rel, **f3})
+parts=[]
+for n,start in enumerate(range(0,len(rows),384),1):
+    chunk=rows[start:start+384]
+    assert sum(x['bytes'] for x in chunk)<=64*1024*1024
+    rel=f'{BASE}/evidence/part-{n:03}.json'
+    b=js({'record_type':'inert_exact_saved_file_content_index','part':n,'files':chunk,'execution_authority':False})
+    assert len(b)<=LIMIT
+    write(CAND/rel,b);parts.append({'path':rel,**pin(b),'file_count':len(chunk),'logical_bytes':sum(x['bytes'] for x in chunk)})
+index={'record_type':'October28_documentation_saved_evidence_index','created_utc':now.isoformat(),
+    'complete_selected_work_trees':trees,'source_file_count':len(rows),'source_logical_bytes':sum(x['bytes'] for x in rows),
+    'parts':parts,'external_Pro3_bootstrap004_files':15,
+    'scope':'Exact ordinary file content from the six named trees, seven prior managed-creation closeout records and fifteen pinned external bootstrap004 files. This is not a complete transitive dependency closure or a replacement STEP080 restore archive. Empty directories and filesystem identities are not reproduced.',
+    'programs_inert':True,'execution_authority':False,'old_embedded_paths_and_status_fields_unchanged':True,
+    'Source005_packet_included_or_Root_qualified':False}
+write(CAND/BASE/'evidence-index.json',js(index))
+
+aliases={
+ 'i11-managed-creation-adoption.json':ROOT/'WORK'/extra[0],
+ 'i12-managed-creation-adoption.json':ROOT/'WORK'/extra[3],
+ 'i13-progress-ledger002.json':ROOT/'WORK/resume-20261025-003/ROOT_I13_CURRENT_RECEIPT_CONTRACT_PROGRESS_LEDGER_002.json',
+ 'i13-handoff003.json':ROOT/'WORK/resume-20261025-003/ROOT_I13_CURRENT_CAUSAL_RECEIPT_DESIGN_AND_EVIDENCE_HANDOFF_003.json',
+ 'retention-handoff005.json':ROOT/'WORK/resume-20261027-002/ROOT_I13_CURRENT_RETENTION_EXPORTER_API_SUPERVISOR_SOURCE_QUALIFICATION_HANDOFF_005.json',
+ 'capture-handoff006.json':ROOT/'WORK/resume-20261027-003/ROOT_I13_CURRENT_CAPTURE_PROTOCOL_AND_EXACT_REQUEST_HANDOFF_006.json',
+ 'capture-handoff006-creation-adoption.json':ROOT/'WORK/resume-20261027-003/ROOT_I13_HANDOFF006_DIFFERENT_CREATION_REVIEW_ADOPTION_001.json',
+ 'bootstrap004-failure-adoption.json':ROOT/'WORK/resume-20261028-001/ROOT_BOOTSTRAP004_ACTUAL_FAILURE_REVIEW_ADOPTION_AND_NATIVE_REQUEST_HOLD_001.json',
+ 'bootstrap004-failure-handoff.json':ROOT/'WORK/resume-20261028-001/ROOT_CURRENT_BOOTSTRAP004_FAILURE_AND_NATIVE_REQUEST_HELD_HANDOFF_001.json',
+ 'source015-unadopted-disposition.json':ROOT/'WORK/resume-20261028-001/Source015_coexistence_001/ROOT_SOURCE015_PROPOSAL_UNADOPTED_AND_PHASE_COMPLETED_DISPOSITION_001.json'}
+for name,p in aliases.items(): write(CAND/BASE/'records'/name,read(p))
+
+report='''# Current checkpoint - October 28, 2026
+
+The current work is engineering qualification and evidence retention. Capture and all project execution gates remain held. This documentation publication creates no operational admission, family publication or new frozen checkpoint; STEP080 remains the last completed frozen checkpoint.
+
+## Accepted work and its limits
+
+| Work | Saved evidence | Remaining boundary |
+| --- | --- | --- |
+| Verifier and evidence workspace | The verifier accepts an explicitly pinned additive PROJECT_STATE prefix while verifying the complete frozen suffix. Saved engineering tests: 36 passed, two existing privilege skips. Workspace verification: 129,915 files and 740 canonical files. | Content verification does not recreate native identities or grant execution. |
+| I11 receipt contract | 664 synthetic metadata cases: 22 positive and 642 expected refusals. | Complete I2 external receipt ABI remains unqualified. |
+| I12 formats and caller | 1,089 synthetic metadata cases: 177 positive and 912 expected refusals. Caller003 and I2_006 Source reviewed. | Those held callers remain unrun; component results are not full integration. |
+| I13 M3 producer/publisher and canonical peers | Reviewed Source, retained refusals, partial causal receipt design and bounded evidence work. Current 936-case group: 32 complete, comprising 20 PASS and 12 E_NODE_BUDGET failures; 904 unestablished. | Eleven compact-ABI blockers remain. Do not report 936 passed or a completed full-family workflow. |
+| Raw-input retention | Contract review: 175 static checks. Exporter016/API001/supervisor003/child002: 255 static checks. Capture protocol002/request002: 130 static checks. | Source/design qualification only. Capture request is REQUEST_ONLY; activation and operational admission are unissued. |
+| Bootstrap004 | Saved refusal evidence independently reviewed and Root-adopted. | Actual result FAILED_UNRELEASED_CONSUMED; native preparation request not prepared. |
+| Source005 / Source015 | Pro3 reports Source005 diagnostics/review completed before the Source014 cutoff. Source015 proposal closed unadopted. | Root has not qualified Source005; it is not launch-ready. No custody-resolution contract is accepted. |
+
+These counts describe separate layers and must not be summed into coverage. No test or project subject is rerun by this documentation checkpoint. The saved I11/I12 package creation adoptions close their earlier pending-creation wording: [I11](records/i11-managed-creation-adoption.json), [I12](records/i12-managed-creation-adoption.json). Historical committed:false and pushed:false fields remain exact dated records; Git history records this later publication.
+
+## Read the current records
+
+1. [I13 progress ledger](records/i13-progress-ledger002.json) and [partial causal design handoff003](records/i13-handoff003.json).
+2. [Retention exporter/API/supervisor handoff005](records/retention-handoff005.json).
+3. [Capture protocol/request handoff006](records/capture-handoff006.json) and its [later creation adoption](records/capture-handoff006-creation-adoption.json). The latter closes creation_review_pending in the unchanged earlier handoff; 635 checks passed, zero failed.
+4. [Bootstrap004 actual failure adoption](records/bootstrap004-failure-adoption.json) and [failure handoff](records/bootstrap004-failure-handoff.json).
+5. [Source015 unadopted disposition](records/source015-unadopted-disposition.json).
+
+The [evidence index](evidence-index.json) maps original absolute paths and exact byte/hash pins to portable inert copies. Its bounded part indexes contain the complete six selected I13/later WORK trees, the earlier managed-creation closeouts and the fifteen external Pro3 files pinned by the actual bootstrap004 adoption. This is ordinary content portability, not a complete transitive dependency closure, filesystem-identity reconstruction or automatic executable restore. Archived programs have inert suffixes. Source005 itself is not packaged or qualified by Root.
+
+## Failure and scope state
+
+Bootstrap004 Invoke exited1 with "Unexpected descendant; no authority to kill it". Begin/Complete/Release metadata exits0 do not override operation_succeeded=false, child_reaped=false, custody_closed=false and operation_released=false. No accepted success manifest or D01 payload exists. The identity is consumed and must not be replayed. The rejected process row, guard call ordinal and secondary cleanup failure were not saved; no harmless-process assumption, guessed PID kill or later absence report closes those gaps.
+
+Source014 ended October28 at 12:30 Riyadh (09:30 UTC), with its effect cutoff at 12:29 Riyadh. Source015 was never adopted. Its first adoption and separate decision preflight refused metadata-read guards; no second adopter invocation occurred. Later samples showed path/descriptor ctime differences, but they do not establish the cause of the original refusals. All original guards, failed evidence and unknowns remain preserved. Neither scope grants current authority. Root Source013 was limited to saved-failure metadata closeout, ending October28 at 13:00 Riyadh (10:00 UTC); it grants no new Source005 qualification or execution.
+
+The user's current instruction authorizes this documentation and normal Git publication only. It does not adopt Source015, renew old Source windows, repair the original metadata guard, qualify Source005 or open capture/execution gates.
+
+## Next work
+
+1. Refresh actual checkout/remote state and establish a fresh finite Source-only review scope. Address the metadata-reader mismatch with a separately reviewed design; do not weaken or silently normalize old guards.
+2. Independently review Source005's exact diagnostics and saved review packet. Its reported completion is not Root acceptance.
+3. Prepare and independently review a contract defining process ownership, permitted cleanup and evidence of successful custody/release. A new ordinary grant alone cannot make Source005 launch-ready; a reviewed launch-ready successor is required.
+4. Only after those prerequisites and a separate exact admission may an unused bootstrap identity be considered. Accepted actual bootstrap evidence is required before preparing the native request. Never replay004.
+
+The raw-input retention branch also retains its own prerequisites: reviewed activated supervisor/child and external caller successors, exact native/prelaunch witness formats and qualification joins, then separately admitted current observations and a fresh 33-key admission. The existing three-key request payload is not that admission. Six planned graphs contain 973 logical records and 17,399,459 raw bytes, partitioned into 23 planned captures; these are saved planning measurements, not captures performed here.
+
+## Preserved boundaries
+
+No actual family publication, Native8, Parser, actual6, runtime, capture, training, numerical or scientific authority is created. Frozen STEP080 remains35/45, and the later dated Source inventory remains36/45 with nine pending; neither is a completion percentage or a new inventory. All75 spent identities, refusals and unknown timeouts remain immutable. Standing science remains the dated150 fits/270 models (149 synced, one local-only) and111 untouched cases, without recount. Native013/D161/twins/epoch and DELTA86 withheld at400 lines are unchanged.
+
+Retain Unit006,3600 retained/1200 admission/600 context-runtime seconds, both90-second ages, resource60/RAM1GiB/disk10GiB,131072-byte model Source caps,510=450+after60 and one successful-unit-terminal-plus60 shared by all four after phases; Native Parser120/110/10/5 remains unchanged. Source work retains Root3/peer2/shared5 including overlap and a strict60-second publication reserve. FIT means Source/data assembly, not model training or accuracy.
+'''
+write(CAND/BASE/'CURRENT_CHECKPOINT.md',report.encode())
+navigation={'record_type':'current_documentation_navigation','date':'2026-10-28',
+    'current_report':BASE+'/CURRENT_CHECKPOINT.md','evidence_index':BASE+'/evidence-index.json',
+    'frozen_checkpoint':'STEP080','new_frozen_checkpoint':False,
+    'bootstrap004':'FAILED_UNRELEASED_CONSUMED','Source005_Root_qualified':False,'Source005_launch_ready':False,
+    'Source015_adopted':False,'capture_and_project_execution_gates_held':True,
+    'next':'Fresh Source-only scope; metadata-reader design review; independent Source005 review; custody-resolution contract; distinct successor and later exact admission only after acceptance.',
+    'publication_authority':'Current explicit human docs/handoff update and push request; old evidence flags stay unchanged.'}
+write(CAND/'CONTINUE_CURRENT_20261028.json',js(navigation))
+
+doc_paths=['HANDOFF.md','CONTINUE.md','AGENTS.md','README.md','PROJECT_STATE.md','docs/PROJECT_GAPS.md','docs/where are we/01-project-status.md','docs/where are we/02-progress-and-lessons.md']
+preservation=[]
+for rel in doc_paths:
+    old=read(REPO/rel)
+    relative=os.path.relpath(REPO/BASE/'CURRENT_CHECKPOINT.md',(REPO/rel).parent).replace('\\','/')
+    prefix=f'''**Current documentation and handoff - October 28, 2026.** Read the [current checkpoint]({relative}) before the complete dated history below. I11 has664 and I12 has1,089 accepted synthetic metadata cases; the I13 group has32 complete (20 PASS/12 E_NODE_BUDGET), with904 unestablished and11 compact-ABI blockers. Retention exporter/API/supervisor and capture protocol/request have Source/design acceptance only; capture remains held.
+
+Bootstrap004 is **FAILED_UNRELEASED_CONSUMED**. Its saved failure evidence is accepted; the operation and native preparation request are not. Source005 completion is peer-reported, not Root-qualified or launch-ready; Source015 was never adopted. Next: fresh Source-only review scope, reviewed metadata-reader correction, Source005 review and a process-custody/cleanup contract before any distinct successor or later exact admission. Never replay004. All capture, actual-family, Native8, Parser, runtime and science gates remain held. This documentation/Git publication does not create STEP081 or renew any expired scope. All complete earlier bytes follow unchanged.
+
+---
+
+'''.encode()
+    if rel=='HANDOFF.md':
+        prefix += f'''The working evidence root is `D:\\Aenv\\pro2`; the managed checkout is `D:\\Aenv\\pro2\\github-portable-20261012-001`. The portable [current navigator](CONTINUE_CURRENT_20261028.json) and [evidence index]({BASE}/evidence-index.json) supersede the dated next-step text below. Preserve historical embedded paths and resolve them through the indexes. The ignored `.continuation/` workspace is local; a clone receives indexed evidence copies, not local runtime bindings. Git history records the actual publication commit. No new project target/test/native/capture/science execution was performed for this checkpoint.
+
+---
+
+'''.encode()
+    new=prefix+old
+    write(CAND/rel,new)
+    preservation.append({'path':rel,'before':pin(old),'prefix_bytes':len(prefix),'after':pin(new),'old_bytes_preserved_as_complete_suffix':True})
+overlay=json.loads(read(REPO/'continuation/canonical-source-overlays.json'))
+row=overlay['overlays'][0]
+oldstate=read(REPO/'PROJECT_STATE.md');newstate=read(CAND/'PROJECT_STATE.md')
+assert pin(oldstate[row['prefix_bytes']:])=={'bytes':row['frozen_bytes'],'sha256':row['frozen_sha256']}
+row['prefix_bytes']+=len(newstate)-len(oldstate)
+row['current_bytes']=len(newstate);row['current_sha256']=pin(newstate)['sha256']
+assert pin(newstate[row['prefix_bytes']:])=={'bytes':row['frozen_bytes'],'sha256':row['frozen_sha256']}
+write(CAND/'continuation/canonical-source-overlays.json',js(overlay))
+write(CAND/BASE/'publication-scope.json',js(scope))
+write(CAND/BASE/'document-preservation.json',js({'files':preservation,'frozen_PROJECT_STATE_suffix_unchanged':True,'new_STEP081':False}))
+write(CAND/BASE/'prepare_checkpoint.py.source',read(Path(__file__)))
+files=[{'path':str(p.relative_to(CAND)).replace('\\','/'),**pin(read(p))} for p in sorted(CAND.rglob('*')) if p.is_file()]
+write(OUT/'CANDIDATE.json',js({'record_type':'reviewable_documentation_candidate','files':files,'source_evidence_records':len(rows),'source_logical_bytes':sum(x['bytes'] for x in rows),'prior_changes':409,'subject_execution':False}))
+print(json.dumps({'candidate_files':len(files),'source_evidence_records':len(rows),'logical_bytes':sum(x['bytes'] for x in rows),'end_utc':scope['end_utc']}))

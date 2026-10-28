@@ -1,0 +1,21 @@
+"""Retain captured actual parent tool return; no subject execution or retry."""
+import datetime as dt,hashlib,json,sys
+from pathlib import Path
+R=Path(__file__).parent;C=R/'m3_peer_contracts_016'
+def pin(p):
+ b=p.read_bytes();assert len(b)<=2097152
+ return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def load(p):return json.loads(p.read_bytes())
+assert len(sys.argv)==2;number=int(sys.argv[1]);assert 6<=number<=999
+o=C/('owned_memory_runs/attempt%03d'%number);tp=o/'ROOT_ACTUAL_PARENT_EXEC_TOOL_RETURN_001.json';tool=load(tp);console=json.loads(tool['output']);assert tool['Root_observed_tool_exit_code']in(0,1)
+rp=o/'SUPERVISOR_RESULT_001.json';s=load(rp);assert console['supervisor_result']==pin(rp)
+scopep=C/('ROOT_I13_ONCE_SYNTHETIC_MEMORY_SCOPE_%03d.json'%number);sc=load(scopep);assert s['scope']==pin(scopep)
+plan=load(Path(sc['partition_plan']['path']));row=next(x for x in plan['partitions']if x['partition_id']==sc['partition_id'])
+events=[json.loads(x)for x in Path(sc['outputs']['stdout']).read_text(encoding='utf8').splitlines()if x];cases=[x for x in events if x.get('event')in('CASE_PASS','CASE_FAIL')]
+assert [x['name']for x in cases]==row['case_names'][:len(cases)]and len(cases)<=row['case_count']
+pp=o/'PARENT_TOOL_STDOUT_RETAINED_001.txt'
+with pp.open('xb')as h:h.write(tool['output'].encode())
+v=dict(schema_version=1,record_type='Root_I13_bounded_once_retained_actual_parent_tool_console_and_exit_witness',author='/root',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),actual_parent_tool_return=pin(tp),Root_observed_tool_exit_code=tool['Root_observed_tool_exit_code'],retained_parent_console=pin(pp),retained_console_value=console,supervisor_result=pin(rp),supervisor=sc['supervisor'],scope=pin(scopep),scope_invocations_consumed=1,partition_id=sc['partition_id'],partition_cases=row['case_count'],completed_case_events=len(cases),known_pass_events=sum(x['event']=='CASE_PASS'for x in cases),known_fail_events=sum(x['event']=='CASE_FAIL'for x in cases),case_outcomes_not_established=row['case_count']-len(cases),child_result_absent=s['child_result_absent'],Root_partition_acceptance=console['accepted'],Root_whole936_suite_acceptance=False,claim_reuse_permitted=False,no_rerun_performed=True,operational_authority=False,scientific_authority=False,target_execution=False,actual_family_publication=False,physical_host_or_PID_absence_proved=False)
+q=C/('ROOT_I13_ONCE%03d_PARENT_TOOL_CONSOLE_AND_EXIT_WITNESS_001.json'%number)
+with q.open('xb')as h:h.write((json.dumps(v,sort_keys=True,indent=2)+'\n').encode())
+print(json.dumps(dict(witness=pin(q),partition_id=sc['partition_id'],recorded_parent_acceptance=console['accepted'],recorded_refusal=console['refusal'],suite_rerun=False)))

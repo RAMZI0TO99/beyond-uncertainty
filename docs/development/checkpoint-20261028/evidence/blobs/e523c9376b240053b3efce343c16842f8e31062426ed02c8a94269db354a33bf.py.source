@@ -1,0 +1,47 @@
+"""Own narrow metadata successor only; no subject or builder is invoked."""
+from pathlib import Path
+import ast,base64,datetime,hashlib,json,os
+R=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003');C=R/'m3_peer_contracts_016';T=C/'i13';A=C/'m3_protocol_audit_001'
+O=A/'input_node_readset_ledger_protocol_proposal_001'
+def sha(b):return hashlib.sha256(b).hexdigest()
+def pin(p,b=None):
+ p=Path(p);b=p.read_bytes()if b is None else b
+ return dict(path=str(p),bytes=len(b),sha256=sha(b))
+def wire(v):return(json.dumps(v,sort_keys=True,ensure_ascii=True,indent=2,allow_nan=False)+'\n').encode('ascii')
+def fresh():
+ now=datetime.datetime.now(datetime.timezone.utc)
+ assert(datetime.datetime.fromisoformat('2026-10-25T18:03:03.861408+00:00')-now).total_seconds()>60
+ return now.isoformat(timespec='microseconds')
+def save(p,b):
+ assert p.parent==O and not os.path.lexists(p)and type(b)is bytes and len(b)<=2097152
+ fresh()
+ with p.open('xb')as f:f.write(b);f.flush();os.fsync(f.fileno())
+ assert p.read_bytes()==b
+ return pin(p,b)
+beforep=O/'I13_PROPOSED_FIXED_M3_INPUT_NODE_AND_SOURCE_READSET_LEDGER_PROTOCOL_001.json'
+before=beforep.read_bytes();assert len(before)==66073 and sha(before)=='deb07af94e9f07c58dcfb4674a54b76426d9cff3b012f01d7bc3277ac53b5565'
+value=json.loads(before.decode('utf8'));prior_regions=list(value['reference_Source_sites']);assert len(prior_regions)==48
+source=T/'validate_selected_role_publisher_metadata_006.py';raw=source.read_bytes();assert len(raw)==65474 and sha(raw)=='7be450cf7233642a9f508f18e168e4262044c763e7b91ffa257ccf6933d948dd'
+tr=ast.parse(raw.decode('utf8'));names=('_lease_link','_publisher_code','_observe');new_regions=[];read_sites=[]
+for name in names:
+ rows=[n for n in tr.body if isinstance(n,ast.FunctionDef)and n.name==name];assert len(rows)==1;n=rows[0]
+ new_regions.append(dict(id='publisher:'+name,Source=pin(source,raw),symbol=name,line=n.lineno,end_line=n.end_lineno,AST_sha256=sha(ast.dump(n,include_attributes=False).encode('utf8'))))
+ for call in ast.walk(n):
+  if isinstance(call,ast.Call)and isinstance(call.func,ast.Attribute)and call.func.attr in('record','body','prime'):
+   read_sites.append(dict(symbol=name,line=call.lineno,operation=call.func.attr,expression=ast.unparse(call)))
+assert len(read_sites)==6
+assert not(set(x['id']for x in prior_regions)&set(x['id']for x in new_regions))
+value['reference_Source_sites']=prior_regions+new_regions
+assert len(value['reference_Source_sites'])==len({x['id']for x in value['reference_Source_sites']})==51
+recovered=dict(value);recovered['reference_Source_sites']=recovered['reference_Source_sites'][:-3]
+assert wire(recovered)==before
+afterp=O/'I13_PROPOSED_FIXED_M3_INPUT_NODE_AND_SOURCE_READSET_LEDGER_PROTOCOL_002.json';after=wire(value)
+reviewdir=R/'input_node_readset_ledger_protocol_different_Source_review_001'
+reviewpins=[]
+for expected in('f0f8cc396180f3361b5cc1b0c9f5769ecda0d3b51834fb958df1b11d23c5631f','50332cfe4adfea324475fb9717c28ff17ac91c984cd1d6fbed31e9aee3bf65e0'):
+ hits=[pin(p)for p in reviewdir.glob('*.json')if sha(p.read_bytes())==expected];assert len(hits)==1;reviewpins.extend(hits)
+af=save(afterp,after)
+receipt=dict(schema_version=2,record_type='I13_input_node_readset_ledger_protocol002_three_region_actual_metadata_successor',author='/root/project_architecture',created_utc=fresh(),author_Source=pin(Path(__file__)),Source_refusal_capsule=reviewpins[0],Source_refusal_full=reviewpins[1],before=pin(beforep,before),after=af,complete_predecessor_bytes_base64=base64.b64encode(before).decode('ascii'),inverse_instruction='Decode complete_predecessor_bytes_base64 strictly, verify before bytes/SHA. Independently removing final3 reference_Source_sites and canonical pretty serializing reconstructs the same exact whole001 bytes.',added_Source_regions=new_regions,added_consuming_read_sites=sorted(read_sites,key=lambda x:x['line']),previous48_Source_regions_exact=True,all_other_proposal_fields_and_values_exact=True,region_count_before=48,region_count_after=51,prior_genuine_positive_checks_retained=192,only_consolidated_finding_repaired=True,new_source_implementation_authored=False,builder_functions_called=False,kernel_functions_called=False,tests_executed=False,target_execution=False,operational_authority=False,scientific_authority=False,native_Parser_executed=False,actual_family_publication=False,full_original_I2_DAG_closed=False,authentic_loader_qualified=False,positive_fit_claimed=False,actual_target_guard_provenance_identified=False)
+rp=save(O/'I13_INPUT_NODE_READSET_LEDGER_PROTOCOL002_COMPLETE001_INVERSE_AND_METADATA_FREEZE_001.json',wire(receipt))
+assert beforep.read_bytes()==before and source.read_bytes()==raw
+print(json.dumps(dict(proposal=af,freeze=rp,added_regions=3,added_consuming_read_sites=6,subject_calls=0)))

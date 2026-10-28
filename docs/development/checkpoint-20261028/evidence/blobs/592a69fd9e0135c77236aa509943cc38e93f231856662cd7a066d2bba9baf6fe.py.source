@@ -1,0 +1,126 @@
+"""Bounded genuine publisher/fixture Source review; no subject evaluated."""
+import ast
+import base64
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+import zlib
+
+ROOT=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003');P=ROOT/'m3_peer_contracts_016';I=P/'i13';OUT=ROOT/'publisher_fixture_Source_review_001'
+REVIEWER='/root/i12_final_review';CHECKS=[]
+def sha(b):return hashlib.sha256(b).hexdigest()
+def fact(p):
+ b=Path(p).read_bytes();return dict(path=str(p),bytes=len(b),sha256=sha(b))
+def ck(n,v,e):
+ if any(x['name']==n for x in CHECKS):raise ValueError('duplicate check')
+ CHECKS.append(dict(name=n,passed=v is True,evidence=e))
+def pairs(items):
+ d={}
+ for k,v in items:
+  if k in d:raise ValueError('duplicate key')
+  d[k]=v
+ return d
+def bad(v):raise ValueError('number')
+def strict(b):
+ s=b.decode('utf-8','strict')
+ if s.startswith('\ufeff'):raise ValueError('BOM')
+ v=json.loads(s,object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+ def tree(x):
+  if type(x)is str:
+   if any(55296<=ord(c)<=57343 for c in x):raise ValueError('surrogate')
+  elif type(x)is dict:
+   for k,w in x.items():tree(k);tree(w)
+  elif type(x)is list:
+   for w in x:tree(w)
+  elif x is not None and type(x)not in(bool,int):raise ValueError('type')
+ tree(v);return v
+def pinread(pin,label):
+ b=Path(pin['path']).read_bytes();ck(label,fact(pin['path'])==pin,pin);return b
+def source(pin,label):
+ b=pinread(pin,label+'.whole_pin');s=b.decode('utf-8');t=ast.parse(s,filename=pin['path']);compile(t,pin['path'],'exec');ck(label+'.AST_compile_only',True,'No code object evaluated.');return b,s,t
+def defs(t):return {n.name:n for n in t.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+def method(t,c,n):return next(x for x in defs(t)[c].body if isinstance(x,ast.FunctionDef)and x.name==n)
+def txt(n):return ast.unparse(n)
+def lit(t,name):return ast.literal_eval(next(n.value for n in t.body if isinstance(n,ast.Assign)and any(isinstance(a,ast.Name)and a.id==name for a in n.targets)))
+def frag(n,label,items):
+ for k,v in items:ck(label+'.'+k,v in txt(n),v)
+def nodes(v):
+ if type(v)is dict:return 1+sum(nodes(k)+nodes(x)for k,x in v.items())
+ if type(v)is list:return 1+sum(nodes(x)for x in v)
+ return 1
+def encode_case(v):
+ if type(v)is bytes:return dict(AST_builtin_type='bytes',canonical_base64=base64.b64encode(v).decode('ascii'))
+ if type(v)is dict:return {k:encode_case(x)for k,x in v.items()}
+ if type(v)is list:return [encode_case(x)for x in v]
+ return v
+def save(p,v):
+ b=(json.dumps(v,sort_keys=True,indent=2,ensure_ascii=False,allow_nan=False)+'\n').encode('utf-8')
+ if len(b)>2097152:raise ValueError('cap')
+ with p.open('xb')as h:h.write(b)
+
+scope_pin=dict(path=str(ROOT/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_001.json'),bytes=5193,sha256='f3c4b711fade603e97d9e41cb26b8135914a2c1b0073cdc62084d11090a3ed66')
+scope=strict(pinread(scope_pin,'scope.exact'))
+ck('scope.live_original60_reserve',(dt.datetime.fromisoformat(scope['interval_end'])-dt.datetime.now(dt.timezone.utc)).total_seconds()>60,scope['interval_end'])
+adopt_pin=dict(path=str(ROOT/'ROOT_I13_FINAL_PROTOCOL007_RECORDED_CONTEXT_DIFFERENT_REVIEW_ADOPTION_004.json'),bytes=11986,sha256='94d6a2b06272b0d3342bcae462b020bf108bae252de0506537dc252803cf4c1c')
+adopt=strict(pinread(adopt_pin,'protocol.adoption'));data={}
+for name,pin in adopt['subjects'].items():data[name]=strict(pinread(pin,'protocol.'+name))
+kernel_adopt_pin=dict(path=str(P/'ROOT_I13_M3_008_PEER008_KERNEL_SOURCE_DIFFERENT_REVIEW_ADOPTION_001.json'),bytes=7632,sha256='60c59f19895dc572e8bd977072ee886618fafbf16350c67455649e2c6ebd0120')
+kernel_adopt=strict(pinread(kernel_adopt_pin,'kernels.Root_Source_adoption'))
+publisher_pin=dict(path=str(I/'validate_selected_role_publisher_metadata_001.py'),bytes=64670,sha256='9c77b7cffd146f786ee36dd84123a6fcf92d2cb04a43a8a45fe0de0770d3a356')
+api_pin=dict(path=str(I/'CURRENT_OWNER_SELECTED_ROLE_PUBLISHER_METADATA_INERT_API_001.json'),bytes=3391,sha256='f9e61aa51cd6bb7061cabb53a97ce2b70aa091eac445917c851d70bb004d6deb')
+fixture_pin=dict(path=str(I/'exercise_M3_guard_and_publisher_metadata_memory_005.py'),bytes=516287,sha256='ac38bddc49ad6b4baa738027a503165f1c11c2f7e2d8d16914936d84d5b6c8e4')
+catalogue_pin=dict(path=str(I/'I13_M3_GUARD_PUBLISHER_FIXTURE_LITERAL_CASE_CATALOGUE_005.json'),bytes=123852,sha256='9c2e54c9932cc3209ae3228d5b52e89c3e19ac4767ecbfdfb10537ab266d1171')
+helper_pin=dict(path=str(I/'I13_NEW_OUTER_ENVELOPE_FIXTURE_HELPER_004.py.source'),bytes=27672,sha256='1f73c33423026150c8f5f6b00619b3905b392225fb1448f10f83de0d4a307d59')
+ledger_pin=dict(path=str(I/'I13_M3_PUBLISHER_FIXTURE005_STATIC_NODE_FEASIBILITY_AND_LIMIT_LEDGER_001.json'),bytes=21033,sha256='15d8cfb39fd71e0b17459b388e8216acdadc82f0750ef71cc6910e822f243b6e')
+pubb,pubs,pubt=source(publisher_pin,'publisher001');fb,fs,ft=source(fixture_pin,'fixture005');hb,hs,ht=source(helper_pin,'helper004')
+api=strict(pinread(api_pin,'publisher.API001'));catalogue=strict(pinread(catalogue_pin,'fixture.catalogue005'));ledger=strict(pinread(ledger_pin,'fixture.static_ledger005'))
+ck('publisher.Source_API_editor',api['Source']==publisher_pin and api['author']==api['actual_Source_editor']=='/root/project_architecture',publisher_pin)
+ck('publisher.Source_cap65536',publisher_pin['bytes']<=65536,publisher_pin['bytes'])
+for name in ('target_execution','scientific_authority','operational_authority','actual_family_publication','actual_I7_IO_qualified','actual_I8_eligibility_qualified','actual_I9_render_semantics_qualified','authentic_loader_qualified','physical_origin_authenticated','human_origin_authenticated','full_original_I2_DAG_closed'):
+ ck('publisher.API_false.'+name,api[name]is False,name)
+ck('publisher.literal_false_actual_flag',lit(pubt,'ACTUAL_ENTRY_QUALIFIED')is False,'Actual entry remains held before context inspection.')
+held=defs(pubt)['publish_selected_role_current_owner'];ck('publisher.double_actual_hold',len(held.body)==2 and isinstance(held.body[0],ast.If)and isinstance(held.body[1],ast.Raise)and'not ACTUAL_ENTRY_QUALIFIED'in txt(held.body[0])and'E_ACTUAL_ENTRY_UNWIRED'in txt(held.body[1]),dict(line=held.lineno,end=held.end_lineno))
+ck('publisher.no_IO_or_old_imports',not any(isinstance(n,ast.ImportFrom)for n in pubt.body)and all(not isinstance(n,ast.Import)or all(a.name in('base64','datetime','hashlib','json','re','types')for a in n.names)for n in pubt.body)and not any(isinstance(n,ast.Call)and isinstance(n.func,ast.Name)and n.func.id in('open','eval','exec','compile','__import__')for n in ast.walk(pubt)),'All execution ports direct only fixed new modules; reviewer calls none.')
+ports=lit(pubt,'FIXED_PORTS');ck('publisher.fixed_two_ports_API_join',ports==api['fixed_ports']and set(ports)=={'M3','PEER'},ports)
+for name,support in ports.items():
+ for k in('Source','API'):pinread(support[k],'fixed.'+name+'.'+k)
+port=defs(pubt)['_port'];direct=defs(pubt)['_direct'];pre=defs(pubt)['_prewrite'];canonical=defs(pubt)['validate_selected_role_canonical_dependency_metadata']
+frag(port,'publisher.mechanical_port', [('ModuleType','type(module) is types.ModuleType'),('fixed_Source_pin',"_same(support['Source'], fixed['Source'])"),('fixed_API_pin',"_same(support['API'], fixed['API'])"),('independent_code5','g.code(support'),('raw_Source_body',"attrs['__source_bytes__'] == raw"),('raw_API_body',"attrs['__API_bytes__'] == api_raw"),('same_globals','fn.__globals__ is attrs'),('same_filename',"fn.__code__.co_filename == fixed['Source']['path']"),('exact_kwonly','code.co_kwonlyargcount == len(kwargs)'),('no_variadic','not code.co_flags & 12')])
+frag(direct,'publisher.fixed_result', [('actual_fixed_call','module.__dict__[name]('),('typed_exception_class','type(error) is cls'),('known_error_whitelist',"['typed_error_codes']"),('strict_bytes','type(result) is bytes'),('closed54',"_schema(view, 'result54', g.c)"),('all_expected_joins','expected.items()'),('actual_child_nodes',"g.s.count[0] += view['charged_metadata_nodes']"),('combined50000','g.s.count[0] <= 50000')])
+frag(method(pubt,'_Graph','proof'),'publisher.general_proof',[('direct_subject_list',"record.get('subjects')"),('closed_check3',"_schema(row, 'check3', self.c)"),('positive_count',"record['checks_passed'] == len(checks)"),('Root_exception',"actor == '/root' or not key.startswith(actor + '/')"),('used_births',"self.births[subject['path']] <= _time(full['created_utc']) * 100")])
+frag(pre,'publisher.graph_positive',[('request25',"_dispatch(req, 'selected_request25', g)"),('exact_recorded_current_eval',"p['recorded_evaluation_utc'] == g.eval_text"),('actual_child_result','_direct(g,'),('draft_proof_roster','for support, subjects in'),('resource_at_evaluation',"_resource(p['resource'], g.now)"),('future_aux_exclusion',"getattr(g, 'future', set())"),('known_stage_request_join',"_same(req['producer_support'], author['producer_support'])")])
+frag(canonical,'publisher.prior_recorded_context',[('historical_eval',"g.eval_text = before['recorded_evaluation_utc']"),('eval_not_future','evaluation <= g.final_now'),('publication32',"_dispatch(pub, 'selected_publication32', g)"),('reconciliation25',"_dispatch(recon, 'selected_reconciliation25', g)"),('exact_canonical_sourcebytes',"g.s.body(p['canonical'], req['source_cap']) == g.s.body(req['draft'], req['source_cap'])"),('exact_native_birth7',"_time(recon['canonical_Source_birth_utc'], 7) * 100 == born")])
+cases=lit(ft,'CASE_CATALOGUE');names=[c['name']for c in cases]
+ck('fixture.exact232_unique_literal_cases',len(cases)==232 and len(set(names))==232 and names==catalogue['case_names'],dict(total=len(cases)))
+ck('fixture.51positive181refusal',sum(c['expected_error']is None for c in cases)==catalogue['positive_case_count']==51 and sum(c['expected_error']is not None for c in cases)==181,'Static counts only; no case run.')
+ck('fixture.case_names_exact_LF_digest',sha(('\n'.join(names)+'\n').encode())==catalogue['LF_case_names_sha256'],catalogue['LF_case_names_sha256'])
+ck('fixture.case_catalogue_Source_pin',catalogue['Source']==fixture_pin and catalogue['static_node_feasibility_ledger']==ledger_pin,catalogue_pin)
+run=defs(ft)['run'];frag(run,'fixture.control_flow',[('fresh_graph_each_case','_fixture_make(spec, m3, publisher, peer, catalogue_bytes)'),('owned_literal_copy','spec = copy.deepcopy(literal)'),('global_seal','_fp((FIXED, CASE_CATALOGUE)) == seal'),('changed_input_trace','before != _fp(b)'),('exact_first_typed_error','error.code == expected'),('fixed_new_error','except module.I13MetadataError'),('flush_case_event',"event='CASE_PASS'"),('authorities_false',"'authentic_loader_qualified'"),('held_flag_restoration','module.ACTUAL_ENTRY_QUALIFIED = old')])
+ck('fixture.helper_exact_top_regions',all(ast.dump(n,include_attributes=False)==ast.dump(defs(ft)[name],include_attributes=False)for name,n in defs(ht).items()),'Helper004 definitions/classes embedded exactly as AST; not executed by review.')
+ck('fixture.format19_constructor_positive_kinds',len({c['kind']for c in cases if c['handler']=='constructor'and c['expected_error']is None})==19,'Format-only constructors remain separate from graph tests.')
+ck('fixture.four_phase_BOUND_positive_cases',len([c for c in cases if c['handler']=='positive'and c.get('stage')=='phase_bound'])==4,'Literal Source catalogue derives actual four phase choices.')
+fixed=lit(ft,'FIXED');ck('fixture.38_bounded_inert_captures',len(fixed)==38,'Only metadata and Source bytes decompressed as inert review data.')
+for name,item in fixed.items():
+ z=zlib.decompressobj();b=z.decompress(base64.b64decode(item['compressed_base64'],validate=True),2097153);p=item['pin']
+ ck('fixture.capture.'+name,z.eof and not z.unused_data and not z.unconsumed_tail and len(b)==p['bytes']<=2097152 and sha(b)==p['sha256']and b==Path(p['path']).read_bytes(),p)
+ck('static_ledger.no_actual_case_feasibility_claim',ledger['case_graph_feasibility_qualified']is False and ledger['exact_actual_case_graphs_constructed']is False,'No fixture/build or exact graph feasibility qualified.')
+ck('static_ledger.common_catalogue9373_nodes',nodes(data['common_catalogue'])==ledger['common_catalogue_nodes']==9373,'Whole tree and keys counted by own metadata helper.')
+i11=lit(pubt,'I11_API');iv=strict(pinread(i11,'static_ledger.fixed_I11_whole_API'))
+ck('static_ledger.I11_if_consumed9451_nodes',nodes(iv)==ledger['extra_I11_API007_nodes_if_actually_consumed']==9451,'Entire catalogue subtree retained/counted, no semantic qualification.')
+roledata_pin=adopt['subjects']['peer_role_data'];ck('mandatory_child.peer_role_data820_nodes',nodes(data['peer_role_data'])==820,roledata_pin)
+
+findings=[
+ dict(id='I13-P01',priority=1,title='Close expected-input and birth roster over actual fixed-child consumption',locations=[dict(path=publisher_pin['path'],start=pre.lineno,end=pre.end_lineno),dict(path=publisher_pin['path'],start=direct.lineno,end=direct.end_lineno)],requirement=dict(protocol=adopt['subjects']['common_protocol'],clauses=['publisher purpose finite transitive expected-input closure','proof_actor_and_chronology_rules: all input births','strict_types_and_counters: designated consumed records']),source_reason="_prewrite builds its required set from _declared(req/author/facts) plus the parent g.s.used. _direct passes records to independent child stores but returns only result54 and charged nodes, not a consumed read set. The parent prime deliberately stops at API body edges. Consequently a child-only mandatory body can be present and consumed yet absent from required expected_inputs/births.",concrete_example=dict(subject=roledata_pin,body_nodes=820,child='peer008 validate_selected_peer_author_packet_metadata explicitly store.record(PEER_ROLE_DATA_PIN)',parent='peer_role_data is neither META_EDGES nor LEASE_EDGES; _declared(author) sees API pins, and prime(API) does not recurse their declared data pins'),reachability='Delete the peer-role-data fact3 and birth only from a truthfully reconstructed publisher purpose/expected-input roster and its own proof joins while keeping the actual fixed body in records. Parent required-roster derivation has no read-set edge for that body; the actual peer child still parses it. This is static Source path analysis, not an executed test.',repair_boundary='Derive a finite complete consuming-ABI read closure from fixed child Source contracts, including mandatory data bodies and transitive typed metadata/proof inputs. Whole-body/counter accounting stays exact. Do not trust caller expected_inputs, arbitrary serialized child results, mutable private cache callbacks, new result54 fields, counter resets or cap waivers. Source fixtures/helper need exact omission/birth controls for actually consumed child-only bodies.'),
+ dict(id='I13-P02',priority=1,title='Collect raw operative role-body actors before parent proof reviews',locations=[dict(path=publisher_pin['path'],start=pre.lineno,end=pre.end_lineno),dict(path=publisher_pin['path'],start=method(pubt,'_Graph','prime').lineno,end=method(pubt,'_Graph','prime').end_lineno)],requirement=dict(protocol=adopt['subjects']['common_protocol'],selector='proof_actor_and_chronology_rules[0:3]'),source_reason='Publisher primes request/author receipts and then calls common/publisher-code/fixed-port proof reviewers. It never explicitly collects operative actor slots in the known profile/static JSON draft, the four typed M3 JSON output roles, or selected-peer original draft/predecessor before those parent reviews. The child kernel builds its own complete union later; that local exclusion set does not update the publisher union.',concrete_example='A profile draft can declare an additional source_and_harness_authors_excluded_from_review actor. M3 child006+ explicitly collects this actor before its own reviews, but parent _prewrite follows only raw draft pin bytes until after parent common/code reviews and does not add the profile list actor.',reachability='An otherwise different parent publisher/owner/code proof reviewer can equal an actor occurring only in that operative raw body, while the child uses distinct compliant reviewers. Parent exclusion predicates omit that body actor. No such input was executed.',repair_boundary='Before any parent proof evaluation, strict-decode and collect actors only from exact body roles designated by the consuming ABI, with whole-byte/hash/schema/node accounting and reviewer-only proof authors kept distinct. Cover M3 four JSON output roles, guard profile/static, peer draft/predecessor nominal actors and relevant phase context APIs. Do not recursively promote unrelated background Source bytes into metadata authority. Fixture mutations must target these raw operative body contexts, not only owner extension fields.')
+]
+ck('contract.complete_actual_child_expected_input_and_birth_closure',False,findings[0])
+ck('contract.complete_parent_pre_review_operative_actor_union',False,findings[1])
+ck('review.all_exact_subjects_unchanged',all(fact(p['path'])==p for p in(publisher_pin,api_pin,fixture_pin,catalogue_pin,helper_pin,ledger_pin)),'No target/builder/helper/fixture/test called or edited.')
+failed=[x for x in CHECKS if not x['passed']]
+common=dict(schema_version=1,reviewer=REVIEWER,created_utc=dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds'),verdict='REFUSE_I13_PUBLISHER001_FIXTURE005_PENDING_TWO_CLOSURE_FIXES',checks_passed=len(CHECKS)-len(failed),checks_failed=len(failed),subjects=[publisher_pin,api_pin,fixture_pin,catalogue_pin,helper_pin,ledger_pin,kernel_adopt_pin,*adopt['subjects'].values()],Source_scope=scope_pin,protocol_Root_adoption=adopt_pin,target_execution=False,tests_executed=False,native_Parser_executed=False,operational_authority=False,scientific_authority=False,actual_family_publication=False,actual_target_imports_functions_mains_fixtures_builders_called=False,case_graph_feasibility_qualified=False)
+full=dict(common,record_type='Independent_I13_publisher_and_fixture_Source_refusal_full_proof',checks=CHECKS,findings=findings,review_script=fact(Path(__file__)),method='Read/hash/strict JSON/AST/compile and bounded stdlib decompression of inert literal captures only. No target module, builder, helper, fixture, test, main, private entry, old Source or supervisor executed.',claim_limit='Finite genuine Source refusal on two actual publisher closure gaps. Positive static fixture inventory/guards/pins and ledger counts do not qualify concrete case feasibility or expected first predicates. No once scope, actual family publication, Native8, Parser, runtime/science, loader, physical/human or current canonical authority accepted.')
+fp=OUT/'INDEPENDENT_I13_PUBLISHER001_FIXTURE005_SOURCE_REFUSAL_FULL_PROOF_001.json';save(fp,full)
+capsule=dict(common,record_type='Independent_I13_publisher_and_fixture_Source_refusal_capsule',full_proof=fact(fp),findings=findings,review_script=fact(Path(__file__)),claim_limit=full['claim_limit'])
+cp=OUT/'INDEPENDENT_I13_PUBLISHER001_FIXTURE005_SOURCE_REFUSAL_CAPSULE_001.json';save(cp,capsule)
+print(json.dumps(dict(verdict=common['verdict'],checks_passed=common['checks_passed'],checks_failed=len(failed),failed_checks=failed,capsule=fact(cp),full_proof=fact(fp)),sort_keys=True))

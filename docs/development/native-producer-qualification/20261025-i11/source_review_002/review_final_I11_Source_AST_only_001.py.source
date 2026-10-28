@@ -1,0 +1,221 @@
+"""Independent final I11 read/hash/strict-JSON/AST review, never target import/run."""
+import ast
+import base64
+from datetime import datetime, timezone
+import hashlib
+import json
+from pathlib import Path
+
+BASE = Path(r"D:\Aenv\pro2\WORK\resume-20261025-001\i2_receipt_contract_014")
+HERE = BASE / "source_review_002"
+FILES = BASE / "i11"
+SOURCE = FILES / "validate_finite8_canonical_receipt_metadata_003.py"
+FIXTURE = FILES / "test_finite8_canonical_receipt_metadata_memory_only_006.py"
+API = FILES / "CURRENT_OWNER_FINITE8_CANONICAL_RECEIPT_METADATA_INERT_API_006.json"
+INVENTORY = FILES / "I11_EXACT_SOURCE_REGION_AND_NO_OLD_TARGET_CHANGE_INVENTORY_006.json"
+AUTHOR = FILES / "I11_FINITE8_CANONICAL_RECEIPT_METADATA_SOURCE_AUTHOR_RECEIPT_006.json"
+SUPERVISOR = BASE / "ROOT_I11_ONCE_MEMORY_SUPERVISOR_005.py"
+SUPERVISOR_AUTHOR = BASE / "I11_SUPERVISOR005_STATIC_SOURCE_AUTHOR_RECEIPT_001.json"
+
+
+def body(path):
+    with path.open("rb") as handle:
+        raw = handle.read(2097153)
+    if len(raw) > 2097152:
+        raise ValueError("review metadata/source cap")
+    return raw
+
+
+def pin(path):
+    raw = body(path)
+    return dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+
+
+def pairs(rows):
+    out = {}
+    for key, value in rows:
+        if key in out:
+            raise ValueError("duplicate JSON key")
+        out[key] = value
+    return out
+
+
+def bad_number(value):
+    raise ValueError("float/nonfinite JSON token")
+
+
+def read_json(path):
+    return json.loads(body(path).decode("utf8", "strict"), object_pairs_hook=pairs,
+                      parse_float=bad_number, parse_constant=bad_number)
+
+
+def literals(tree):
+    result = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+            try:
+                result[node.targets[0].id] = ast.literal_eval(node.value)
+            except (ValueError, TypeError):
+                pass
+    return result
+
+
+def save_new(path, value):
+    raw = (json.dumps(value, indent=2, sort_keys=True, allow_nan=False) + "\n").encode("utf8")
+    if len(raw) > 2097152:
+        raise ValueError("review output cap")
+    with path.open("xb") as handle:
+        handle.write(raw)
+
+
+def main():
+    checks = []
+    inputs = {}
+    def check(name, ok, detail=None):
+        checks.append(dict(name=name, passed=bool(ok), detail=detail))
+    def record(path):
+        actual = pin(path)
+        inputs[path.name] = actual
+        return actual
+    paths = (SOURCE, FIXTURE, API, INVENTORY, AUTHOR, SUPERVISOR, SUPERVISOR_AUTHOR)
+    for path in paths:
+        record(path)
+    protocol_path = BASE / "ROOT_I11_EXACT_FINITE8_CANONICAL_RECEIPT_ABI_METADATA_QUALIFICATION_PROTOCOL_001.json"
+    companion_paths = [BASE / name for name in (
+        "ROOT_I11_PROTOCOL001_EXACT_API_AND_RECORDED_CHRONOLOGY_CLARIFICATION_001.json",
+        "ROOT_I11_PROTOCOL001_ACTOR_CLOSURE_AND_COMPOSER_CLARIFICATION_001.json",
+        "ROOT_I11_PROTOCOL_REFERENCE_SCHEMAS_AND_CO_LIMITS_CLARIFICATION_001.json",
+        "ROOT_I11_PROTOCOL_DIFFERENT_REVIEW_ADOPTION_001.json")]
+    protocol = read_json(protocol_path)
+    for path in [protocol_path, *companion_paths]:
+        record(path)
+        read_json(path)
+        check("strict_JSON:" + path.name, True)
+    source_scope = Path(protocol["source_scope"]["path"])
+    check("exact_current_Source_scope", record(source_scope) == protocol["source_scope"])
+    check("Source_scope_no_target_or_operational", read_json(source_scope)["target_execution"] is False and
+          read_json(source_scope)["operational_authority"] is False)
+    source_tree = ast.parse(body(SOURCE), filename=str(SOURCE))
+    fixture_tree = ast.parse(body(FIXTURE), filename=str(FIXTURE))
+    supervisor_tree = ast.parse(body(SUPERVISOR), filename=str(SUPERVISOR))
+    source = literals(source_tree)
+    fixture = literals(fixture_tree)
+    supervisor = literals(supervisor_tree)
+    api, inventory, author, sup_author = [read_json(p) for p in (API, INVENTORY, AUTHOR, SUPERVISOR_AUTHOR)]
+    for key, path in (("Source", SOURCE), ("API", API), ("fixture", FIXTURE), ("inventory", INVENTORY)):
+        check("author_exact_pin:" + key, author[key] == pin(path))
+    for key, path in (("Source", SOURCE), ("API", API), ("fixture", FIXTURE)):
+        check("inventory_exact_pin:" + key, inventory[key] == pin(path))
+    check("API_exact_Source_pin", api["Source"] == pin(SOURCE))
+    check("Source003_exact_frozen_bytes", pin(SOURCE)["bytes"] == 63402 and pin(SOURCE)["sha256"] ==
+          "51f71572b21d76063300a33eeaddc578d19892721ff59cb027faeee335a44f3f")
+    check("schemas_exact_adopted_protocol", source["CONTRACT"]["schemas"] == protocol["exact_closed_schemas"])
+    check("literals_exact_adopted_protocol", source["CONTRACT"]["literals"] == protocol["exact_literals"])
+    check("fixture_exact_literal_contract", fixture["C"] == source["CONTRACT"])
+    imports = {alias.name.split(".")[0] for n in source_tree.body if isinstance(n, ast.Import) for alias in n.names}
+    check("validator_only_allowed_stdlib_imports", imports == {"hashlib", "json", "re", "datetime"} and
+          not any(isinstance(n, ast.ImportFrom) for n in ast.walk(source_tree)))
+    forbidden = {"open", "exec", "eval", "compile", "__import__", "input"}
+    for label, tree in (("validator", source_tree), ("fixture", fixture_tree)):
+        check(label + "_no_IO_exec_dynamic_import_calls", not any(isinstance(n, ast.Call) and
+              isinstance(n.func, ast.Name) and n.func.id in forbidden for n in ast.walk(tree)))
+        check(label + "_no_CLI_main_guard", not any(isinstance(n, ast.If) and "__name__" in ast.unparse(n.test) for n in tree.body))
+    actual_entry = next(n for n in source_tree.body if isinstance(n, ast.FunctionDef) and n.name == "require_actual_finite8_canonical_dependency_admission")
+    check("actual_entry_permanently_double_held", source["ACTUAL_ENTRY_QUALIFIED"] is False and
+          isinstance(actual_entry.body[0], ast.If) and isinstance(actual_entry.body[0].body[0], ast.Raise) and
+          isinstance(actual_entry.body[-1], ast.Raise))
+    catalogue = fixture["CASE_CATALOGUE"]
+    names = [r[0] for r in catalogue]
+    by_name = {r[0]: r for r in catalogue}
+    digest = hashlib.sha256(json.dumps(names, separators=(",", ":"), ensure_ascii=True).encode()).hexdigest()
+    check("all_cases_unique_AST_literal", len(names) == len(set(names)) == author["literal_case_count"])
+    check("eight_distinct_selector_cases", {r[2][0] for r in catalogue if r[1] == "selector"} == set(range(8)))
+    check("author_inventory_catalogue_exact", json.dumps(inventory["case_catalogue"], sort_keys=True) == json.dumps(catalogue, sort_keys=True))
+    for label, table in (("protocol", fixture["PROTOCOL_VARIANT_CASE_MAPPING"]),
+                         ("gap", fixture["FINAL_VARIANT_GAP_TABLE_COVERAGE"])):
+        for key, value in table.items():
+            check(label + "_map_references_actual_cases:" + key,
+                  bool(value["case_names"]) and all(name in by_name for name in value["case_names"]), value)
+    expected_categories = {"P" + str(i).zfill(2) for i in range(1, 11)} | {"N" + str(i).zfill(2) for i in range(1, 32)}
+    check("exact_finite_variant_category_set", set(fixture["PROTOCOL_VARIANT_CASE_MAPPING"]) == expected_categories)
+    gap_path = HERE / "INDEPENDENT_I11_FIXTURE004_FINAL_FINITE_VARIANT_GAP_TABLE_001.json"
+    record(gap_path)
+    gap = read_json(gap_path)
+    gap_map = fixture["FINAL_VARIANT_GAP_TABLE_COVERAGE"]
+    check("all65_exact_gap_alternatives_mapped", len(gap["rows"]) == len(gap_map) == 65 and
+          {r["proposed_case_name"] for r in gap["rows"]} == set(gap_map))
+    for item in gap["rows"]:
+        name = item["proposed_case_name"]
+        mapped = gap_map[name]
+        target_rows = [by_name[n] for n in mapped["case_names"]]
+        advertised = mapped["expected_error"]
+        ok = all(r[3] == advertised for r in target_rows) if advertised is None or advertised.startswith("E_") else all(r[3] == "E_FACTS" for r in target_rows)
+        check("gap_actual_refusal_code:" + name, ok, dict(cases=target_rows, first_guard=mapped["first_guard_note"]))
+    bool_rows = [by_name[n] for n in gap_map["stage_purpose_bool_version"]["case_names"]]
+    check("actual_bool_stage_version_not_integer_alias", len(bool_rows) == 1 and bool_rows[0][1] == "record" and bool_rows[0][2][-1] is True)
+    clone = next(n for n in ast.walk(fixture_tree) if isinstance(n, ast.FunctionDef) and n.name == "facts_clone_case")
+    clone_literals = [n.value for n in ast.walk(clone) if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+    check("facts_clone_backslash_not_formfeed", "\\facts-fresh-clone.json" in clone_literals and not any("\f" in v for v in clone_literals))
+    for i, row in enumerate(fixture["FIXED"]):
+        raw = base64.b64decode(row["base64"], validate=True)
+        check("fixed_inert_bytes_exact:" + str(i), len(raw) == row["pin"]["bytes"] and hashlib.sha256(raw).hexdigest() == row["pin"]["sha256"])
+    for row in inventory["complete_predecessors"]:
+        raw = base64.b64decode(row["complete_bytes_base64"], validate=True)
+        expected = row["pin"]
+        record(Path(expected["path"]))
+        check("complete_predecessor_inverse:" + Path(expected["path"]).name,
+              raw == body(Path(expected["path"])) and len(raw) == expected["bytes"] and hashlib.sha256(raw).hexdigest() == expected["sha256"])
+    for key, expected in protocol["pinned_authoritative_evidence"].items():
+        actual = record(Path(expected["path"]))
+        check("pinned_old_source_unchanged:" + key, actual == expected)
+    check("supervisor_exact_Source_fixture", supervisor["SOURCE"] == pin(SOURCE) and supervisor["FIXTURE"] == pin(FIXTURE))
+    check("supervisor_exact_case_count_digest", supervisor["EXPECTED_CASE_COUNT"] == len(catalogue) and supervisor["EXPECTED_CASE_NAMES_SHA256"] == digest)
+    for key, path in (("supervisor", SUPERVISOR), ("module", SOURCE), ("fixture", FIXTURE), ("API", API)):
+        check("supervisor_author_exact_pin:" + key, sup_author[key] == pin(path))
+    sup = body(SUPERVISOR).decode()
+    check("supervisor_one_Popen", sum(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "Popen" for n in ast.walk(supervisor_tree)) == 1)
+    check("supervisor_true_EOF_drained", "all(stream_eof.values())" in sup and "not any(pump_errors.values())" in sup and "stream_threads_finished" in sup)
+    check("supervisor_total60_at_both_boundaries", "acceptance_elapsed_ns <= 60000000000" in sup and "final_elapsed_ns <= 60000000000" in sup and "return 0 if final_accepted else 1" in sup)
+    check("supervisor_truthful_reap_refusal", "FINAL_REAP_TIMEOUT" in sup and "CHILD_LAUNCH_REFUSAL" in sup and "custody_error" in sup)
+    check("supervisor_bounded_metadata_read", "raw = handle.read(cap + 1)" in sup and "def read_limited" in sup and ".read_bytes(" not in sup)
+    manual = [
+        ("B1_closed3_direct_coverage", "Source003:152-159 exact closed3 occurrence; extended-only capsule/full/adoption refusals present."),
+        ("B2_actual_unsupported_shapes", "Source003:293-298 raw type dispatch before finite8 closed shape; actual single14/publication29/peer27 cases use their differing schemas."),
+        ("B4_nested_role_caps", "Source003:640-649 closed nested dependency, declared role, canonical pin cap from authenticated row, phase65536; other pins2MiB."),
+        ("B5_shape_before_index_and_time", "Source003:355-428 receipt/facts/catalogue/recon shapes before actors;572-601 purpose pins before path extraction; open proof times .get at453/462; three missing-time controls."),
+        ("actor_full_union_before_any_review", "Source003 constructor calls _selection,_batch_shapes,_actors before validate/_code/_review. All45 noncomposer selection actors, sibling receipt/provenance/code actors, Root and caller-additive authors are independently collected. Casefold+subtree boundary enforced."),
+        ("exact_composer_exception", "Source003:331-334 equals authenticated old whole row, cap65536, null actors/draft/ordinal, false must-change, canonical==predecessor.path; successor nulls refused."),
+        ("all_batch_siblings_and_join_chronology", "Source003:355-377 and603-709 validates every sibling; both next lookups dominated by role membership; request/birth/publication/delta/recon chain retained."),
+        ("staging_matches_actual_I7_ABI", "Pinned I7 Source002 _stage_one258/_publish_one_owned270-284/pure construction570-575 uses canonical+'.staging', matching Source003:669."),
+        ("positive_DAG_static_feasible", "Fixture make_bundle builds fixed lineage, owner/code proofs, selection/catalogue, stage purpose, receipts/draft proofs, request20/birth21/publication22/delta23-25/recon26/proofs27-29/now30. Apparent acyclic by Source trace only; no bundle generated."),
+        ("meaningful_mutation_assertions", "Fixture mutate asserts each edit/raw difference, finite rehasher cycle absence and changed reconstructed target; dedicated coherent rename/size,61s-age, facts clone and actor controls preserve prerequisite predicates."),
+        ("joint_bounds_honest", "Global50000 nodes dominates10000 named-check cases (E_LIMIT) and256 supplied records constrains unique purpose-input2000 reachability. Limits unchanged; proof4/proof6 held reference-only, no public route invented."),
+        ("final65_variant_handler_review", "All65 final gap alternatives matched concrete handlers/literal mutations; diff pin truthfully E_STAGE_PURPOSE due derived path guard; final bool and clone string corrections separately AST checked."),
+        ("supervisor_scope_custody_and_reporting", "Exclusive claim and child-entry before exactly two new loads; pinned runtime -I-S-B; no original calls;60/50/10/5 unchanged; true EOF and error-free drain; candidate/final elapsed separated, Root outer exit+console join required."),
+        ("Root_reference_clarifier_reviewed", "Root clarification preserves exact route set and all limits, requires typed shape-first refusals and per-mutation predicate honesty. No execution/authority widened."),
+    ]
+    for name, detail in manual:
+        check("manual_static:" + name, True, detail)
+    outer_review = HERE / "INDEPENDENT_I11_ROOT_OUTER_WITNESS_SOURCE_REVIEW_001.json"
+    record(outer_review)
+    check("independent_Root_outer_witness20_checks", read_json(outer_review)["checks_failed"] == 0 and len(read_json(outer_review)["checks"]) == 20)
+    observations = [
+        "Read/hash/strict-JSON/AST/manual Source review only; no validator/fixture/supervisor import, invocation, live fixture generation or test execution.",
+        "Frozen001 refusal and all later correction versions remain exact history; Source003 is the final unchanged kernel, with corrected final fixture/API/supervisor bound here.",
+        "This is Source acceptance for a proposed new isolated synthetic-only qualification. Actual complete-case execution, timing and predicate behavior remain unmeasured until separately admitted once execution and different saved-results review.",
+        "FullG01, I2 old qualification flags, producer/caller integration, outside8/single29/peer27, actual family publication, Native8/Parser/runtime/science remain held. Empty saved observation arrays do not prove physical read closure.",
+        "Saved supervisor candidate alone is not final acceptance. Root must join exact candidate pin, post-fsync final console <=60s, actual parent exit0, true EOF streams and independent saved-results review.",
+    ]
+    failed = sum(not c["passed"] for c in checks)
+    verdict = "PASS_SOURCE_EXACT_FINITE8_I11_METADATA_COMPONENT_AND_ONCE_SUPERVISOR_ONLY" if failed == 0 else "REFUSED_PENDING_REVIEW_CHECKS"
+    full = dict(schema_version=1, record_type="independent_final_I11_Source003_fixture006_supervisor005_full_proof", reviewer="/root/project_architecture", created_utc=datetime.now(timezone.utc).isoformat(), verdict=verdict, checks_failed=failed, checks=checks, inputs=inputs, reviewer_tool=pin(Path(__file__)), literal_case_count=len(catalogue), literal_case_names_sha256=digest, observations=observations, target_execution=False, tests_executed=False, operational_authority=False, scientific_authority=False, full_G01_closed=False)
+    full_path = HERE / "INDEPENDENT_FINAL_I11_SOURCE_FULL_PROOF_001.json"
+    save_new(full_path, full)
+    capsule = dict(schema_version=1, record_type="independent_final_I11_Source_review_capsule", reviewer="/root/project_architecture", created_utc=datetime.now(timezone.utc).isoformat(), verdict=verdict, check_count=len(checks), checks_failed=failed, inputs=inputs, full_proof=pin(full_path), literal_case_count=len(catalogue), literal_case_names_sha256=digest, observations=observations, target_execution=False, tests_executed=False, operational_authority=False, scientific_authority=False, full_G01_closed=False)
+    capsule_path = HERE / "INDEPENDENT_FINAL_I11_SOURCE_CAPSULE_001.json"
+    save_new(capsule_path, capsule)
+    print(json.dumps(dict(checks=len(checks), checks_failed=failed, full_proof=pin(full_path), capsule=pin(capsule_path), failed_names=[c["name"] for c in checks if not c["passed"]])))
+
+
+if __name__ == "__main__":
+    main()

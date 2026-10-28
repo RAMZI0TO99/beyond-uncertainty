@@ -1,0 +1,60 @@
+"""Static supervisor004 author. No emitted target invocation or dry run."""
+import ast
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+
+HERE=Path(__file__).parent
+def pin(path):
+    raw=path.read_bytes();return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+def create(path,raw):
+    assert 0<len(raw)<=2097152
+    with path.open('xb') as handle:handle.write(raw)
+    return pin(path)
+def replace(text,old,new):
+    assert text.count(old)==1,(old[:90],text.count(old));return text.replace(old,new,1)
+def literal(text,name):
+    node=next(n for n in ast.parse(text).body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id==name for t in n.targets))
+    return node,ast.literal_eval(node.value)
+def assign(text,name,value):
+    node,_=literal(text,name);lines=text.splitlines(keepends=True)
+    return ''.join(lines[:node.lineno-1])+name+' = '+repr(value)+'\n'+''.join(lines[node.end_lineno:])
+old=HERE/'ROOT_I11_ONCE_MEMORY_SUPERVISOR_003.py'
+source=old.read_text(encoding='utf8')
+module=pin(HERE/'i11'/'validate_finite8_canonical_receipt_metadata_003.py')
+fixture=pin(HERE/'i11'/'test_finite8_canonical_receipt_metadata_memory_only_005.py')
+_,cases=literal(Path(fixture['path']).read_text(encoding='utf8'),'CASE_CATALOGUE')
+names=[c[0] for c in cases]
+digest=hashlib.sha256(json.dumps(names,separators=(',',':'),ensure_ascii=True).encode()).hexdigest()
+for key,value in [('SOURCE',module),('FIXTURE',fixture),('EXPECTED_CASE_COUNT',len(cases)),('EXPECTED_CASE_NAMES_SHA256',digest)]:source=assign(source,key,value)
+source=source.replace("'_i11_new_fixture_004'","'_i11_new_fixture_005'")
+source=replace(source,"    overflow = threading.Event()\n    def pump(name, pipe):", "    overflow = threading.Event()\n    pump_failed = threading.Event()\n    stream_eof = {'stdout': False, 'stderr': False}\n    pump_errors = {'stdout': None, 'stderr': None}\n    def pump(name, pipe):")
+source=replace(source,"                if not chunk:\n                    break", "                if not chunk:\n                    stream_eof[name] = True\n                    break")
+source=replace(source,"        finally:\n            pipe.close()",'''        except Exception as exc:
+            pump_errors[name] = type(exc).__name__
+            pump_failed.set()
+        finally:
+            try:
+                pipe.close()
+            except Exception as exc:
+                pump_errors[name] = type(exc).__name__
+                pump_failed.set()''')
+source=replace(source,"    while proc.poll() is None:\n        if overflow.is_set():", "    while proc.poll() is None:\n        if pump_failed.is_set():\n            reason = 'STREAM_CAPTURE_REFUSAL'; break\n        if overflow.is_set():")
+source=replace(source,"    drained = not any(t.is_alive() for t in threads)", "    threads_finished = not any(t.is_alive() for t in threads)\n    drained = threads_finished and all(stream_eof.values()) and not any(pump_errors.values())\n    if not drained:\n        reason = reason or 'STREAM_DRAIN_REFUSAL'")
+source=replace(source,"                   terminated=terminated, killed=killed, refusal=reason, stdout=stdout, stderr=stderr, observed_stream_bytes=counts,", "                   terminated=terminated, killed=killed, refusal=reason, stdout=stdout, stderr=stderr, observed_stream_bytes=counts,\n                   stream_threads_finished=threads_finished, actual_stream_EOF=stream_eof, stream_pump_errors=pump_errors,")
+source=replace(source,"                          streams_drained=drained, total_budget_nanoseconds=60000000000)), flush=True)", "                          streams_drained=drained, actual_stream_EOF=stream_eof, stream_pump_errors=pump_errors,\n                          total_budget_nanoseconds=60000000000)), flush=True)")
+raw=source.encode();tree=ast.parse(raw);compile(raw,'<supervisor004 data compile>','exec')
+assert not any(isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=='read_bytes' for n in ast.walk(tree))
+sp=create(HERE/'ROOT_I11_ONCE_MEMORY_SUPERVISOR_004.py',raw)
+receipt=dict(schema_version=1,record_type='I11_supervisor004_static_final_Source_binding_and_EOF_author_receipt',author='/root/i2_resume_gap',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),
+             supervisor=sp,module=module,fixture=fixture,API=pin(HERE/'i11'/'CURRENT_OWNER_FINITE8_CANONICAL_RECEIPT_METADATA_INERT_API_005.json'),previous_supervisor=pin(old),author_tool=pin(Path(__file__)),
+             literal_case_count=len(cases),case_names_sha256=digest,scope_record_type='Root_I11_once_owned_synthetic_memory_scope',scope_keys=literal(source,'SCOPE_KEYS')[1],output_keys=literal(source,'OUTPUT_KEYS')[1],
+             budgets=dict(total_seconds=60,wait_seconds=50,cleanup_seconds=10,reap_seconds=5,stdout_maximum_bytes=2097152,stderr_maximum_bytes=2097152),
+             reporting_boundary='Saved candidate acceptance_at_record_preparation uses exact monotonic nanosecond elapsed after reap, actual EOF stream drains, stdout/stderr writes and child-result parsing. Final console after supervisor_result fsync supplies final_elapsed_nanoseconds<=60000000000 and accepted; actual parent exit0 separately required. Root must join exact supervisor_result pin, final console and actual parent exit. Candidate alone is not acceptance and is never rewritten.',
+             stream_custody='Every stream records actual EOF and pump error. Finished thread alone is not drain. Both EOFs and zero pump errors are required for streams_drained and for complete-stdout progress claims; errors retain buffers and refusal/progress_unknown.',
+             reap_timeout='Final kill/reap timeout records FINAL_REAP_TIMEOUT with actual returncode/reaped/drained/custody and refusal; no retry.',
+             capped_reads='Scope, claim and child-result use read(cap+1); pinned bodies retain whole-byte dual bounded read/hash checks.',
+             tests_executed=False,target_execution=False,target_imports=0,target_calls=0,operational_authority=False,scientific_authority=False,actual_family_publication=False)
+rp=create(HERE/'I11_SUPERVISOR004_STATIC_SOURCE_AUTHOR_RECEIPT_001.json',(json.dumps(receipt,sort_keys=True,indent=2)+'\n').encode())
+print(json.dumps(dict(supervisor=sp,receipt=rp,literal_case_count=len(cases),case_names_sha256=digest,tests_executed=False),sort_keys=True))

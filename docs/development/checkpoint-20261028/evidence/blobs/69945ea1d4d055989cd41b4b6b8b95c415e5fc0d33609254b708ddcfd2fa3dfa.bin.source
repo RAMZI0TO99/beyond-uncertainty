@@ -1,0 +1,405 @@
+
+
+# NEW data-only retention export. Existing015 bytes above are preserved whole.
+__RT_BINDINGS_PLACEHOLDER__
+
+
+class I13RawRetentionError(ValueError):
+    def __init__(self, code):
+        if type(code) is not str or code not in _RT_ERRORS:
+            code = 'E_RETENTION_UNMODELED_BUILD'
+        self.code = code
+        super().__init__(code)
+
+
+def _rt_need(value, code):
+    if not value:
+        raise I13RawRetentionError(code)
+
+
+def _rt_closed(value, keys, code):
+    _rt_need(type(value) is dict and all(type(k) is str for k in value)
+             and set(value) == set(keys), code)
+    return value
+
+
+def _rt_string(value, maximum, code):
+    _rt_need(type(value) is str and 0 < len(value) <= maximum
+             and not any(ord(c) < 32 or 55296 <= ord(c) <= 57343 for c in value), code)
+    return value
+
+
+def _rt_int(value, low, high, code):
+    _rt_need(type(value) is int and low <= value <= high, code)
+    return value
+
+
+def _rt_hex(value, code):
+    _rt_need(type(value) is str and len(value) == 64
+             and all(c in '0123456789abcdef' for c in value), code)
+    return value
+
+
+def _rt_fact(value, code):
+    _rt_closed(value, ('path', 'bytes', 'sha256'), code)
+    _rt_string(value['path'], 512, code)
+    _rt_int(value['bytes'], 1, 2097152, code)
+    _rt_hex(value['sha256'], code)
+    return value
+
+
+def _rt_wire(value):
+    try:
+        return (json.dumps(value, sort_keys=True, separators=(',', ':'),
+                           ensure_ascii=False, allow_nan=False) + '\n').encode('utf8')
+    except MemoryError:
+        raise
+    except Exception:
+        raise I13RawRetentionError('E_RETENTION_JSON') from None
+
+
+def _rt_digest(value):
+    return hashlib.sha256(_rt_wire(value)).hexdigest()
+
+
+def _rt_tree(value, maximum=50000):
+    todo = [(value, 0)]
+    count = 0
+    while todo:
+        item, depth = todo.pop()
+        count += 1
+        _rt_need(count <= maximum and depth <= 48, 'E_RETENTION_OUTPUT_CAP')
+        _rt_need(item is None or type(item) in (bool, int, str, list, dict), 'E_RETENTION_JSON')
+        if type(item) is str:
+            _rt_need(not any(55296 <= ord(c) <= 57343 for c in item), 'E_RETENTION_JSON')
+        elif type(item) is dict:
+            _rt_need(all(type(k) is str for k in item), 'E_RETENTION_JSON')
+            for key, child in item.items():
+                todo.extend(((key, depth + 1), (child, depth + 1)))
+        elif type(item) is list:
+            todo.extend((child, depth + 1) for child in item)
+    return count
+
+
+def _rt_decode_selection(raw):
+    def pairs(rows):
+        value = {}
+        for key, child in rows:
+            _rt_need(key not in value, 'E_RETENTION_JSON')
+            value[key] = child
+        return value
+    def bad_number(value):
+        raise I13RawRetentionError('E_RETENTION_JSON')
+    try:
+        _rt_need(type(raw) is bytes and not raw.startswith(b'\xef\xbb\xbf'), 'E_RETENTION_JSON')
+        value = json.loads(raw.decode('utf8'), object_pairs_hook=pairs,
+                           parse_float=bad_number, parse_constant=bad_number)
+        _rt_tree(value)
+        return value
+    except MemoryError:
+        raise
+    except I13RawRetentionError:
+        raise
+    except Exception:
+        raise I13RawRetentionError('E_RETENTION_JSON') from None
+
+
+def _rt_token(value):
+    # Only known builtin global/data types; never invoke user repr/deepcopy hooks.
+    if value is None or type(value) in (str, int, bool, bytes):
+        return (type(value).__name__, value)
+    if type(value) is dict:
+        _rt_need(all(type(k) is str for k in value), 'E_RETENTION_GLOBAL_SEAL')
+        return ('dict', tuple((key, _rt_token(value[key])) for key in sorted(value)))
+    if type(value) in (list, tuple):
+        return (type(value).__name__, tuple(_rt_token(x) for x in value))
+    if type(value) in (set, frozenset):
+        _rt_need(all(type(x) is str for x in value), 'E_RETENTION_GLOBAL_SEAL')
+        return (type(value).__name__, tuple(sorted(value)))
+    if type(value) is datetime.datetime:
+        return ('datetime', value.isoformat())
+    raise I13RawRetentionError('E_RETENTION_GLOBAL_SEAL')
+
+
+def _rt_globals_seal():
+    return tuple((name, _rt_token(globals()[name])) for name in _RT_GLOBAL_NAMES)
+
+
+def _rt_incoming(modules):
+    values = []
+    for kind, module in modules:
+        _rt_need(type(module) is types.ModuleType, 'E_RETENTION_SOURCE_BINDING')
+        attrs = module.__dict__
+        one = []
+        for label, prefix in (('Source', '__source'), ('API', '__API')):
+            given = _rt_fact(attrs.get(prefix + '_pin__'), 'E_RETENTION_SOURCE_BINDING')
+            raw = attrs.get(prefix + '_bytes__')
+            expected = _RT_INPUTS[kind + '_' + label]
+            _rt_need(given == expected and type(raw) is bytes
+                     and len(raw) == expected['bytes']
+                     and hashlib.sha256(raw).hexdigest() == expected['sha256'],
+                     'E_RETENTION_SOURCE_BINDING')
+            one.append((label, _rt_token(given), raw))
+        values.append((kind, tuple(one)))
+    return tuple(values)
+
+
+def _rt_carrier(module, kind):
+    # Called only after all incoming fields have exact builtin type/pin checks.
+    attrs = module.__dict__
+    projection = types.ModuleType('_i13_retention_data_' + kind)
+    for label, prefix in (('Source', '__source'), ('API', '__API')):
+        projection.__dict__[prefix + '_pin__'] = dict(attrs[prefix + '_pin__'])
+        projection.__dict__[prefix + '_bytes__'] = attrs[prefix + '_bytes__']
+    if kind == 'm3':
+        projection.CATALOGUE_PIN = dict(_RT_INPUTS['catalogue'])
+        projection.I2_SOURCE = dict(FIXED['I2_Source']['pin'])
+    return projection
+
+
+def _rt_final_seals(before, modules, incoming):
+    try:
+        same = _rt_globals_seal() == before
+        if incoming is not None:
+            same = same and _rt_incoming(modules) == incoming
+    except MemoryError:
+        raise
+    except Exception:
+        raise I13RawRetentionError('E_RETENTION_GLOBAL_SEAL') from None
+    _rt_need(same, 'E_RETENTION_GLOBAL_SEAL')
+
+
+def _rt_plan(selection_bytes, partition_id):
+    plan = _rt_decode_selection(selection_bytes)
+    _rt_closed(plan, _RT_PLAN_KEYS, 'E_RETENTION_SELECTION_SCHEMA')
+    _rt_need(type(plan['schema_version']) is int and plan['schema_version'] == 1
+             and plan['record_type'] == 'I13_prospective_raw_input_whole_record_partition_selection_plan'
+             and plan['Source_inputs'] == _RT_INPUTS, 'E_RETENTION_SELECTION_SCHEMA')
+    graphs = plan['graphs']
+    _rt_need(type(graphs) is list and len(graphs) == 6, 'E_RETENTION_SELECTION_SCHEMA')
+    selected = None
+    ids = set()
+    partition_ids = set()
+    logical_n = logical_raw = part_n = largest = max_output = max_nodes = 0
+    for expected, graph in zip(_RT_ROLES, graphs):
+        _rt_closed(graph, _RT_GRAPH_KEYS, 'E_RETENTION_SELECTION_SCHEMA')
+        _rt_need((graph['role'], graph['stage']) == expected
+                 and graph['cross_graph_deduplication'] is False,
+                 'E_RETENTION_GRAPH_NAMESPACE')
+        graph_id = _rt_hex(graph['graph_id'], 'E_RETENTION_GRAPH_NAMESPACE')
+        _rt_fact(graph['snapshot'], 'E_RETENTION_GRAPH_NAMESPACE')
+        _rt_need(graph['snapshot'] == _RT_SNAPSHOTS[graph['role']]
+                 and graph_id not in ids, 'E_RETENTION_GRAPH_NAMESPACE')
+        ids.add(graph_id)
+        _rt_hex(graph['record_set_LF_fact3_sha256'], 'E_RETENTION_DIGEST')
+        n = _rt_int(graph['record_count'], 1, 256, 'E_RETENTION_ROSTER')
+        raw_total = _rt_int(graph['total_record_bytes'], 1, 33554432, 'E_RETENTION_RAW_CAP')
+        roster = graph['record_roster']
+        _rt_need(type(roster) is list and len(roster) == n, 'E_RETENTION_ROSTER')
+        pins = []
+        folded = set()
+        alias_names = set()
+        greedy = []
+        current = []
+        current_raw = 0
+        for ordinal, row in enumerate(roster, 1):
+            _rt_closed(row, ('ordinal', 'pin', 'labels'), 'E_RETENTION_ROSTER')
+            _rt_need(type(row['ordinal']) is int and row['ordinal'] == ordinal, 'E_RETENTION_ROSTER')
+            pin = _rt_fact(row['pin'], 'E_RETENTION_RECORD')
+            path = pin['path'].casefold()
+            _rt_need(path not in folded, 'E_RETENTION_ROSTER')
+            folded.add(path)
+            _rt_need(pin['bytes'] <= 1048576, 'E_RETENTION_MEMBER_TOO_LARGE')
+            labels = row['labels']
+            _rt_need(type(labels) is list and all(type(x) is str and 0 < len(x) <= 512 for x in labels)
+                     and labels == sorted(labels) and len(labels) == len(set(labels))
+                     and not alias_names.intersection(labels), 'E_RETENTION_ROSTER')
+            alias_names.update(labels)
+            pins.append(pin)
+            if current and current_raw + pin['bytes'] > 1048576:
+                greedy.append(current)
+                current = []
+                current_raw = 0
+            current.append(row)
+            current_raw += pin['bytes']
+            largest = max(largest, pin['bytes'])
+        if current:
+            greedy.append(current)
+        _rt_need(raw_total == sum(pin['bytes'] for pin in pins)
+                 and _rt_digest(pins) == graph['record_set_LF_fact3_sha256'], 'E_RETENTION_DIGEST')
+        _rt_need(_rt_digest(dict(snapshot=graph['snapshot'], role=graph['role'],
+                                record_set_LF_fact3_sha256=graph['record_set_LF_fact3_sha256'])) == graph_id,
+                 'E_RETENTION_GRAPH_NAMESPACE')
+        parts = graph['partitions']
+        _rt_need(type(parts) is list and len(parts) == len(greedy), 'E_RETENTION_PARTITION')
+        for index, (part, rows) in enumerate(zip(parts, greedy), 1):
+            _rt_closed(part, _RT_PARTITION_KEYS, 'E_RETENTION_PARTITION')
+            part_id = _rt_string(part['partition_id'], 128, 'E_RETENTION_PARTITION')
+            ordinals = [row['ordinal'] for row in rows]
+            selected_pins = [row['pin'] for row in rows]
+            _rt_need(part_id == graph_id + '-part-%03d' % index and part_id not in partition_ids
+                     and type(part['ordinals']) is list and all(type(x) is int for x in part['ordinals'])
+                     and part['ordinals'] == ordinals, 'E_RETENTION_PARTITION')
+            partition_ids.add(part_id)
+            row_count = len(rows)
+            raw_bytes = sum(pin['bytes'] for pin in selected_pins)
+            b64 = sum(4 * ((pin['bytes'] + 2) // 3) for pin in selected_pins)
+            empty = sum(len((json.dumps(dict(ordinal=row['ordinal'], pin=row['pin'],
+                              encoding='BASE64_RFC4648_CANONICAL', body_base64=''), sort_keys=True,
+                              separators=(',', ':'), ensure_ascii=True, allow_nan=False)).encode('utf8'))
+                        for row in rows)
+            output_upper = 65536 + empty + b64 + max(row_count - 1, 0)
+            node_upper = 4096 + 15 * row_count
+            expected_values = dict(rawbytes=raw_bytes, row_count=row_count,
+                base64_character_count=b64, canonical_empty_rows_size_upper_bound=empty,
+                canonical_header_max_bytes=65536, canonical_header_max_nodes=4096,
+                json_row_added_nodes=15, transport_output_bytes_upper_bound=output_upper,
+                transport_tree_nodes_upper_bound=node_upper)
+            _rt_need(all(type(part[key]) is int and part[key] == value
+                         for key, value in expected_values.items())
+                     and part['actual_body_bytes_acquired'] is False
+                     and part['actual_transport_serialized'] is False
+                     and raw_bytes <= 1048576 and output_upper <= 2097152 and node_upper <= 50000,
+                     'E_RETENTION_PARTITION')
+            _rt_need(_rt_digest(selected_pins) == part['selected_fact3_LF_sha256'], 'E_RETENTION_DIGEST')
+            if part_id == partition_id:
+                _rt_need(selected is None, 'E_RETENTION_PARTITION')
+                selected = (graph, part)
+            part_n += 1
+            max_output = max(max_output, output_upper)
+            max_nodes = max(max_nodes, node_upper)
+        logical_n += n
+        logical_raw += raw_total
+    expected_root = dict(graph_count=6, logical_record_count=logical_n,
+        total_logical_record_bytes=logical_raw, partition_count=part_n,
+        largest_single_record_bytes=largest, maximum_partition_output_upper_bound=max_output,
+        maximum_partition_node_upper_bound=max_nodes)
+    _rt_need(all(type(plan[key]) is int and plan[key] == value for key, value in expected_root.items())
+             and (logical_n, logical_raw, part_n, largest, max_output, max_nodes)
+             == (973, 17399459, 23, 723621, 1493609, 6391), 'E_RETENTION_SELECTION_SCHEMA')
+    _rt_need(selected is not None, 'E_RETENTION_PARTITION')
+    return selected
+
+
+def _rt_records(bundle, graph):
+    _rt_need(type(bundle) is dict and type(bundle.get('records')) is list
+             and type(bundle.get('labels')) is dict, 'E_RETENTION_UNMODELED_BUILD')
+    records = bundle['records']
+    labels = bundle['labels']
+    _rt_need(len(records) == graph['record_count'] and 1 <= len(records) <= 256,
+             'E_RETENTION_ROSTER')
+    _rt_need(all(type(key) is str and type(value) is str for key, value in labels.items()),
+             'E_RETENTION_ROSTER')
+    paths = set()
+    folded = set()
+    raw_total = 0
+    pins = []
+    for ordinal, row in enumerate(records, 1):
+        _rt_closed(row, ('pin', 'body'), 'E_RETENTION_RECORD')
+        pin = _rt_fact(row['pin'], 'E_RETENTION_RECORD')
+        body = row['body']
+        _rt_need(type(body) is bytes and len(body) == pin['bytes']
+                 and hashlib.sha256(body).hexdigest() == pin['sha256'], 'E_RETENTION_RECORD')
+        _rt_need(pin['path'].casefold() not in folded, 'E_RETENTION_ROSTER')
+        folded.add(pin['path'].casefold())
+        paths.add(pin['path'])
+        raw_total += len(body)
+        _rt_need(raw_total <= 33554432, 'E_RETENTION_RAW_CAP')
+        expected = graph['record_roster'][ordinal - 1]
+        names = sorted(key for key, value in labels.items() if value == pin['path'])
+        _rt_need(dict(ordinal=ordinal, pin=pin, labels=names) == expected, 'E_RETENTION_ROSTER')
+        pins.append(pin)
+    _rt_need(all(value in paths for value in labels.values())
+             and raw_total == graph['total_record_bytes']
+             and _rt_digest(pins) == graph['record_set_LF_fact3_sha256'], 'E_RETENTION_DIGEST')
+    return records
+
+
+def _rt_transport(records, graph, part, capture_id):
+    rows = []
+    raw_total = 0
+    selected_pins = []
+    for ordinal in part['ordinals']:
+        record = records[ordinal - 1]
+        raw = record['body']
+        pin = record['pin']
+        _rt_need(len(raw) <= 1048576, 'E_RETENTION_MEMBER_TOO_LARGE')
+        raw_total += len(raw)
+        _rt_need(raw_total <= 1048576, 'E_RETENTION_RAW_CAP')
+        encoded = base64.b64encode(raw).decode('ascii')
+        try:
+            decoded = base64.b64decode(encoded, validate=True)
+            _rt_need(base64.b64encode(decoded).decode('ascii') == encoded and decoded == raw
+                     and len(decoded) == pin['bytes']
+                     and hashlib.sha256(decoded).hexdigest() == pin['sha256'], 'E_RETENTION_BASE64')
+        except MemoryError:
+            raise
+        except I13RawRetentionError:
+            raise
+        except Exception:
+            raise I13RawRetentionError('E_RETENTION_BASE64') from None
+        rows.append(dict(ordinal=ordinal, pin=dict(pin),
+                         encoding='BASE64_RFC4648_CANONICAL', body_base64=encoded))
+        selected_pins.append(pin)
+    _rt_need(raw_total == part['rawbytes'] and _rt_digest(selected_pins) == part['selected_fact3_LF_sha256'],
+             'E_RETENTION_DIGEST')
+    result = dict(schema_version=1, record_type='I13_raw_input_retention_partition_transport_v1',
+        operation='DATA_ONLY_RAW_RECORD_RETENTION_V1', capture_id=capture_id,
+        contract=dict(_RT_CONTRACT), schema=dict(_RT_SCHEMA), selection_plan=dict(_RT_PLAN),
+        partition_id=part['partition_id'], graph_id=graph['graph_id'], role=graph['role'],
+        stage=graph['stage'], snapshot=dict(graph['snapshot']),
+        record_set_LF_fact3_sha256=graph['record_set_LF_fact3_sha256'],
+        graph_record_count=graph['record_count'], graph_total_record_bytes=graph['total_record_bytes'],
+        selected_ordinals=list(part['ordinals']), selected_fact3_LF_sha256=part['selected_fact3_LF_sha256'],
+        selected_raw_bytes=raw_total, Source_inputs={key:dict(pin) for key,pin in _RT_INPUTS.items()},
+        records=rows, limits=dict(_RT_LIMITS), global_seals_unchanged=True, metadata_only=True,
+        target_execution=False, operational_authority=False, native_Parser_executed=False,
+        scientific_authority=False, actual_family_publication=False, full_original_I2_DAG_closed=False,
+        authentic_loader_qualified=False, compact_ABI_qualified=False,
+        validator_exports_called=0, old_case_exports_called=0)
+    _rt_closed(result, _RT_OUTPUT_KEYS, 'E_RETENTION_JSON')
+    header = dict(result, records=[])
+    _rt_need(_rt_tree(header,4096) <= 4096 and len(_rt_wire(header)) <= 65536,
+             'E_RETENTION_OUTPUT_CAP')
+    _rt_tree(result)
+    wire = _rt_wire(result)
+    _rt_need(len(wire) <= 2097152 and len(wire) <= part['transport_output_bytes_upper_bound'],
+             'E_RETENTION_OUTPUT_CAP')
+    return wire
+
+
+def retain_I13_M3_input_record_partition(*, m3, publisher, peer, catalogue_bytes,
+                                        selection_bytes, partition_id, capture_id):
+    # Pure data construction only. No I/O, claim, clock, import or kernel export.
+    before = _rt_globals_seal()
+    modules = (('m3',m3),('publisher',publisher),('peer',peer))
+    incoming = None
+    try:
+        _rt_need(_RT_INPUTS == _LD_INPUTS and _RT_ROLES == tuple(_LD_ROLES.items()),
+                 'E_RETENTION_GLOBAL_SEAL')
+        _rt_need(type(selection_bytes) is bytes and len(selection_bytes) == _RT_PLAN['bytes']
+                 and hashlib.sha256(selection_bytes).hexdigest() == _RT_PLAN['sha256'],
+                 'E_RETENTION_SELECTION_PIN')
+        incoming = _rt_incoming(modules)
+        _rt_need(type(catalogue_bytes) is bytes and len(catalogue_bytes) == _RT_INPUTS['catalogue']['bytes']
+                 and hashlib.sha256(catalogue_bytes).hexdigest() == _RT_INPUTS['catalogue']['sha256'],
+                 'E_RETENTION_SOURCE_BINDING')
+        _rt_need(type(capture_id) is str and len(capture_id) == 36
+                 and all(capture_id[index] == '-' for index in (8,13,18,23))
+                 and all(c in '0123456789abcdef' for index,c in enumerate(capture_id)
+                         if index not in (8,13,18,23)), 'E_RETENTION_CAPTURE_ID')
+        _rt_string(partition_id,128,'E_RETENTION_PARTITION')
+        graph,part = _rt_plan(selection_bytes,partition_id)
+        projections = {kind:_rt_carrier(module,kind) for kind,module in modules}
+        spec = dict(stage=graph['stage'],selected_role=graph['role'],route='canonical')
+        bundle = _fixture_make(spec,projections['m3'],projections['publisher'],projections['peer'],catalogue_bytes)
+        records = _rt_records(bundle,graph)
+        return _rt_transport(records,graph,part,capture_id)
+    except MemoryError:
+        raise
+    except I13RawRetentionError:
+        raise
+    except Exception:
+        raise I13RawRetentionError('E_RETENTION_UNMODELED_BUILD') from None
+    finally:
+        _rt_final_seals(before, modules, incoming)

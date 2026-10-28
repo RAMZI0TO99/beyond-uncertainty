@@ -1,0 +1,32 @@
+"""Root saved Source review adoption only; no publication helper invocation."""
+import datetime as dt,hashlib,json
+from pathlib import Path
+R=Path(__file__).parent;cache={}
+def raw(p):
+ p=Path(p)
+ if str(p) not in cache:
+  with p.open('rb') as h:b=h.read(2097153)
+  assert 0<len(b)<=2097152;cache[str(p)]=b
+ return cache[str(p)]
+def pin(p):
+ b=raw(p);return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def load(p):return json.loads(raw(p))
+scope=R/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_001.json';s=load(scope);now=dt.datetime.now(dt.timezone.utc)
+assert s['author']=='/root' and s['target_execution'] is s['operational_authority'] is False
+assert dt.datetime.fromisoformat(s['interval_start'])<=now and (dt.datetime.fromisoformat(s['interval_end'])-now).total_seconds()>60
+directory=R/'managed_archive_helper_Source_review_001'
+cap=directory/'INDEPENDENT_I13_INERT_MANAGED_ARCHIVE_HELPER002_SOURCE_CAPSULE_001.json';c=load(cap)
+full=Path(c['full_proof']['path']);assert pin(full)==c['full_proof'];f=load(full)
+subject=pin(R/'prepare_I13_managed_candidate_002.py')
+assert subject['bytes']==11202 and subject['sha256']=='7d43ddb7c7af2665303522c72c2e6dcbbbcef252141c7d6fe3005d2da7e30ada'
+for body in (c,f):
+ assert body['reviewer']=='/root/i13_final_review' and body['verdict'].startswith('PASS_')
+ assert body['checks_passed']==89 and body['checks_failed']==0 and subject in body['subjects']
+ assert all(body[k] is False for k in ('tests_executed','target_execution','operational_authority','scientific_authority','native_Parser_executed'))
+assert c['verdict']==f['verdict']
+assert len(f['checks'])==89 and len({x['name'] for x in f['checks']})==89 and all(set(x)=={'name','passed','evidence'} and x['passed'] is True for x in f['checks'])
+assert dt.datetime.fromisoformat(f['created_utc'])<=dt.datetime.fromisoformat(c['created_utc'])<=now
+v=dict(schema_version=1,record_type='Root_I13_inert_managed_archive_helper_Source_review_adoption',author='/root',created_utc=now.isoformat(),verdict='ACCEPT_EXACT_I13_ARCHIVE_HELPER002_SOURCE_ONLY',Source_scope=pin(scope),subject=subject,different_Source_review=pin(cap),full_proof=pin(full),checks_passed=89,checks_failed=0,claim_limit='Exact inert copy helper Source accepted; separate exact candidate review/Root adoption and later saved creation review/Root adoption remain required.',helper_invoked=False,candidate_prepared=False,actual_managed_creation=False,actual_family_publication=False,target_execution=False,tests_executed=False,operational_authority=False,scientific_authority=False,staged=False,committed=False,pushed=False)
+out=R/'ROOT_I13_ARCHIVE_HELPER002_DIFFERENT_SOURCE_REVIEW_ADOPTION_001.json';b=(json.dumps(v,sort_keys=True,indent=2)+'\n').encode()
+with out.open('xb') as h:assert h.write(b)==len(b)
+print(json.dumps(dict(adoption=pin(out),helper_invoked=False)))

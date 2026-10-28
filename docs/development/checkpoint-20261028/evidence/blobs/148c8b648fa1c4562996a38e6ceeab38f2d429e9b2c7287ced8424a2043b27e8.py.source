@@ -1,0 +1,461 @@
+"""Own immutable allocation review; reads/hashes bounded metadata and inert Source only."""
+from pathlib import Path
+import collections
+import datetime as dt
+import decimal
+import hashlib
+import json
+import os
+import stat
+
+R = Path(r'D:\Aenv\pro2\WORK\resume-20261025-003')
+P = Path(r'D:\Aenv\pro3')
+A = P / 'runs/coordination/cho51_canonical_boundary_20261025_v5_aggregate'
+O = R / 'pro3_aggregate_allocation_review_002'
+END = dt.datetime.fromisoformat('2026-10-25T21:55:00+00:00')
+CAP = 2097152
+checks = []
+subjects = {}
+parsed_paths = set()
+large_streamed = {}
+
+def reserve():
+    assert (END - dt.datetime.now(dt.timezone.utc)).total_seconds() > 60
+
+def sha(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+def ck(name, passed, evidence):
+    assert type(passed) is bool
+    checks.append(dict(name=name, passed=passed, evidence=evidence))
+    assert passed, name
+
+def key(info):
+    return tuple(getattr(info, name, None) for name in
+                 ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns', 'st_nlink', 'st_file_attributes'))
+
+def lineage(path):
+    values = []
+    for node in (path, *path.parents):
+        info = node.lstat()
+        assert not node.is_symlink() and not getattr(info, 'st_file_attributes', 0) & 1024
+        if node != path:
+            assert stat.S_ISDIR(info.st_mode)
+            values.append((str(node), info.st_dev, info.st_ino, info.st_ctime_ns, getattr(info, 'st_file_attributes', 0)))
+    return values
+
+def stream(spec, maximum=8388608):
+    path = Path(spec['path'])
+    assert path.is_absolute() and path.resolve(strict=True) == path
+    ancestors = lineage(path)
+    before = path.stat()
+    assert stat.S_ISREG(before.st_mode) and before.st_nlink == 1 and 0 <= before.st_size <= maximum
+    digest = hashlib.sha256()
+    size = 0
+    with path.open('rb') as handle:
+        opened = os.fstat(handle.fileno())
+        while True:
+            block = handle.read(65536)
+            if not block:
+                break
+            size += len(block)
+            assert size <= maximum
+            digest.update(block)
+        finished = os.fstat(handle.fileno())
+    after = path.stat()
+    assert key(before) == key(after) and key(opened) == key(finished)
+    assert (opened.st_dev, opened.st_ino, opened.st_size) == (before.st_dev, before.st_ino, size)
+    assert lineage(path) == ancestors
+    pin = dict(path=str(path), bytes=size, sha256=digest.hexdigest())
+    assert pin['sha256'] == spec['sha256'] and ('bytes' not in spec or pin['bytes'] == spec['bytes'])
+    if str(path) in subjects:
+        assert subjects[str(path)] == pin
+    subjects[str(path)] = pin
+    if size > CAP:
+        large_streamed[str(path)] = pin
+    return pin
+
+def pairs(rows):
+    value = {}
+    for name, member in rows:
+        assert name not in value
+        value[name] = member
+    return value
+
+def small(spec):
+    pin = stream(spec, CAP)
+    raw = Path(pin['path']).read_bytes()
+    assert len(raw) == pin['bytes'] and sha(raw) == pin['sha256']
+    return raw
+
+def js(spec):
+    raw = small(spec)
+    parsed_paths.add(spec['path'])
+    return json.loads(raw.decode('utf8'), object_pairs_hook=pairs, parse_float=decimal.Decimal,
+                      parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
+
+def at(name, size, digest):
+    return dict(path=str(A/name), bytes=size, sha256=digest)
+
+def fixed(path, size, digest):
+    return dict(path=str(path), bytes=size, sha256=digest)
+
+def canonical(value):
+    return (json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False) + '\n').encode('utf8')
+
+reserve()
+pins = dict(
+    request=at('compute-request_002.json', 3506, 'c5f903573b1da8a594e6d14f5628eccec3d008769c75e7b8a6d345313da9f58b'),
+    input_review=at('input-review_v2.json', 23798, '14b69453543689260baf4cf4888f65bbca022b5a148dbc0738cd75e2bbfbf019'),
+    supervisor_review=at('supervisor-review_v2.json', 8003, 'be3411357ae676671dbd15385e7cdac8a5ac06fb560dacd7f8fb3ff748173ea1'),
+    supervisor_Source=at('supervise_v2.ps1', 39054, '16d2d5f86c16b42de9a07b4933f8a46c7967ed0a5a048bb39440f97e458d0124'),
+    aggregate_Source=at('aggregate.py', 39159, 'eb85e2bb7b682a4215c373ee080bda9a4638708e54190bda3170474c09c3fab8'),
+    proof_manifest=at('proofs.json', 8491, '04bd68ea3358742aaa0dc6bd4166e8f94dd5c086a11b04a3e768725f86cc0577'),
+    fixed_plan=fixed(P/'docs/phase2/cho51_canonical_boundary_batch_plan_20261025.json', 4480, 'd1467ae85739115f2f65ab1ca23a8f6624b1a09d1a6b40384f64c07eab62497f'),
+    current_Source=fixed(R/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_006.json', 17107, '9196eaca8c1988c357abfa72881b3e505317ce7faff50dc352b700407848d821'),
+    current_Source_adoption=fixed(R/'ROOT_I13_CURRENT_SOURCE_SCOPE006_DIFFERENT_REVIEW_ADOPTION_001.json', 2324, 'e139f7ade01ea2c005f70eb7e4befff7be06e9fcdfc9e7706b45c2b8878cfea8'),
+    independent_repair_capsule=fixed(R/'pro3_aggregate_supervisor_v2_Source_review_001/INDEPENDENT_PRO3_AGGREGATE_SUPERVISOR_V2_SOURCE_CAPSULE_001.json', 16106, 'c7a71689a619737a15b141e1494f5c26f72ba308198b14b34edeac6890bc827a'),
+    independent_repair_full=fixed(R/'pro3_aggregate_supervisor_v2_Source_review_001/INDEPENDENT_PRO3_AGGREGATE_SUPERVISOR_V2_SOURCE_FULL_PROOF_001.json', 151662, 'f67fe18a80140a5752df4b04b9888f2c81a0d73ccbd0e56a07bb6f0d77fb5ff4'),
+    preserved_allocation001_full=fixed(R/'pro3_aggregate_allocation_review_001/INDEPENDENT_PRO3_AGGREGATE_ALLOCATION001_SOURCE_REFUSAL_FULL_PROOF_001.json', 63267, '9cfa424b36f062b435a5b864e10fd588c355bc5472a4c565a24aae4102881e69'),
+    issuer_Source=fixed(R/'coordination/issue_PRO3_metadata_aggregate_grant020_002.py', 21936, 'de2c9776e015235d3251e5ba132214528a7c5feab0bf7bfb242bcb71d7449d2a'),
+)
+request = js(pins['request'])
+inputs = js(pins['input_review'])
+review = js(pins['supervisor_review'])
+proofs = js(pins['proof_manifest'])
+plan = js(pins['fixed_plan'])
+scope = js(pins['current_Source'])
+adoption = js(pins['current_Source_adoption'])
+repair = js(pins['independent_repair_capsule'])
+repairfull = js(pins['independent_repair_full'])
+prior = js(pins['preserved_allocation001_full'])
+supervisor = small(pins['supervisor_Source']).decode('utf8')
+aggregate = small(pins['aggregate_Source']).decode('utf8')
+issuer = small(pins['issuer_Source']).decode('utf8')
+
+ck('operative_Source006_exact_genuine_adoption_and_unchanged_limits',
+   adoption['Source_scope'] == pins['current_Source'] and adoption['checks_passed'] == 223
+   and adoption['checks_failed'] == 0 and scope['publication_reserve_seconds'] == 60
+   and scope['maximum_local_agents_including_Root'] == 3 and scope['maximum_shared_including_both_roots_and_overlap'] == 5
+   and scope['metadata_only_cap_bytes'] == CAP and scope['interval_end'] == END.isoformat(),
+   'Source006 permits review and owner-authorized resource coordination only; no automatic aggregate allocation or original target admission.')
+ck('fresh_request002_exact_Sources_review_input_proof_joins',
+   all(request[name] == pins[role]['sha256'] for name, role in [
+       ('proofs_sha256','proof_manifest'), ('aggregate_source_sha256','aggregate_Source'),
+       ('supervisor_sha256','supervisor_Source'), ('supervisor_review_sha256','supervisor_review'),
+       ('input_review_sha256','input_review'), ('batch_plan_sha256','fixed_plan')])
+   and inputs['proofs'] == pins['proof_manifest'] and inputs['aggregate_source'] == pins['aggregate_Source']
+   and inputs['supervisor_source'] == pins['supervisor_Source'] and inputs['supervisor_review'] == pins['supervisor_review'], pins)
+ck('genuine_peer_Source_and_input_reviews_independent_preparation_only',
+   review['reviewer'] == inputs['reviewer'] == '/root/readiness'
+   and review['accepted'] is inputs['accepted'] is review['source_only'] is inputs['source_only'] is True
+   and review['remaining_actionable_findings'] == inputs['remaining_actionable_findings'] == inputs['issues'] == inputs['exclusions'] == []
+   and review['aggregate_admitted_by_this_review'] is inputs['aggregate_executed'] is inputs['aggregate_accepted'] is inputs['scientific_admission'] is False,
+   'Their Source/input acceptance is retained as preparation evidence only, without accepting an actual aggregate result or future runtime.')
+ck('v2_review_closed_two_file_map_exact_current_pins',
+   review['files'] == {str(Path(pins[k]['path']).relative_to(P)).replace('\\','/'): pins[k]['sha256'] for k in ('aggregate_Source','supervisor_Source')}
+   and review['file_bytes'] == {str(Path(pins[k]['path']).relative_to(P)).replace('\\','/'): pins[k]['bytes'] for k in ('aggregate_Source','supervisor_Source')},
+   'Exactly the unchanged aggregate Source and distinct supervise_v2.ps1 are authenticated by the peer Source review.')
+ck('Root52_Source_repair_review_full_identity_and_allchecks',
+   repair['full_proof'] == pins['independent_repair_full']
+   and repair['reviewer'] == repairfull['reviewer'] == '/root/i13_final_review'
+   and repair['source_review_passed'] is True and repair['allocation_review_performed'] is False
+   and repair['checks_passed'] == repairfull['checks_passed'] == len(repairfull['checks']) == 52
+   and repair['checks_failed'] == repairfull['checks_failed'] == 0
+   and len({row['name'] for row in repairfull['checks']}) == 52
+   and all(row['passed'] is True for row in repairfull['checks']),
+   'Reuses the exact independent Source-only review, complete inverse and protected-complement proof; it is not runtime evidence.')
+ck('Root52_direct_subjects_cover_current_Source_and_authority',
+   all(pins[k] in repair['subjects'] for k in ('aggregate_Source','supervisor_Source','current_Source','current_Source_adoption')),
+   'The Source-only proof directly covers both exact operative Sources and Source006/adoption.')
+ck('input_v2_exact_Source006_and_adoption_transitive_request_join',
+   inputs['current_source_scope_metadata'] == dict(scope=pins['current_Source'], adoption=pins['current_Source_adoption'])
+   and inputs['source_scope_metadata_is_not_aggregate_compute_grant'] is True,
+   'Request002 directly pins input_v2; input_v2 pins Source006/adoption. The Root issuer separately requires these exact pins and the Root52 proof directly. Request002 itself contains no direct Root52/Source006 field; no such nonexistent field is claimed.')
+
+preserved = {}
+for name, spec in inputs['predecessor'].items():
+    preserved[name] = stream(spec)
+ck('all_six_predecessor_Sources_reviews_request_refusal_capsule_preserved',
+   set(preserved) == {'supervisor','supervisor_review','input_review','request','refusal','capsule'}
+   and request['unissued_predecessor_request_sha256'] == preserved['request']['sha256'] == '603b1a400557a608a0f74e296f35a85d60167b7a0339cd4e3ee24125d96c7aa1'
+   and request['unadmitted_predecessor_supervisor_sha256'] == preserved['supervisor']['sha256'] == '41e3bb54cccd22f792d261b4f94c7bdcd1250c132f9572c452deeaa98d1faae7'
+   and request['source_refusal_path'] == preserved['refusal']['path']
+   and request['source_refusal_sha256'] == preserved['refusal']['sha256'] == '1d5a2ae29d552fb6d04b3a34600cb75a9d324ae0e1135f3223739f0ba176dfa6'
+   and request['independent_source_refusal_capsule_sha256'] == preserved['capsule']['sha256'] == 'ee7ab088b26972f0631f8943b7211746a0a9943ac987041ccef1a04d22b67fd1', preserved)
+ck('original_allocation_refusal_remains_honest_history',
+   prior['allocation_review_passed'] is False and prior['checks_failed'] == 1
+   and inputs['predecessor_supervisor_and_review_remain_unused_and_refused_for_allocation'] is True
+   and inputs['no_retrospective_runtime_or_ownership_qualification_of_predecessor'] is True,
+   'The prior refused Source is not promoted by the repaired successor; no actual race or unrelated termination was established.')
+
+roles = {'pins','result','closeout','lease','junit','native_receipt','native_admission','native_deadline','root_admission','peer_grant','external_supervision','archive_manifest'}
+refs = []
+for batch, row in proofs['batches'].items():
+    assert set(row) == roles and row == inputs['batch_bindings'][batch]['proofs']
+    for role, spec in row.items():
+        assert set(spec) == {'path','sha256'}
+        refs.append(dict(batch_id=batch, role=role, **stream(spec)))
+ck('fresh_all36_exact_proof_refs_streamhashed',
+   set(proofs) == {'schema','batch_plan_sha256','batches'} and set(proofs['batches']) == {'a','b','c'}
+   and len(refs) == inputs['proof_references'] == 36,
+   {'references': refs, 'policy': 'All external refs were streamed from current files, with stable descriptor/path facts. No >2MiB file is parsed or copied.'})
+ck('three_large_original_pinmaps_stream_only',
+   len([row for row in refs if row['bytes'] > CAP]) == 3
+   and all(row['role'] == 'pins' for row in refs if row['bytes'] > CAP),
+   [row for row in refs if row['bytes'] > CAP])
+ck('fixed_plan_three_disjoint_function_partitions_and_counts',
+   plan['batch_order'] == ['a','b','c'] and plan['expected_full_tests'] == 133 and plan['expected_definitions'] == 29
+   and [len(plan['batches'][b]['function_counts']) for b in ('a','b','c')] == [10,11,8]
+   and [sum(plan['batches'][b]['function_counts'].values()) for b in ('a','b','c')] == [36,44,53]
+   and len({name for b in ('a','b','c') for name in plan['batches'][b]['function_counts']}) == 29
+   and plan['final_aggregate_requires_separate_explicit_coordination'] is True,
+   'A36/B44/C53 with 29 disjoint definitions and an explicit separate aggregate allocation boundary.')
+
+actual_shas = ['ebb9745e6cd4cfabf221150ca54362ca66f554bbd66fdca8bc12ad0ca6d7e80f', '4d2b479fce626b61cf7b7efd25ddc425f0bd41ef8f16ba81c2eef090c65129b6', '5b87e137f9a6d879fafd444c6a3aeb121e8d217399934c5928a28f1c3f10b3bb']
+report_shas = ['e755076235f47885e589768bbe4d9d787808a58190272512ccb678ebe592acf7', 'c0f569e747c446760a0684c4e871ad13721058804174007f041f9fce66873517', '59564f61109e47043f21bc717ad04e8a839e22d10d727974940cc27897f3bcad']
+ZERO_KEYS = {'source_updates','restore_count','support_updates','gradient_updates','target_inference_calls','query_count','model_constructions','measured_cells'}
+actuals = []
+reports = []
+closures = []
+selected_sets = []
+complete = None
+family = None
+family_bytes = None
+previous_release = None
+archive_pairs = []
+for index, (batch, count) in enumerate(zip(('a','b','c'), (36,44,53))):
+    binding = inputs['batch_bindings'][batch]
+    actual_pin = binding['actual_review']
+    assert actual_pin['sha256'] == actual_shas[index]
+    actual = js(actual_pin)
+    actuals.append(actual_pin)
+    row = proofs['batches'][batch]
+    result = js(row['result'])
+    lease = js(row['lease'])
+    grant = js(row['peer_grant'])
+    source_review_spec = dict(path=str(P/f'runs/coordination/cho51_canonical_boundary_20261025_v5_{batch}/source-review.json'), sha256=actual['source_review_sha256'])
+    source_review = js(source_review_spec)
+    report_spec = dict(path=str(R/f'coordination/ROOT_RETAINED_PRO3_{17+index:03d}_BATCH_{batch.upper()}_AND_FULL_CUSTODY_RELEASE_REPORT_001.json'), sha256=report_shas[index])
+    report = js(report_spec)
+    reports.append(subjects[report_spec['path']])
+    ck('batch_'+batch+'_separate_exact_actual_audit_selected_metadata_only',
+       actual['reviewer'] == '/root/readiness' and actual['accepted'] is actual['accepted_selected_metadata_only'] is True
+       and actual['remaining_actionable_findings'] == [] and actual['tests'] == count and actual['full_collected'] == 133
+       and actual['deselected'] == 133-count and actual['reports'] == 3*count and actual['stdlib_controls'] == 34
+       and actual['full133_suite_accepted'] is actual['peer_results_accepted'] is actual['scientific_admission'] is False
+       and request[batch+'_actual_review_sha256'] == actual_pin['sha256'],
+       {'actual_review': actual_pin, 'reported_scope': actual['accepted_scope']})
+    ck('batch_'+batch+'_all12_refs_join_actual_audit_pins',
+       all(actual['key_bindings'][{'external_supervision':'supervision','native_receipt':'receipt','peer_grant':'peer','archive_manifest':'manifest'}.get(role,role)]['sha256'] == spec['sha256'] for role,spec in row.items()),
+       'Every proof role is joined to the independently saved batch audit, including the large pinmap whole-file hash.')
+    full = result['full_collection']
+    if complete is None:
+        complete = full
+    prefix = 'docs/phase2/cho51_canonical_boundary_v1/test_boundary.py::'
+    selected = [name for name in full if name[len(prefix):].split('[',1)[0] in plan['batches'][batch]['function_counts']]
+    deselected = [name for name in full if name not in selected]
+    ck('batch_'+batch+'_actual_full133_selected_and_complement_reconciled',
+       full == complete and len(full) == len(set(full)) == 133 and all(type(name) is str and name.startswith(prefix) for name in full)
+       and result['collected'] == selected and result['deselected'] == deselected and len(selected) == count and len(deselected) == 133-count
+       and result['full_collection_sha256'] == sha(canonical(full)) == actual['full_collection_sha256'] == inputs['full_collection_sha256'],
+       'Only saved JSON lists were reconciled; no pytest collection or cases were invoked.')
+    selected_sets.append(set(selected))
+    counts = dict(collections.Counter(name[len(prefix):].split('[',1)[0] for name in selected))
+    ck('batch_'+batch+'_exact_function_header_and_34controls',
+       counts == result['batch_function_counts'] == plan['batches'][batch]['function_counts']
+       and result['batch_functions'] == list(plan['batches'][batch]['function_counts'])
+       and result['expected_full_tests'] == 133 and result['batch_id'] == batch
+       and result['stdlib_control_count'] == len(result['stdlib_controls']) == 34,
+       'Saved batch headers and controls remain exact under the fixed plan.')
+    zero = result['current_counter_ledger']
+    ck('batch_'+batch+'_eight_builtin_integer_zero_reports_no_forbidden_calls',
+       set(zero) == ZERO_KEYS and all(type(value) is int and value == 0 for value in zero.values())
+       and type(result['forbidden_calls']) is dict and result['forbidden_calls'] == {} and result['unexpected_denials'] == []
+       and actual['observed_budget'] == zero,
+       'These are exact reported metadata counters, not independent observation of every possible runtime allocation or scientific operation.')
+    released = dt.datetime.fromisoformat(lease['released_utc'])
+    started = dt.datetime.fromisoformat(grant['window_start_utc'])
+    ck('batch_'+batch+'_full_custody_and_serial_release_joins',
+       lease['full_compute_custody_released'] is lease['launcher_session_reaped'] is True
+       and lease['external_supervision_sha256'] == row['external_supervision']['sha256']
+       and lease['peer_release_sha256'] == row['peer_grant']['sha256']
+       and report['peer_lease_closeout'] == subjects[row['lease']['path']]
+       and report['compute_grant'] == subjects[row['peer_grant']['path']]
+       and report['grant_consumed_closed'] is report['reported_full_compute_custody_released'] is True
+       and report['peer_explicit_released_utc'] == lease['released_utc']
+       and report['Root_acceptance']['peer_result_accepted'] is False
+       and (previous_release is None or previous_release < started),
+       {'released_utc': lease['released_utc'], 'preceding_full_release': previous_release.isoformat() if previous_release else None,
+        'Root_retained_report': reports[-1]})
+    previous_release = released
+    closures.append(dict(batch_id=batch, released_utc=lease['released_utc'], lease=subjects[row['lease']['path']]))
+    ck('batch_'+batch+'_retained_original_resource_limits_and_hold_claims',
+       all(actual[name] == value for name,value in dict(native_attempt_seconds=600,native_session_cleanup_seconds=5,process_mib=4096,job_mib=5120,threads=1,torch_threads=1,startup_ram_gib=4,active_ram_gib=4,disk_gib=20).items())
+       and actual['gpu_hidden'] is actual['all_five_pause_guards_retained'] is actual['native_and_external_ownership_closed_before_explicit_release'] is True
+       and actual['final_future_runtime_qualified'] is actual['raw_input_verification_performed'] is actual['weight_verification_performed'] is False,
+       'Original batch limits are historical metadata; this aggregate allocation grants no new Job, tests, candidate/runtime or science qualification.')
+    if family is None:
+        family = source_review['files']
+        family_bytes = source_review['file_bytes']
+    assert family == source_review['files'] and family_bytes == source_review['file_bytes']
+    manifest = js(row['archive_manifest'])
+    archive_root = Path(row['archive_manifest']['path']).parent
+    members = manifest['artifacts']
+    names = set()
+    for member in members:
+        assert set(member) == {'source','path','bytes','sha256'}
+        relative = Path(member['path'])
+        assert not relative.is_absolute() and '..' not in relative.parts and member['path'] not in names
+        names.add(member['path'])
+        original = stream(dict(path=member['source'], bytes=member['bytes'], sha256=member['sha256']))
+        copied = stream(dict(path=str(archive_root/relative), bytes=member['bytes'], sha256=member['sha256']))
+        archive_pairs.append(dict(batch_id=batch, original=original, copy=copied))
+    ck('batch_'+batch+'_41_original_archive_copy_whole_pin_pairs',
+       len(members) == len(names) == actual['archive_pairs'] == binding['archive_pairs'] == 41
+       and sum(member['bytes'] for member in members) == binding['archive_payload_bytes'],
+       'All current archive originals/copies are freshly stream-hashed and exact. Large pinmap copies are streamed only, not parsed or copied into this Root proof.')
+
+ck('three_selected_sets_disjoint_union133_and_fullcollection_same',
+   len(set.union(*selected_sets)) == 133 and all(not selected_sets[i] & selected_sets[j] for i in range(3) for j in range(i))
+   and inputs['selected_pairwise_overlap'] == 0 and inputs['selected_union'] == 133,
+   'Saved list arithmetic confirms complementary coverage only; actual final aggregate acceptance remains unestablished.')
+ck('latest_C_full_release_precedes_request002',
+   previous_release < dt.datetime.fromisoformat(request['requested_utc'])
+   and request['predecessor_full_lease_sha256'] == proofs['batches']['c']['lease']['sha256'], closures)
+source_pins = []
+for name, digest in family.items():
+    pin = stream(dict(path=str(P/name), bytes=family_bytes[name], sha256=digest), CAP)
+    source_pins.append(pin)
+ck('fresh_frozen22_whole_Sources378736_unchanged',
+   len(source_pins) == 22 and sum(pin['bytes'] for pin in source_pins) == inputs['current_source22_bytes'] == 378736
+   and inputs['current_source22_unchanged'] is True,
+   source_pins)
+ck('input_coverage_totals_are_metadata_and_planned_reads_not_fit_claim',
+   len(archive_pairs) == inputs['total_archive_pairs'] == 123
+   and inputs['total_selected_phase_reports'] == 399 and inputs['total_stdlib_control_instances'] == 102
+   and inputs['expected_aggregate_checked_proof_reads_for_current_inputs'] == 196
+   and inputs['expected_aggregate_checked_proof_bytes_for_current_inputs'] == 25648747
+   and inputs['maximum_aggregate_checked_proof_reads'] == 256
+   and inputs['maximum_aggregate_checked_proof_bytes'] == 67108864,
+   '196 reads/25,648,747 bytes are a static current-input projection, not measured aggregate counters or a 300-second fit promise. Installed18909/runtime27 and loaded4041 bodies were not bulk-rehashed in this review.')
+
+limits = dict(maximum_jobs=0,maximum_interpreter_invocations=1,maximum_seconds=300,requested_window_seconds=600,
+              expected_historical_metadata_tests=133,expected_batches=3,expected_controls_per_batch=34,
+              startup_ram_gib=4,active_ram_gib=4,disk_gib=20,root_max_active_chats=2,peer_max_active_chats=3,shared_max_active_chats=5)
+ck('request_0Jobs_1stdlib_interpreter_300total_600window_exact_ints',
+   all(type(request[name]) is int and request[name] == value for name,value in limits.items())
+   and request['automatic_retry_permitted'] is request['scientific_admission'] is False
+   and request['metadata_only'] is request['no_new_tests_or_runtime_qualification'] is request['respect_pro2_reserved_diagnostic_first'] is True,
+   'Pro3 request perspective root2/peer3 means Pro3Root2 + Pro2Root3, shared5; it does not add overlap slots.')
+zero = request['expected_numerical_budget']
+ck('request_exact8_builtin_integer_zeros_no_bool_substitution',
+   set(zero) == ZERO_KEYS and all(type(value) is int and value == 0 for value in zero.values()), zero)
+expected_pauses = [str(R.parent/('resume-'+day+'-001')/'coordination/PRO2_REQUEST_PRO3_PAUSE.json') for day in ('20261007','20261012','20261013','20261015','20261025')]
+ck('all5_genuine_pause_paths_exact_and_Source_checked_per_loop',
+   request['genuine_pause_paths'] == expected_pauses and all(day in supervisor for day in ('20261007','20261012','20261013','20261015','20261025'))
+   and '$availableRam -ge 4GB' in supervisor and '$availableDisk -ge 20GB' in supervisor,
+   'This is a Source/policy check; fresh actual pause/resource checks are Root issuer and peer prelaunch duties, and absence itself grants no authority.')
+ck('command_exact_single_python_I_S_B_and_bound_admission_placeholder',
+   request['command'] == [str(P/'.venv/Scripts/python.exe'),'-I','-S','-B',str(A/'aggregate.py'),'--expect-proofs',pins['proof_manifest']['sha256'],'--expect-admission','ROOT_ADMISSION_SHA_AT_LAUNCH'],
+   'Only the future exact Root admission hash may fill the fixed placeholder; no shell, arbitrary command or candidate test import is admitted.')
+ck('caller_complete_300seconds_includes_final_writes_reap_and_pipes',
+   type(request['caller_observed_full_dispatch_to_tool_reap_seconds_maximum']) is int
+   and request['caller_observed_full_dispatch_to_tool_reap_seconds_maximum'] == 300
+   and inputs['root_caller_complete_dispatch_to_tool_completion_reap_and_pipes_span_required'] is True
+   and inputs['maximum_root_caller_complete_span_seconds'] == 300
+   and inputs['root_caller_complete_span_must_fit_distinct_peer_window'] is True
+   and review['external_caller_full_span_required']['maximum_seconds'] == 300,
+   'Actual caller UTC before dispatch through terminal completion/reap/full pipes, including post-stop evidence writes and final disposal, must be retained. Internal supervisor stopwatch alone is insufficient; no actual walltime is measured here.')
+ck('unchanged_supervisor_45cleanup_1MiB_pipes_once_and_owned_bounds',
+   all(s in supervisor for s in ['$stopAt=$hardEnd.AddSeconds(-45)', '$hardEnd=$entry.AddSeconds(300)',
+       'bytes.Length+count>1048576', 'rows.Count>8192 || watch.ElapsedMilliseconds>250',
+       'watch.ElapsedMilliseconds>750', 'Records.Count>=64', '[IO.FileMode]::CreateNew'])
+   and review['cleanup_reserve_seconds'] == 45 and review['stdout_maximum_bytes'] == review['stderr_maximum_bytes'] == 1048576,
+   'The independently reviewed Source52 ownership repair and all retained bounds remain exact; no runtime compilation or native query has been performed.')
+
+issuer_checks = [
+ ('issuer_exact_request_review_input_source_pins', [pins[name]['sha256'] for name in ('request','input_review','supervisor_review','aggregate_Source','supervisor_Source')]),
+ ('issuer_direct_Source006_and_adoption_join', [pins['current_Source']['sha256'],pins['current_Source_adoption']['sha256'], "inputs['current_source_scope_metadata']['scope']==scopep"]),
+ ('issuer_direct_Root52_capsule_full_checks_and_subjects', [pins['independent_repair_capsule']['sha256'], "repair['checks_passed']==repairfull['checks_passed']==52", "repairfullp==repair['full_proof']", 'all(item in repair[\'subjects\'] for item in (source,supervisor,scopep,adoptp))']),
+ ('issuer_requires_new_genuine_allocation_capsule_unique_allpass_checks', ["allocation['allocation_review_passed'] is True", "allocation['reviewer']=='/root/i13_final_review'", "all(c['passed'] is True for c in checks)", "len({c['name'] for c in checks})"]),
+ ('issuer_preserves_predecessors_refusal_and_capsule', ["for name,spec in inputs['predecessor'].items():same(spec)", pins['preserved_allocation001_full']['sha256'] if False else '1d5a2ae29d552fb6d04b3a34600cb75a9d324ae0e1135f3223739f0ba176dfa6', 'ee7ab088b26972f0631f8943b7211746a0a9943ac987041ccef1a04d22b67fd1']),
+ ('issuer_all36_streamed_3actuals_releases_and_frozen22_joins', ['references.extend(dict(batch_id=bid,role=role,**same(spec))', 'serial full custody releases before successor grants', 'complete36_streamed_proof_pins=references', 'unchanged_frozen22_Source=sources']),
+ ('issuer_Root2MiB_parse_cap_streaming_only_external_maps', ["meta['bytes']<=2097152", 'while True:', "doc(allocation['full_proof']['path']", 'same(spec)']),
+ ('issuer_fresh_nativeRAM_disk_all5pauses_and_unused_once', ['GlobalMemoryStatusEx', 'm.available>=4*1073741824 and disk>=20*1073741824', 'all(not os.path.lexists(p) for p in pauses)', "==19,'no later or reused grant'", "all(not os.path.lexists(D/name) for name in unused)"]),
+ ('issuer_all_own_snapshots_closed_before_peer_allocation', ['ROOT_I13_THREE_INPUT_SNAPSHOTS_EXPLICIT_OWN_CUSTODY_RELEASE_001.json', "own['all_owned_parents_and_children_reaped_and_streams_drained'] is True", "==3 and len(list(C.glob('ROOT_I13_ONCE_SYNTHETIC_MEMORY_SCOPE_*.json')))==8"]),
+ ('issuer_600window_plus_original60_Source_reserve_and_exclusive_output', ["total_seconds()>660", 'dt.timedelta(seconds=600)', "with out.open('xb')", 'os.fsync(f.fileno())', "out.read_bytes()==raw"]),
+ ('issuer_requires_actual_complete_outer_timing_evidence', ['caller_observed_complete_supervisor_walltime_required=True', 'complete_supervisor_walltime_maximum_seconds=300', 'supervisor_internal_stopwatch_alone_proves_complete_walltime=False', 'post_stop_evidence_write_latency_must_be_included_in_caller_observation=True']),
+ ('issuer_shared_3plus2_5_and_no_original_gate_opening', ['Pro2_max_including_Root=3,Pro3_max_including_Root=2,shared_max=5', 'Pro2_actual_family_Native8_Parser_runtime_or_science_admission=False', 'original_Pro2_I13_result_unchanged=dict(passed=20,failed=12,remaining_current_cases_unestablished=904,full936_pass=False)']),
+]
+for name, fragments in issuer_checks:
+    ck(name, all(fragment in issuer for fragment in fragments),
+       {'issuer_Source': pins['issuer_Source'], 'inspected_predicates': fragments, 'execution': 'Own metadata issuer Source inspected only; not imported, compiled or invoked by reviewer.'})
+ck('issuer_exact_source_review_and_owner_metadata_hardjoins',
+   "source-review.json',actual['source_review_sha256'])" in issuer
+   and "request['caller_observed_full_dispatch_to_tool_reap_seconds_maximum']==300" in issuer,
+   'Source-review joins are hard-pinned; saved selected metadata is never promoted to engineering/scientific result acceptance.')
+ck('Source_only_allocation_eligibility_not_actual_grant_or_result', True,
+   'This all-pass assessment permits a separate Root decision about one exact metadata allocation. It does not issue grant020 or admission, invoke the issuer, establish a future-runtime qualification, prove host silence, or accept aggregate/peer/scientific results.')
+ck('no_peer_import_compile_test_native_livequery_or_aggregate_by_reviewer', True,
+   'Only own stdlib read/hash/strict bounded JSON and list/set arithmetic executed. No peer Source import/export, PS/C# compiler, interpreter, aggregate/test, native process/Job query, original Pro2 target or replay was entered.')
+ck('all_large_files_only_streamed_never_parsed_or_copied',
+   not set(large_streamed) & parsed_paths,
+   {'large_streamed_only': list(large_streamed.values()), 'Root_parsed_metadata_and_output_cap_bytes': CAP,
+    'meaning': 'Three original and three archived pinmaps above2MiB were streamed; none was parsed or copied into Root metadata.'})
+
+unused = ['admission.json','attempt_001.json','result.json','supervision_001.json','supervisor-attempt_001.json','stdout_001.json','stderr_001.json','lease-closeout_001.json']
+ck('review_snapshot_not_allocated_and_unconsumed_metadata_identities',
+   not (R/'coordination/PRO2_PRO3_COMPUTE_RELEASE_20261025_020.json').exists()
+   and all(not (A/name).exists() for name in unused),
+   'Filesystem identities were absent at this review snapshot only. This is not a live process/Job/handle absence or whole-host quiet claim. A later Root decision must repeat freshness/unused/resource guards.')
+assert len({row['name'] for row in checks}) == len(checks) and all(row['passed'] is True for row in checks)
+assert not set(large_streamed) & parsed_paths
+reserve()
+for name, spec in pins.items():
+    stream(spec, CAP)
+created = dt.datetime.now(dt.timezone.utc).isoformat()
+flags = {name: False for name in ['peer_result_accepted','scientific_admission','target_execution','tests_executed','native_Parser_executed','operational_authority','scientific_authority','actual_family_publication','peer_Code_compiled','peer_Code_imported','peer_aggregate_executed']}
+common = dict(schema_version=1, reviewer='/root/i13_final_review', created_utc=created,
+              verdict='PASS_NARROW_AGGREGATE_ALLOCATION002_SOURCE_INPUT_ELIGIBILITY', status='REVIEW_PASSED_ROOT_DECISION_PENDING',
+              allocation_review_passed=True, remaining_actionable_findings=[], checks_passed=len(checks), checks_failed=0,
+              reviewed_file_pins=pins, subjects=list(subjects.values()), peer_interpreter_invocations=0, live_Job_queries_by_reviewer=0,
+              claim_limit='Exact repaired Source/request/input allocation eligibility only: zero Jobs, one fixed stdlib interpreter300seconds including45cleanup and actual complete caller walltime/finalwrites/reap/EOF/fullrelease within distinct600second window. Fresh Root/peer resource/pauses/unusedidentity/admission/actual result reviews remain separate. No actual grant, execution, future-runtime/engineering/full133/scientific/hostquiet acceptance. Old refusal and Sources remain exact; original Pro2 gates and all caps remain held.', **flags)
+required = dict(schema='pro2_pro3_compute_release_v1', released=True, scope=request['scope'],
+                proofs_sha256=pins['proof_manifest']['sha256'], batch_plan_sha256=pins['fixed_plan']['sha256'],
+                aggregate_source_sha256=pins['aggregate_Source']['sha256'], supervisor_sha256=pins['supervisor_Source']['sha256'],
+                supervisor_review_sha256=pins['supervisor_review']['sha256'], input_review_sha256=pins['input_review']['sha256'],
+                maximum_jobs=0,maximum_interpreter_invocations=1,maximum_seconds=300,
+                expected_historical_metadata_tests=133,expected_batches=3,expected_controls_per_batch=34,
+                startup_ram_gib=4,active_ram_gib=4,disk_gib=20,expected_numerical_budget=zero,
+                automatic_retry_permitted=False,scientific_admission=False,
+                window_start_utc='exact matching Root and peer UTC string',window_end_utc='exact matching Root and peer UTC string')
+full = dict(common, record_type='Independent_Pro3_aggregate_allocation002_Source_input_full_proof', checks=checks,
+            reviewed_36_streamed_refs=refs, reviewed_123_archive_original_copy_pairs=archive_pairs,
+            all22_frozen_Source=source_pins, three_independent_actual_audits=actuals, three_Root_retained_release_reports=reports,
+            closed_release_chronology=closures, preserved_predecessors=preserved,
+            required_aggregate_and_supervisor_grant_fields=required,
+            Root_admission_only_fields=['schema=cho51_canonical_boundary_aggregate_admission_v1','accepted=True','observed_utc<=supervisor_entry','deadline_utc<=entry+300 and exactpeerwindowend','peer_release_path and sha256','same core grant fields'],
+            Rootissuer_additional_required_fields=['request002 exactpin','input_v2 exactpin','Source006 and adoption directpins','Root52 Source capsule/full','this allocation002 capsule/full','three exact fullrelease reports','fresh4/4/20+5pauses+unused020+ownclosedscopes','caller actual complete<=300 including finalwrites/reap/EOF/fullrelease'],
+            limitations=['Bulk18909 installed runtime and4041 loaded-module bodies were not replay-rehashed; exact retained independent batch audits remain the grounding.',
+                         'No future aggregate runtime fit or actual counter measurement follows from static196read/25648747byte projection.',
+                         'All requested resource floors and process custody must be freshly enforced at actual admission; this reviewer ran no native RAM/process/Job query.',
+                         'Actual outer complete invocation walltime, normal result, tree closure, both actual pipe EOF and explicit peer full release need separate saved-result review.'])
+
+def write(name, value):
+    reserve()
+    raw = (json.dumps(value, sort_keys=True, indent=2, ensure_ascii=True, allow_nan=False)+'\n').encode('ascii')
+    assert len(raw) <= CAP
+    path = O/name
+    with path.open('xb') as handle:
+        assert handle.write(raw) == len(raw)
+    assert path.read_bytes() == raw
+    return dict(path=str(path), bytes=len(raw), sha256=sha(raw))
+
+fullpin = write('INDEPENDENT_PRO3_AGGREGATE_ALLOCATION002_SOURCE_INPUT_FULL_PROOF_001.json', full)
+capsule = dict(common, record_type='Independent_Pro3_aggregate_allocation002_Source_input_capsule', full_proof=fullpin,
+               caller_observed_complete_supervisor_walltime_required=True, complete_supervisor_walltime_maximum_seconds=300,
+               supervisor_internal_stopwatch_alone_proves_complete_walltime=False,
+               post_stop_evidence_write_latency_must_be_included_in_caller_observation=True)
+cappin = write('INDEPENDENT_PRO3_AGGREGATE_ALLOCATION002_SOURCE_INPUT_CAPSULE_001.json', capsule)
+print(json.dumps(dict(checks_passed=len(checks), checks_failed=0, allocation_review_passed=True, full_proof=fullpin, capsule=cappin)))

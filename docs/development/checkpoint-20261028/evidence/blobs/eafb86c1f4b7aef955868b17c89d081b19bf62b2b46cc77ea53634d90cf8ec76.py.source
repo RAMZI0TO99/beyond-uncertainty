@@ -1,0 +1,180 @@
+"""Additive complete protocol correction; own stdlib metadata only."""
+import ast
+import hashlib
+import json
+from pathlib import Path
+
+HERE = Path(__file__).parent
+
+def pin(path):
+    raw = path.read_bytes()
+    return {'path': str(path), 'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
+
+def read(path):
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError('duplicate key')
+            result[key] = value
+        return result
+    def reject(token):
+        raise ValueError('noninteger ' + token)
+    return json.loads(path.read_bytes(), object_pairs_hook=pairs, parse_float=reject, parse_constant=reject)
+
+def save(name, value):
+    raw = (json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False) + '\n').encode()
+    if len(raw) > 2097152:
+        raise ValueError('cap')
+    with (HERE / name).open('xb') as handle:
+        handle.write(raw)
+    if (HERE / name).read_bytes() != raw:
+        raise ValueError('own readback')
+    return pin(HERE / name)
+
+def schema(fields):
+    return {'builtin_type': 'dict', 'exact_keys': list(fields), 'fields': fields,
+            'field_count': len(fields), 'additional_fields_allowed': False}
+
+def lit(value):
+    return {'builtin_type': type(value).__name__, 'literal': value}
+
+def correct_strings(value):
+    if type(value) is dict:
+        return {key: correct_strings(child) for key, child in value.items()}
+    if type(value) is list:
+        return [correct_strings(child) for child in value]
+    if type(value) is str:
+        return (value.replace('prewrite_packet13', 'prewrite_packet14')
+            .replace('peer_wrapper.peer_packet.actual_content_decision', 'peer_wrapper.peer_packet.content_decision')
+            .replace('peer_wrapper.peer_packet.content_decision_witness', 'peer_wrapper.peer_packet.serialization_witness')
+            .replace('peer_wrapper.peer_packet.inverse', 'peer_wrapper.peer_packet.inverse_evidence')
+            .replace('request.author_receipt==packet.receipt', 'request.author_receipt==wrapper.peer_packet.receipt')
+            .replace('PROPOSAL002', 'PROPOSAL003'))
+    return value
+
+def main():
+    c2 = HERE / 'I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_002.json'
+    p2 = HERE / 'I13_PROPOSED_M3_GUARD_AND_SHARED_SELECTED_ROLE_PUBLISHER_PROTOCOL_002.json'
+    c = correct_strings(read(c2))
+    p = correct_strings(read(p2))
+    c['predecessor_unadopted_catalogue'] = pin(c2)
+    p['predecessor_unadopted_proposal'] = pin(p2)
+    a = read(HERE / 'I13_M3_SIX_ROLE_PROFILE_STATIC_ACTUAL_BYTES_AND_AST_AUDIT_001.json')
+    peer_dir = HERE.parent / 'canonical_peer_protocol_audit_001'
+    peer_protocol_path = peer_dir / 'I13_PROPOSED_CANONICAL_PEER_AUTHOR_WRAPPER_AND_PUBLICATION_JOIN_PROTOCOL_004.json'
+    peer_protocol = read(peer_protocol_path)
+    p['peer_author_protocol_basis'] = pin(peer_protocol_path)
+    s = c['schemas']
+    s['validator_supports2'] = schema({'M3': 'code5', 'PEER': 'code5'})
+    prewrite = s.pop('prewrite_packet13')
+    prewrite['fields']['validator_supports'] = 'validator_supports2'
+    prewrite['exact_keys'] = list(prewrite['fields'])
+    prewrite['field_count'] = len(prewrite['exact_keys'])
+    assert prewrite['field_count'] == 14
+    s['prewrite_packet14'] = prewrite
+    for key, schema_body in peer_protocol['new_closed_schemas'].items():
+        s[key] = {'builtin_type': 'dict', 'exact_keys': list(schema_body['fields']),
+                  'fields': schema_body['fields'], 'field_count': schema_body['field_count'],
+                  'additional_fields_allowed': False}
+    # Exact copied peer error codes are data read from AST, not a target import/call.
+    peer_source = Path(peer_protocol['source_ancestry']['path'])
+    tree = ast.parse(peer_source.read_bytes(), filename=str(peer_source))
+    inherited_errors = sorted({node.value for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and type(node.value) is str and node.value.startswith('E_')})
+    peer_errors = sorted(set(inherited_errors) | set(peer_protocol['typed_failures']))
+    common_errors = sorted(set(p['typed_failures']) | {'E_FIXED_PORT','E_LAYER_RESULT','E_LAYER_EXCEPTION',
+        'E_JSON_DUPLICATE','E_JSON_NUMBER','E_PATH','E_ROOT_THREAD','E_RECORD_HASH','E_RECORD_ALIAS',
+        'E_RECORD_MISSING','E_CATALOGUE_PIN','E_AUTHORITY','E_SCHEMA_VALUE','E_SELECTION','E_SPENT_IDENTITY'})
+    c['typed_error_codes'] = sorted(set(common_errors) | set(peer_errors))
+    c['fixed_port_registry']['M3']['error_class'] = 'I13MetadataError'
+    c['fixed_port_registry']['M3']['typed_error_codes'] = common_errors
+    c['fixed_port_registry']['PEER']['error_class'] = 'I13MetadataError'
+    c['fixed_port_registry']['PEER']['typed_error_codes'] = peer_errors
+    c['peer_error_whitelist_ancestry'] = {'Source': pin(peer_source), 'literal_AST_error_codes': inherited_errors,
+        'new_protocol': pin(peer_protocol_path), 'new_protocol_error_codes': peer_protocol['typed_failures'],
+        'mapping': 'Literal oldcodes preserved unchanged under newexact I13MetadataErrorclass; no arbitrary aliases or code rewriting. Any unknownclass/code/rawexception maps E_LAYER_EXCEPTION only atfixedport boundary.'}
+    policy = c['publisher_purpose_proof_policy']
+    policy['capsule15'] = policy.pop('capsule14')
+    policy['full17'] = policy.pop('full16')
+    # Source facts use three genuinely conditional fields, not unconditional capture-only maps.
+    inventory = read(Path(a['inventory']['subject']['path']))
+    inventory_rows = {row['role']: row for row in inventory['roles']}
+    templates = c['M3_complete_stage_roles']['templates']
+    op_shapes = {}
+    for role in templates:
+        values = sorted({slot['value'] for slot in inventory_rows[role]['literal_slots']
+                         if slot['kind'] == 'separate_unselected_operational_path'})
+        op_shapes[role] = schema({value: 'safe_relative_path' for value in values})
+    s['templates_operational_choices'] = schema(op_shapes)
+    s['binding_support3_source'] = schema({'source': 'fact3', 'different_review': 'fact3', 'Root_adoption': 'fact3'})
+    binding_names = ['coordination_peer_reply_sha256','coordination_root_response_sha256',
+        'guard_harness_static_review_sha256','guard_profile_sha256','preparer_static_review_sha256',
+        'raw_source_sha256','source_manifest_sha256','source_peer_sha256','source_projection_sha256']
+    s['capture_binding_supports9'] = schema({key: 'binding_support3_source' for key in binding_names})
+    s['capture_role_selections3'] = schema({key: lit(value) for key, value in a['I2_literal_contracts']['CURRENT_PLAN_ROLE_SELECTIONS'].items()})
+    s['facts21']['fields']['operational_choices'] = {'conditional_on_sibling': 'stage',
+        'cases': {'templates': 'templates_operational_choices'}, 'otherwise': lit({})}
+    s['facts21']['fields']['binding_supports'] = {'conditional_on_sibling': 'stage',
+        'cases': {'capture': 'capture_binding_supports9'}, 'otherwise': lit({})}
+    s['facts21']['fields']['role_selections'] = {'conditional_on_sibling': 'stage',
+        'cases': {'capture': 'capture_role_selections3'}, 'otherwise': lit({})}
+    c['primitive_types'] = {
+        'safe_relative_path': 'builtinstr<=512 ASCII [A-Za-z0-9_./-]+; noleading/, noempty/dot/dotdotcomponent, noC0/surrogate; exactdeclaredoperationalpath metadata only.',
+        'native_absolute_path': 'builtinstr<=512 uppercase drive colon backslash, componentsnonempty/noC0/surrogate/reservedWindowsnames/forbiddencharacters/trailingdotspace/dotdot/slash; exactwire retained.',
+        'lower_ascii_hex64': 'builtinstr exact64 [0-9a-f]', 'lower_ascii_hex32': 'builtinstr exact32 [0-9a-f]',
+        'utc6': 'builtinstr exactvalidcalendar [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}.[0-9]{6}+00:00',
+        'utc7': 'sameexactvalidASCIIcalendar with7fractiondigits, integer100ns math',
+        'finite_strict_metadata': 'exactbuiltinJSONtypes only, nofloat/constant/BOM/duplicates/nonbuiltinkeys/surrogates/C0outsideexactI11descriptiveexception; allnodes/depthcharged',
+        'actor_root_or_nonroot': 'builtinstr<=512 Rootexact/rootorproperASCIIcanonical/root/pathcomponents; no whitespace/dot/slashaliases; excludeactorcasefold+descendantboundary',
+        'actor_nonroot': 'actor_root_or_nonroot except/root',
+        'exact_sorted_unique_fact3_list': 'builtinlist<=2000, everyclosedfact3, lexicographicexactpathsort, noexact/casefoldpathduplicates/conflicts; allbodiespresentunderrolecap; jointly256record/32MiB/node50k bounds',
+        'recorded_role_proof_metadata_dict': 'builtinstrictJSONdict completecounted; roleproof claims remainrecordedopaqueevidence, never inferactualrerender/Parser/algorithmqualification',
+        'source_cap_domains': 'newM3/peer/publisher Source65536; originalI2Source2097152; priorI5/I8/I9codeprovenance inherited2097152 unlessexactsmallerdeclared; outputROLE_SOURCE_CAPSunchanged'}
+    # Manifest active payload byte counts are dynamic pin joins, not immutable old integers.
+    payload_schemas = s['manifest_body23']['fields']['payloads']['items_by_ordinal']
+    for index, row in enumerate(payload_schemas):
+        if 'bytes' in row.get('fields', {}):
+            row['fields']['bytes'] = 'positive_builtin_int_joined_exact_payload_pin_size'
+    c['M3_body_schema_scalar_policy'] = 'Manifestpayload bytecounts exactsuppliedpin lengths, notfrozenoldsize; selectedfive payloadpaths/hash/countsjoinnewtemplatepins andseven carriedpins exactoldmetadata. Other numericbudget/version/count/scalar flags preserveoriginalvalues or explicitrolejoins; no sourcealgorithm rerender claim.'
+    c['validator_support_delivery'] = {
+        'location': 'prewrite_packet14.validator_supports closed2 {M3:code5,PEER:code5}; canonical_packet14.prewrite_packet referssamewholeprewritebody. Notrequest.producer_support (oldI2 orpeer/guardproducerdeclaration) andnotpublisher_support.',
+        'fixed_part': 'Eachcode5 Source/API/editor literaljoined tonewpublisherSource/API fixed_port_registry; both supplied wholebytes verified. FinalnewSource freezesactualnewM3/peerSource/APIpins/editor/module/functions; no runtimeSourcepath/registry override.',
+        'proof_part': 'different_review/Root_adoption exacttypedcaller-suppliedrawpins allowedonlyas code5proofdata; directSource+APIwholecoverage, positivebuiltinchecks_passed equality/falseauthority/completeactorunion/chronology mustvalidate beforeanycall. APIcannotembedownproofs/ownAPIhash. Ownsource/APIproofs suppliedexternally afterAPIbirth.',
+        'required_module_attributes': {'__name__': 'literalmodule_name', '__file__': 'literalSource.path',
+            '__source_pin__': 'exactfixedSourcefact3', '__source_bytes__': 'exactownedSourcebytes',
+            '__API_pin__': 'exactfixedAPIfact3', '__API_bytes__': 'exactownedAPIbytes'},
+        'required_function_attributes': {'__name__': 'literalregisteredfunction', '__module__': 'literalmodule_name',
+            '__globals__': 'identity module.__dict__', '__code__.co_filename': 'exactSource.path',
+            'signature': 'exactregisteredkeywordonlynames, noargs/kwargs/positionalorcallbacks'},
+        'API_policy': 'NewM3andpublisherAPI requireSource,author/actual_Source_editor,exacttype/version/entrynames/protocol/catalogue and allnewauthorityflagsFalse; peerAPI is exactclosedheld_peer_API14, hasno inventedscientific_authorityfield. Its Source/author/editor/entries/protocol/base/roledata/requiredexistingfalseflags validated exactly; resultallfalseauthorities alwaysmandatory.',
+        'acyclicity': 'M3/peerSource/APIs fixstablecatalogue/coreprotocol data. PublisherSource/API fixM3/peerSource/APIs butnotownAPIhash/ownproofs. Prewritepacket suppliesexternallybornvalidatorsupportproofs andrawpublishercode5. Heldcomposition fixesfinalpublisher/M3/peerSource/APIs. Rootexternallypinswholefinalset.'}
+    cat_pin = save('I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_003.json', c)
+    p['catalogue'] = cat_pin
+    p['validator_support_delivery'] = c['validator_support_delivery']
+    p['exact_correction_inventory'] = [
+        'Peer draftsubjects use exact content_decision/serialization_witness/inverse_evidence through wrapper.peer_packet; author_receipt==wrapper.peer_packet.receipt.',
+        'Prewritepacket14 newvalidator_supports2 rawcode5 supplies M3/PEERreview/adoption/editorprovenance separatelyfromrequestproducer andpublisher support; canonicalreferencesentireprewrite14.',
+        'FixednewModuleTypeports literalexactSource/API/name/file/attrs/functions/signature andAPIrolepolicy; physicalcompiledbytesauth remainsfalse.',
+        'Completecopiedpeer004 ASTknownE_* codes plusnewpeerwrapper errors exactwhitelist; unknownexceptions typedE_LAYER_EXCEPTION. ParserUnicodeError/JSONDecodeError/RecursionError/overflow rawmetadata failures typedE_JSON/E_DEPTH withoutescaping.',
+        'Capture-onlyfacts.binding_supports/role_selections emptyotherwise; template-onlyfacts.operational_choices emptyotherwise, exactoperationalchoicekeys extractedactualinventory. Manifestpayloadbytes dynamicpin joins, budgetnumbers retained.',
+        'Purposeproofpolicy keys namedcapsule15/full17; exactschemasunchanged15/17/11 positivechecks_passed. Catalogueprimitivefieldtypes nowexplicit; no eval/dynamiccallback.'
+    ]
+    p['typed_failures'] = c['typed_error_codes']
+    p['fixed_new_module_port_rules'] += [
+        'Exactvalidatorcode5delivery andmoduleattributes/proofs per catalogue.validator_support_delivery. Bothnewportcode5s checked beforecall; proofpins notsilentlytakenfromoldI2producer_support. ExactknownI13MetadataErrorcodes perfixed_port_registry; passthroughknowncodes, unknownclasses/codes/exceptions E_LAYER_EXCEPTION.',
+        'AllstrictJSON parser failures including UTF8UnicodeError,JSONDecodeError,RecursionError andintegerparseValueError convertedtypedmetadataerrors; extremeinputdepth refusedboundedly withoutlettinghostexceptionsescape. Shape/typechecks precedeallvaluehashing/indexing.'
+    ]
+    p['finite_required_controls']['refusal'] += [
+        'eachvalidator_supports2code5key/missing/SourceAPIeditorproofwholecoverage mismatchbeforefixedcall',
+        'everyfixedPEERknowninheritedtypedcodepreserved, unknowntypedcode/class/rawexceptionmapsE_LAYER_EXCEPTION',
+        'noncapturefactswithbinding9/roleselections3, capturemissingmap; nontemplateoperationalchoices andalltemplatechoicekeys',
+        'extremeJSONnesting/UnicodeError/RecursionError typedguard; fullreturnedresultnodescounted'
+    ]
+    p['adoption_subject_policy'] = 'Complete003proposal/catalogue supersedeunadopted001/002. Finalpeer004+roledata001 andcommon003 separatelypinned in genuinelydifferentreview/Rootadoption; nohashcycle. AllnewSourceauthoring pendingexactRootadoption; finalactualnewSource/APIregistrypins/proofs materializedbeforeSourceacceptance, nooriginalentriesadmitted.'
+    p['complete_schema_policy'] = p['complete_schema_policy'].replace('Catalogue002', 'Catalogue003').replace('in002', 'in003')
+    proposal_pin = save('I13_PROPOSED_M3_GUARD_AND_SHARED_SELECTED_ROLE_PUBLISHER_PROTOCOL_003.json', p)
+    print(json.dumps({'catalogue': cat_pin, 'proposal': proposal_pin}))
+
+if __name__ == '__main__':
+    main()

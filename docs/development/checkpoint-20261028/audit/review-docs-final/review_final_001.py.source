@@ -1,0 +1,98 @@
+"""Narrow final docs/publisher saved-content review; does not run publisher."""
+from pathlib import Path
+import ast
+import datetime as dt
+import hashlib
+import json
+import os
+import re
+
+ROOT=Path('D:/Aenv/pro2/WORK/docs-publication-20261028-001')
+REPO=Path('D:/Aenv/pro2/github-portable-20261012-001')
+CAND=ROOT/'candidate'
+BASE='docs/development/checkpoint-20261028'
+OUT=ROOT/'review-docs-final'
+checks=[]
+pins={}
+def read(p):
+    b=Path(p).read_bytes(); assert len(b)<=2*1024*1024
+    pins[str(p)]={'path':str(p),'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()}
+    return b
+def pin(b):return {'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()}
+def doc(p):return json.loads(read(p))
+def ck(name,value):checks.append({'name':name,'passed':bool(value)})
+def eq(b,row):return pin(b)=={k:row[k] for k in ('bytes','sha256')}
+
+old=doc(ROOT/'CANDIDATE.json'); final=doc(ROOT/'CANDIDATE_FINAL.json')
+oldmap={r['path']:r for r in old['files']}; finalmap={r['path']:r for r in final['files']}
+ck('exact original manifest retained',read(ROOT/'CANDIDATE.json')==read(CAND/BASE/'audit/CANDIDATE_before_clarification.json'))
+ck('no old candidate removed',set(oldmap)<=set(finalmap))
+changes=[k for k in oldmap if oldmap[k]!=finalmap[k]]
+ck('only original report changed',changes==[BASE+'/CURRENT_CHECKPOINT.md'])
+for i,(name,row) in enumerate(sorted(finalmap.items())):
+    ck('final_pin_'+str(i),eq(read(CAND/name),row))
+ck('exact final candidate set',{p.relative_to(CAND).as_posix() for p in CAND.rglob('*') if p.is_file()}==set(finalmap))
+ck('1573 unique final paths',len(finalmap)==len(final['files'])==1573 and len({k.casefold() for k in finalmap})==1573)
+
+report=read(CAND/BASE/'CURRENT_CHECKPOINT.md').decode()
+oldreport=read(CAND/BASE/'audit/CURRENT_CHECKPOINT_before_package_clarification.md').decode()
+addition='This documentation publication uses four independently bounded evidence packages, each with at most384 file rows and less than64MiB of logical content. The aggregate documentation archive does not invoke, replace or widen any original I13 target/export/retention cap. All original caps remain unchanged.\n\n'
+ck('D02 only explicit package clarification added',report.replace(addition,'')==oldreport and report.count(addition)==1)
+idx=doc(CAND/BASE/'evidence-index.json')
+ck('four independently bounded packages',len(idx['parts'])==4 and all(x['file_count']<=384 and x['logical_bytes']<64*1024*1024 for x in idx['parts']))
+for link in re.findall(r'\]\(([^)]+)\)',report):
+    if link.startswith(('http:','https:','#')):continue
+    ck('new report link '+link,((CAND/BASE)/link).is_file())
+
+prior=doc(ROOT/'review-docs/INDEPENDENT_DOCUMENTATION_CANDIDATE_CAPSULE_003.json')
+ck('prior8107 checks accepted only as bounded saved review',prior['checks_passed']==8107 and prior['checks_failed']==0 and prior['candidate']==pins[str(ROOT/'CANDIDATE.json')])
+for i,r in enumerate(prior['bounded_proof_parts']):ck('priorproofpin_'+str(i),eq(read(r['path']),r))
+inv=doc(ROOT/'review-docs/REVIEW_ATTEMPT_PRESERVATION_AND_REASSEMBLY_001.json')
+whole=hashlib.sha256();whole_bytes=0
+for i,r in enumerate(inv['parts_in_reassembly_order']):
+    b=read(r['path']);ck('oversizedproofpart_'+str(i),eq(b,r) and len(b)<=1024*1024);whole.update(b);whole_bytes+=len(b)
+ck('whole prior oversized proof exact inverse',{'bytes':whole_bytes,'sha256':whole.hexdigest()}=={k:inv['original'][k] for k in ('bytes','sha256')})
+
+pub=read(ROOT/'publish_checkpoint.py');txt=pub.decode();tree=ast.parse(pub)
+ck('publisher exact inert archived source',pub==read(CAND/BASE/'publish_checkpoint.py.source'))
+ck('original unrun publisher retained',eq(read(CAND/BASE/'audit/publish_checkpoint001_unrun.py.source'),{'bytes':5558,'sha256':'693f898dad8e73d669ccca16020c26e4d96922e5fcf9ce6fa4578d04e99ba84d'}))
+ck('D01 strict60 time guard',"dt.datetime.now(dt.timezone.utc)+dt.timedelta(seconds=60)<dt.datetime.fromisoformat(scope['end_utc'])" in txt)
+ck('strict60 at every candidate and additional copy',"for row in manifest['files']:\n    time_guard()" in txt and "for row in reviews['additional_metadata']:\n    time_guard()" in txt)
+ck('prewrite candidate pin fix present',"assert pin(b)=={k:row[k] for k in ('bytes','sha256')}, 'candidate changed before write'" in txt)
+ck('Root candidate and different reviews bound',"reviews['candidate_manifest']==pin(read(OUT/'CANDIDATE_FINAL.json'))" in txt and "cap['verdict']=='PASS' and cap['checks_failed']==0" in txt)
+ck('only repository contained paths',"p.resolve().is_relative_to(REPO.resolve())" in txt)
+ck('CreateNew exact writes and fsync',"p.open('xb')" in txt and 'os.fsync' in txt and 'assert read(p)==b' in txt)
+ck('existing document compare before atomic replace',"assert pin(read(p))==allowed_existing[row['path']]" in txt and 'os.replace(temporary,p)' in txt)
+ck('initial baseline and empty index refusal preserved',"actual=={x['path']:x['status'] for x in before['existing_changes']}" in txt and "not git('diff','--cached','--name-only').strip()" in txt)
+ck('prior modified files preserved except reviewed overlay',"if row['path']!='continuation/canonical-source-overlays.json'" in txt)
+ck('all prior complete doc suffixes verified',"pin(current[row['prefix_bytes']:])==row['before']" in txt)
+ck('all canonical and frozen suffix verified',"for row in canonical['files']:" in txt and "b=b[overlay['prefix_bytes']:]" in txt)
+ck('additional metadata prewrite authentication',"b=read(Path(row['source_path']))\n    assert pin(b)=={k:row[k] for k in ('bytes','sha256')}\n    p=target(row['path']);assert not p.exists()\n    write(p,b)" in txt)
+ck('receipt and stage list include actual extra metadata',"'files':manifest['files']+extra_files" in txt and "manifest['files']+extra_files}|" in txt)
+ck('no project target imports or dynamic execution',all(x not in txt for x in ['importlib','__import__','eval(','exec(','Popen(','subprocess.run']))
+ck('only Git read subprocess helper',txt.count('subprocess.check_output')==1 and "['git','-C',str(REPO),*a]" in txt)
+ck('publisher itself does not commit or push',"git('commit'" not in txt and "git('push'" not in txt)
+ck('held failure states explicit',"'Source005_qualified':False,'bootstrap004_accepted':False" in txt and "'Source015_adopted':False" in txt)
+scope=doc(ROOT/'PUBLICATION_SCOPE.json')
+ck('scope actual copy matches candidate',read(ROOT/'PUBLICATION_SCOPE.json')==read(CAND/BASE/'publication-scope.json'))
+ck('current finite scope reserve available',dt.datetime.now(dt.timezone.utc)+dt.timedelta(seconds=60)<dt.datetime.fromisoformat(scope['end_utc']))
+
+failed=[x for x in checks if not x['passed']]
+full={'record_type':'independent_final_documentation_narrow_review_full_proof','author':'/root/docs_publication_map',
+'created_utc':dt.datetime.now(dt.timezone.utc).isoformat(),'checks':checks,'checks_passed':len(checks)-len(failed),'checks_failed':len(failed),
+'candidate':pins[str(ROOT/'CANDIDATE_FINAL.json')],'publisher':pins[str(ROOT/'publish_checkpoint.py')],
+'reviewed_inputs':list(pins.values()),'scope':'Final package clarification, complete unchanged-candidate relation, finalbytes, saved review inverses and publisher Source; no publisher/subject execution.',
+'prior_review':pins[str(ROOT/'review-docs/INDEPENDENT_DOCUMENTATION_CANDIDATE_CAPSULE_003.json')],
+'findings_closed':['D01 strict60 enforced in publisher','D02 package limits explicitly distinct from original target/export caps','D03 candidate second-read pin now checked before repository write'],
+'remaining_publication_obligations':['Root adopts exact final capsules and finite additional_metadata roster.','Root verifies current finite scope/reserve and actual Git status before later commit/push.','Success evidence requires actual publisher output and subsequent Git commit/remote verification.'],
+'candidate_or_repository_mutated':False,'project_subject_test_native_capture_science_executed':False,
+'verdict':'PASS' if not failed else 'FAIL'}
+data=(json.dumps(full,indent=2,sort_keys=True)+'\n').encode();assert len(data)<=2*1024*1024
+target=OUT/'INDEPENDENT_FINAL_DOCUMENTATION_FULL_PROOF_001.json'
+with target.open('xb') as f:f.write(data);f.flush();os.fsync(f.fileno())
+cap={k:v for k,v in full.items() if k not in ('checks','reviewed_inputs')}
+cap['full_proof']={'path':str(target),**pin(data)};cap['failed_checks']=failed
+data=(json.dumps(cap,indent=2,sort_keys=True)+'\n').encode()
+target=OUT/'INDEPENDENT_FINAL_DOCUMENTATION_CAPSULE_001.json'
+with target.open('xb') as f:f.write(data);f.flush();os.fsync(f.fileno())
+print(json.dumps({'path':str(target),**pin(data),'checks_passed':cap['checks_passed'],'checks_failed':cap['checks_failed'],'failed':failed}))

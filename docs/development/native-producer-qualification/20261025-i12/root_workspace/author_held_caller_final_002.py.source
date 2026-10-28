@@ -1,0 +1,195 @@
+"""Own stdlib Source authoring only. Never imports/calls any target module."""
+import ast
+import datetime as dt
+import hashlib
+import json
+import os
+from pathlib import Path
+
+W = Path(r'D:\Aenv\pro2\WORK\resume-20261025-002\receipt_caller_integration_015')
+D = W / 'caller'
+AUDIT = W / 'caller_composition_audit_001'
+
+
+def pin(path):
+    path = Path(path)
+    raw = path.read_bytes()
+    return dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+
+
+def load(path):
+    return json.loads(Path(path).read_bytes())
+
+
+def publish(path, raw):
+    with path.open('xb') as stream:
+        stream.write(raw)
+        stream.flush()
+        os.fsync(stream.fileno())
+    assert path.read_bytes() == raw
+
+
+def wire(value):
+    return (json.dumps(value, indent=2, sort_keys=True) + '\n').encode()
+
+
+base = load(AUDIT / 'PROPOSED_HELD_RECEIPT_CALLER_COMPOSITION_SOURCE_PROTOCOL_001.json')
+final = load(AUDIT / 'PROPOSED_FINAL_HELD_CALLER_FIXED_CALL_RESULT_AND_ACTOR_COMPANION_002.json')
+kernel = load(W / 'i12/I12_ACTUAL_STATIC_KERNEL_SOURCE_AUTHOR_RECEIPT_004.json')
+bindings, identities = {}, {}
+for layer, source_key, api_key, identity in [
+    ('I7', 'I7_Source002', 'I7_API002', 'publisher_Source'),
+    ('I8', 'I8_Source003', 'I8_API005', 'module'),
+    ('I9', 'I9_Source007', 'I9_API008', 'Source'),
+    ('I11', 'I11_Source003', 'I11_API007', 'Source'),
+]:
+    read_source, read_api = base['pinned_inputs'][source_key], base['pinned_inputs'][api_key]
+    assert pin(read_source['path']) == read_source
+    assert pin(read_api['path']) == read_api
+    api = load(read_api['path'])
+    declared_source = api[identity]
+    assert pin(declared_source['path']) == declared_source
+    assert Path(declared_source['path']).read_bytes() == Path(read_source['path']).read_bytes()
+    declared_api = pin(Path(declared_source['path']).parent / Path(read_api['path']).name)
+    assert Path(declared_api['path']).read_bytes() == Path(read_api['path']).read_bytes()
+    bindings[layer] = dict(Source=declared_source, API=declared_api, editor=api['author'])
+    identities[layer] = dict(managed_read_Source=read_source, managed_read_API=read_api,
+                             declared_binding_Source=declared_source, declared_binding_API=declared_api,
+                             whole_bytes_equal=True, pin_paths_not_substituted=True)
+for layer, kind in [('I12_single', 'single'), ('I12_peer', 'peer')]:
+    source, api_pin = kernel['sources'][kind], kernel['APIs'][kind]
+    assert pin(source['path']) == source and pin(api_pin['path']) == api_pin
+    api = load(api_pin['path'])
+    assert api['Source'] == source
+    bindings[layer] = dict(Source=source, API=api_pin, editor=api['author'])
+
+fixed_data = dict(
+    FIXED_CATALOGUE_PIN=pin(W / 'I12_EXACT_RECEIPT_FORMAT_SCHEMA_AND_FIXED_DATA_CATALOGUE_002.json'),
+    FIXED_CONTEXT_ANNEX_PIN=pin(AUDIT / 'PROPOSED_HELD_CALLER_EXACT_CONTEXT_PORT_AND_I2_SEAM_ANNEX_001.json'),
+    FIXED_RESULT_COMPANION_PIN=pin(AUDIT / 'PROPOSED_FINAL_HELD_CALLER_FIXED_CALL_RESULT_AND_ACTOR_COMPANION_002.json'),
+)
+source_path = D / 'compose_current_owner_receipt_caller_002.py'
+api_path = D / 'CURRENT_OWNER_HELD_RECEIPT_CALLER_INERT_API_002.json'
+receipt_path = D / 'HELD_CALLER_SOURCE_ACTUAL_AUTHOR_RECEIPT_002.json'
+assert all(not p.exists() for p in (source_path, api_path, receipt_path))
+draft = D / 'compose_current_owner_receipt_caller_unfinal_001.py'
+tree = ast.parse(draft.read_bytes())
+replacements = dict(FIXED_LAYERS=bindings, **fixed_data)
+seen = set()
+for node in tree.body:
+    if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+        name = node.targets[0].id
+        if name in replacements:
+            node.value = ast.parse(repr(replacements[name]), mode='eval').body
+            seen.add(name)
+assert seen == set(replacements)
+tree.body[0].value = ast.Constant('Held receipt caller. Private paths unrun; public entries unconditionally refuse.')
+# Three named predicate helpers preserve exact error strings while fitting the
+# original65536 Source cap. Expand them below and prove identical body AST.
+basis = ast.dump(tree, include_attributes=False)
+class ShortenPredicates(ast.NodeTransformer):
+    def visit_Call(self, node):
+        self.generic_visit(node)
+        if isinstance(node.func, ast.Name) and node.func.id == '_need' and len(node.args) == 2 and isinstance(node.args[1], ast.Constant):
+            code = node.args[1].value
+            if code in ('E_BINDING_SOURCE_PIN', 'E_CONTEXT_SCHEMA'):
+                node.func.id = '_binding' if code == 'E_BINDING_SOURCE_PIN' else '_shape'
+                node.args.pop()
+            elif code == 'E_LAYER_CONTEXT_JOIN':
+                node.args.pop()
+        return node
+tree = ShortenPredicates().visit(tree)
+for node in tree.body:
+    if isinstance(node, ast.FunctionDef) and node.name == '_need':
+        node.args.defaults = [ast.Constant('E_LAYER_CONTEXT_JOIN')]
+        position = tree.body.index(node) + 1
+        break
+helpers = ast.parse("def _binding(value):\n    _need(value, 'E_BINDING_SOURCE_PIN')\ndef _shape(value):\n    _need(value, 'E_CONTEXT_SCHEMA')\n").body
+tree.body[position:position] = helpers
+import copy
+normal = copy.deepcopy(tree)
+normal.body = [n for n in normal.body if not isinstance(n, ast.FunctionDef) or n.name not in ('_binding', '_shape')]
+for node in normal.body:
+    if isinstance(node, ast.FunctionDef) and node.name == '_need':node.args.defaults=[]
+class ExpandPredicates(ast.NodeTransformer):
+    def visit_Call(self, node):
+        self.generic_visit(node)
+        if isinstance(node.func, ast.Name):
+            if node.func.id in ('_binding', '_shape'):
+                node.args.append(ast.Constant('E_BINDING_SOURCE_PIN' if node.func.id=='_binding' else 'E_CONTEXT_SCHEMA'))
+                node.func.id='_need'
+            elif node.func.id=='_need' and len(node.args)==1:
+                node.args.append(ast.Constant('E_LAYER_CONTEXT_JOIN'))
+        return node
+normal = ExpandPredicates().visit(normal)
+assert ast.dump(normal, include_attributes=False) == basis
+ast.fix_missing_locations(tree)
+raw = (ast.unparse(tree) + '\n').encode()
+print(json.dumps(dict(candidate_bytes=len(raw), cap=65536, Source_path=str(source_path))))
+assert len(raw) <= 65536, 'own Source cap; no final Source written'
+compile(raw, str(source_path), 'exec')  # Compilation only, never target execution.
+import sys
+if '--preview-only' in sys.argv:
+    raise SystemExit(0)
+source_pin = dict(path=str(source_path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+subjects = base['pinned_inputs']['I12_Source_scope']
+api = dict(
+    schema_version=1, record_type='Root_owner_v2_held_receipt_caller_inert_API',
+    author='/root/project_architecture', actual_Source_editor='/root/project_architecture',
+    Source=source_pin, created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),
+    protocol_subjects=[pin(AUDIT / n) for n in [
+        'PROPOSED_HELD_RECEIPT_CALLER_COMPOSITION_SOURCE_PROTOCOL_001.json',
+        'PROPOSED_HELD_CALLER_MECHANICAL_BINDING_CLARIFICATION_001.json',
+        'PROPOSED_HELD_CALLER_EXACT_CONTEXT_PORT_AND_I2_SEAM_ANNEX_001.json',
+        'PROPOSED_FINAL_HELD_CALLER_FIXED_CALL_RESULT_AND_ACTOR_COMPANION_002.json']],
+    protocol_Root_adoption=pin(W / 'ROOT_I12_HELD_CALLER_I2_FOUR_SUBJECT_PROTOCOL_DIFFERENT_REVIEW_ADOPTION_001.json'),
+    Source_scope=subjects,
+    cap_domain_clarification=pin(W / 'ROOT_I12_NEW_PURE_MODULE_AND_INHERITED_CODE_CAP_DOMAIN_CLARIFICATION_001.json'),
+    Source_cap_bytes=65536, ordinary_code_provenance_cap_bytes=2097152,
+    correction_basis=dict(Source=pin(D/'compose_current_owner_receipt_caller_001.py'), API=pin(D/'CURRENT_OWNER_HELD_RECEIPT_CALLER_INERT_API_001.json')),
+    corrections=['Capsule/full positive builtin checks_passed equals full check list length', 'Source/API author/editor/type/version/required false flags joined for dynamic caller and I2; all fixed APIs join Source/author and authority false', 'Eager pin snapshots charged to same aggregate50000 node count', 'I9 receives exact sorted conservative full independent author closure <=32, otherwise typed refusal', 'Temporary fixed-name sys.modules slots identity-owned and removed in finally; Bound-only cache', 'Each prior descriptor typed before role set construction'],
+    I9_author_projection='Exact sorted casefolded complete Bound exclusion union, including Root/fixed/current/historical/all45/prior/proof/code actors; supplied list must equal it. More than32 refuses, never truncate. Reviewer-only roles are not independent authors.',
+    selected_peer_descriptor_limitation='Held caller descriptor port requires existing structurally complete dependency9 as prior-publication context; it does not create prospective peer placeholders or canonical peer qualification. New pure peer API independently accepts standalone peer packet20; every caller public entry still refuses.',
+
+    literal_fixed_layers=bindings, declared_and_managed_read_domains=identities,
+    fixed_contract_data=fixed_data,
+    fixed_data_policy='Exact pins; obtain bodies from same256/32MiB finite store, strict decode under shared50000 unique-node/depth48 budget. No IO or replacement catalogue. Literal fact3/record2 bootstrap before reading contract data. No eval or schema callbacks.',
+    operational_module_names=dict(caller='_held_current_owner_receipt_caller', I2='_held_current_owner_M3_producer'),
+    implemented_private_Source_ports=[n.name for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in (
+        '_generation_impl', '_recorded_stage_impl', '_prewrite_impl', '_publication_impl',
+        '_postbirth_publication_impl', '_reconciliation_impl', '_selected_peer_descriptor_impl',
+        '_I2_canonical_dependency_dispatch')],
+    public_operational_entries=['generate_current_owner_stage', 'validate_current_prewrite_and_publish',
+                                'reconcile_current_publication', 'require_actual_receipt_caller_admission'],
+    actual_entry_before_inspection='LiteralFalse check plus unconditional typed refusal in all four public entries; flag flip still refuses.',
+    I2_generation='Direct execute_stage call is present, but I2.admit remains unconditional refusal. No generation success or semantic composition claim.',
+    I7_real_port='Exact prospective kwargs occur only after false+unconditional IO refusal. Old permissive *args/**kwargs is not a qualified production ABI; no fixture/helper fallback.',
+    I6_postbirth='Known actual45/historical45 gap explicitly refuses; no private adapter bypass.',
+    route_support_ledger=final['caller_API_explicit_route_ledger'],
+    session='Owned immutable metadata bytes/record pairs, no public setter or deserialization route; exact mechanical ModuleType/function checks are not human/physical capability. Both session slots cleared in finally.',
+    actor_closure='Both fixed actual editors plus current/historical I2 and all independently designated author roles/all45 rows; additive lists cannot erase them. Reviewer-only attribution excluded.',
+    own_actual_target_imports=0, own_actual_target_calls=0, target_execution=False,
+    tests_executed=False, operational_authority=False, scientific_authority=False,
+    caller_qualified=False, producer_qualified=False, authentic_loader_qualified=False,
+    physical_provenance_qualified=False, human_origin_authenticated=False,
+    full_I2_G01_closed=False, actual_family_publication=False,
+    future_operational_lease_family_paths_ordinals_purpose_INIT_clocks_results=None)
+api_raw = wire(api)
+assert len(api_raw) <= 2097152
+publish(source_path, raw)
+publish(api_path, api_raw)
+receipt = dict(record_type='Held_caller_actual_Source_author_receipt', schema_version=1,
+    author='/root/project_architecture', created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),
+    Source=pin(source_path), API=pin(api_path), author_tool=pin(__file__), unfinal_basis=pin(draft),
+    fixed_data=fixed_data, fixed_layers=bindings, binding_identity_domains=identities,
+    normalized_ast_preserves_unfinal_semantics=True, predicate_helper_expansion_AST_equality=True,
+    author_operations=['Read/hash metadata and Source buffers', 'AST parse/transform/unparse',
+                       'compile code object without execution', 'exclusive Source/API metadata creation/readback'],
+    preserved_caller001=pin(D/'compose_current_owner_receipt_caller_001.py'), preserved_API001=pin(D/'CURRENT_OWNER_HELD_RECEIPT_CALLER_INERT_API_001.json'),
+    complete_caller001_bytes_base64=__import__('base64').b64encode((D/'compose_current_owner_receipt_caller_001.py').read_bytes()).decode('ascii'),
+    complete_API001_bytes_base64=__import__('base64').b64encode((D/'CURRENT_OWNER_HELD_RECEIPT_CALLER_INERT_API_001.json').read_bytes()).decode('ascii'),
+    no_original_Source_changed=True, target_imports=0, target_calls=0, tests_executed=False,
+    target_execution=False, operational_authority=False, scientific_authority=False,
+    authentic_loader_qualified=False, physical_provenance_qualified=False)
+publish(receipt_path, wire(receipt))
+print(json.dumps(dict(Source=pin(source_path), API=pin(api_path), receipt=pin(receipt_path))))

@@ -1,0 +1,214 @@
+"""Own bounded F01/F02 Source repair authoring; no target imports/calls."""
+import ast
+import base64
+import datetime
+import hashlib
+import json
+from pathlib import Path
+
+ROOT = Path(r'D:\Aenv\pro2\WORK\resume-20261025-003')
+OUT = ROOT / 'm3_peer_contracts_016' / 'i13'
+OLD = OUT / 'validate_selected_peer_author_packet_metadata_007.py'
+NEW = OUT / 'validate_selected_peer_author_packet_metadata_008.py'
+OLD_API = OUT / 'CURRENT_OWNER_SELECTED_PEER_CANONICAL_AUTHOR_METADATA_INERT_API_007.json'
+NEW_API = OUT / 'CURRENT_OWNER_SELECTED_PEER_CANONICAL_AUTHOR_METADATA_INERT_API_008.json'
+RECEIPT = OUT / 'I13_PEER_CANONICAL_AUTHOR_SOURCE_AUTHOR_RECEIPT_008.json'
+REFUSAL = ROOT / 'independent_kernel_Source_review_001' / 'INDEPENDENT_I13_M3_003_PEER007_SOURCE_REFUSAL_CAPSULE_003.json'
+REFUSAL_FULL = ROOT / 'independent_kernel_Source_review_001' / 'INDEPENDENT_I13_M3_003_PEER007_SOURCE_REFUSAL_FULL_PROOF_003.json'
+SCOPE = ROOT / 'ROOT_I13_KERNEL_SOURCE_REFUSAL_THREE_FINDINGS_AND_REPAIR_SCOPE_001.json'
+
+def pin(path, raw=None):
+    raw = path.read_bytes() if raw is None else raw
+    return dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+
+def write_new(path, raw):
+    assert not path.exists(), path
+    with path.open('xb') as f:
+        f.write(raw)
+    assert path.read_bytes() == raw
+
+old = OLD.read_bytes()
+assert len(old) == 56967 and hashlib.sha256(old).hexdigest() == '895128139effcfc5c21acb94e193bcd6766d364da97a9c0db1f0a2756dee541e'
+assert pin(REFUSAL)['sha256'] == '409681719b2e99d0ddb3d732baa43a0388132d5cdd4de2201bdb6daef3b11e08'
+assert pin(REFUSAL_FULL)['sha256'] == 'b87712b4b6bd1a19b6869b7c31439c4dc0444c164f2989b299895b2003ac88ae'
+assert pin(SCOPE)['sha256'] == '6ae2f44312aa0ffd37bf8bf8cc95372fc700c09698ae85ab700174ecf4874207'
+text = old.decode('utf-8')
+deltas = []
+
+def replace_region(qualname, replacement):
+    global text
+    tree = ast.parse(text)
+    parts = qualname.split('.')
+    node = next(n for n in tree.body if isinstance(n, (ast.ClassDef, ast.FunctionDef)) and n.name == parts[0])
+    if len(parts) == 2:
+        node = next(n for n in node.body if isinstance(n, ast.FunctionDef) and n.name == parts[1])
+    lines = text.splitlines(keepends=True)
+    before = ''.join(lines[node.lineno-1:node.end_lineno])
+    assert text.count(before) == 1
+    text = text.replace(before, replacement.rstrip()+'\n', 1)
+    deltas.append(dict(region=qualname, before_utf8_base64=base64.b64encode(before.encode()).decode(), after_utf8_base64=base64.b64encode((replacement.rstrip()+'\n').encode()).decode()))
+
+replace_region('_tree', r'''def _tree(value, counter, depth=0, lf_record=False, pointer=(), i11_record=False):
+    _need(depth <= 48, 'E_DEPTH')
+    counter[0] += 1
+    _need(counter[0] <= 50000, 'E_NODES')
+    if value is None or type(value) in (bool, int):return
+    if type(value) is str:
+        _need(not any(0xD800 <= ord(c) <= 0xDFFF for c in value), 'E_VALUE')
+        controls={ord(c) for c in value if ord(c)<32}
+        if controls and not(i11_record and pointer and pointer[0]=='literal_case_catalogue'):
+            _need(lf_record and pointer==LF_POINTER and controls=={10} and len(value.encode('utf8'))==367 and value.count('\n')==10 and hashlib.sha256(value.encode('utf8')).hexdigest()==LF_LEAF_SHA256, 'E_VALUE')
+        return
+    if type(value) is list:
+        for i,child in enumerate(value):_tree(child,counter,depth+1,lf_record,pointer+(i,),i11_record)
+        return
+    if type(value) is dict:
+        for key,child in value.items():
+            _need(type(key) is str, 'E_VALUE')
+            _tree(key,counter,depth+1,lf_record,pointer+('#key',key),i11_record)
+            _tree(child,counter,depth+1,lf_record,pointer+(key,),i11_record)
+        return
+    raise I13MetadataError('E_VALUE')''')
+replace_region('_decode', '''def _decode(raw, counter, byte_code='E_METADATA_CAP', lf_record=False, i11_record=False):
+    _need(type(raw) is bytes and 0 < len(raw) <= CAP, byte_code)
+    try:
+        value = json.loads(raw.decode('utf8'),object_pairs_hook=_pairs,parse_float=_bad_number,parse_constant=_bad_number)
+    except I13MetadataError:
+        raise
+    except (ValueError, UnicodeError, RecursionError):
+        raise I13MetadataError('E_JSON') from None
+    _tree(value, counter, lf_record=lf_record, i11_record=i11_record)
+    return value''')
+replace_region('_Store.record', '''    def record(self, pin, schema=None):
+        raw = self.raw(pin)
+        key = pin['path']
+        if key not in self.cache:
+            self.cache[key] = _decode(raw,self.counter,lf_record=_same(pin,LF_RECORD_PIN),i11_record=_same(pin,I11_FIXED_API_PIN))
+        value = self.cache[key]
+        _need(type(value) is dict, 'E_SCHEMA')
+        return value''')
+replace_region('_Graph._proof_author_slots', '''    def _author_slots(self,value,context='proof',pin=None,parts=()):
+        if type(value)is dict:
+            for key,child in value.items():
+                if not parts and pin is not None and _same(pin,I11_FIXED_API_PIN)and key=='literal_case_catalogue':continue
+                if key in ('reviewer','reviewer_agent'):continue
+                if key in I13_OPERATIVE_ACTOR_KEYS or(key=='author'and context=='operative'):
+                    self.excluded.add(_actor(child).casefold())
+                elif key in ('actual_content_authors','actual_content_authors_additional'):
+                    _need(type(child)is list and len(child)<=512,'E_ACTOR')
+                    for actor in child:self.excluded.add(_actor(actor).casefold())
+                else:
+                    next_context='operative'if context=='operative'or key in I13_OPERATIVE_AUTHOR_CONTEXTS else'proof'
+                    self._author_slots(child,next_context,pin,parts+(key,))
+        elif type(value)is list:
+            for i,child in enumerate(value):self._author_slots(child,context,pin,parts+(i,))
+    def _proof_author_slots(self,extra=(),apis=()):
+        # Each root has an explicit consuming ABI. Proof-root author and reviewer
+        # attribution is not content authorship; operative Source/API slots are.
+        pending=[(p,'proof')for p in extra]+[(p,'operative')for p in apis]
+        for name,support,schema in self.codes:
+            pending.extend(((support['API'],'operative'),(support['different_review'],'proof'),(support['Root_adoption'],'proof')))
+        for support_key in ('selection_support','canonical_support','reconciliation_support','content_support','proposal_support'):
+            if support_key in self.p:
+                support=self.p[support_key]
+                pending.extend(((support['different_review'],'proof'),(support['Root_adoption'],'proof')))
+        seen=set()
+        for pin,context in pending:
+            key=(_pin(pin)['path'],context)
+            if key in seen:continue
+            seen.add(key);v=self.s.record(pin)
+            self._author_slots(v,context,pin)
+            if context=='proof'and 'full_proof'in v:
+                full_pin=_pin(v['full_proof']);full=self.s.record(full_pin)
+                self._author_slots(full,'proof',full_pin)''')
+replace_region('_Graph.add_actors', '''    def add_actors(self,*records):
+        for value in records:self._author_slots(value,'operative')''')
+replace_region('_Graph.review', '''    def review(self,pin,subjects,code=False):
+        for subject in subjects:self.s.raw(subject)
+        capsule=self.s.record(pin);_noauth(capsule)
+        full_pin=_pin(capsule.get('full_proof'));full=self.s.record(full_pin);_noauth(full)
+        required=('schema_version','record_type','reviewer','created_utc','subjects','checks_passed','checks_failed','native_Parser_executed','target_execution','operational_authority','verdict')
+        for value in (capsule,full):
+            _need(all(key in value for key in required),'E_REVIEW')
+            _need(type(value['schema_version'])is int and value['schema_version']>0 and type(value['record_type'])is str and bool(value['record_type']),'E_REVIEW')
+            _need(value['native_Parser_executed']is False,'E_AUTHORITY')
+            _i13_utc6(value['created_utc']);declared=_pin_list(value['subjects'],True)
+            for subject in declared:self.s.raw(subject)
+            _need(all(any(_same(p,subject)for p in declared)for subject in subjects),'E_REVIEW_COVERAGE')
+        who=_actor(capsule['reviewer'],True);key=who.casefold()
+        _need(all(key!=a and (a=='/root' or not key.startswith(a+'/')) for a in self.excluded),'E_REVIEWER')
+        verdict=capsule['verdict']
+        _need(type(verdict)is str and verdict.startswith('PASS_')and(not code or 'SOURCE'in verdict.upper())and type(capsule['checks_failed'])is int and capsule['checks_failed']==0,'E_REVIEW')
+        _need(full['reviewer']==who and full['verdict']==verdict and type(full['checks_failed'])is int and full['checks_failed']==0,'E_REVIEW')
+        checks=full.get('checks');_need(type(checks)is list and 0<len(checks)<=10000,'E_REVIEW')
+        names=[]
+        for check in checks:
+            _closed(check,('name','passed','evidence'),'E_REVIEW')
+            _need(type(check['name'])is str and 0<len(check['name'])<=512 and check['passed']is True,'E_REVIEW')
+            names.append(check['name'])
+        _need(len(names)==len(set(names))and type(capsule['checks_passed'])is int and type(full['checks_passed'])is int and capsule['checks_passed']==full['checks_passed']==len(checks)>0,'E_REVIEW')
+        ft,ct=_i13_utc6(full['created_utc']),_i13_utc6(capsule['created_utc'])
+        _need(ft<=ct<=self.now,'E_CHRONOLOGY')
+        return dict(capsule=capsule,full=full,full_pin=full_pin,full_time=ft,capsule_time=ct)''')
+replace_region('_Graph.adopt', '''    def adopt(self,pin,subjects,review_pin,review):
+        value=self.s.record(pin);_noauth(value)
+        required=('schema_version','record_type','author','created_utc','subjects','different_review','full_proof','native_Parser_executed','target_execution','operational_authority','verdict')
+        _need(all(key in value for key in required),'E_ADOPTION')
+        _need(type(value['schema_version'])is int and value['schema_version']>0 and type(value['record_type'])is str and bool(value['record_type'])and value['author']=='/root'and type(value['verdict'])is str and value['verdict'].startswith('ACCEPT_'),'E_ADOPTION')
+        _need(value['native_Parser_executed']is False,'E_AUTHORITY')
+        declared=_pin_list(value['subjects'],True)
+        for subject in declared:self.s.raw(subject)
+        expected=[*subjects,review_pin,review['full_pin'],self.scope,self.selection_pin]
+        _need(all(any(_same(p,subject)for p in declared)for subject in expected)and _same(_pin(value['different_review']),review_pin)and _same(_pin(value['full_proof']),review['full_pin']),'E_ADOPTION_COVERAGE')
+        instant=_i13_utc6(value['created_utc']);_need(review['capsule_time']<=instant<=self.now,'E_CHRONOLOGY')
+        return instant''')
+
+needle = "            self._proof_author_slots([context[key][field] for key in ('own_program_support','Source_producer_support','publisher_support','lease_producer_support') for field in ('different_review','Root_adoption')])"
+replacement = "            self._proof_author_slots([context[key][field] for key in ('own_program_support','Source_producer_support','publisher_support','lease_producer_support') for field in ('different_review','Root_adoption')],apis=[context[key]['API']for key in ('own_program_support','Source_producer_support','publisher_support','lease_producer_support')])"
+assert text.count(needle) == 1
+text = text.replace(needle,replacement,1)
+deltas.append(dict(region='_Graph.validate.phase_API_actors',before_utf8_base64=base64.b64encode(needle.encode()).decode(),after_utf8_base64=base64.b64encode(replacement.encode()).decode()))
+needle = "    _i13_original(graph,store.record(graph.p['draft']),contract,inputs,wrapper_time,True)\n    graph.validate()"
+replacement = "    _i13_original(graph,store.record(graph.p['draft']),contract,inputs,wrapper_time,True)\n    for subject in (graph.p['predecessor'],graph.p['draft']):\n        original=store.record(subject);graph.add_actors(original)\n        if 'reviewer'in original:graph.excluded.add(_actor(original['reviewer']).casefold())\n    graph.validate()"
+assert text.count(needle) == 1
+text = text.replace(needle,replacement,1)
+deltas.append(dict(region='validate_selected_peer_author_packet_metadata.original_actors',before_utf8_base64=base64.b64encode(needle.encode()).decode(),after_utf8_base64=base64.b64encode(replacement.encode()).decode()))
+actor_keys = ('source_author','Source_author','Source_editor','source_editor','actual_Source_editor','actual_physical_Source_editor','physical_Source_editor','physical_actor','physical_receipt_author','physical_selected_byte_editor','metadata_Source_worker','retained_semantic_Source_author','actual_implementation_Source_editor','historical_implementation_Source_editor','immediate_predecessor_actual_implementation_Source_editor','actual_binding_Source_editor','historical_binding_Source_editor','immediate_predecessor_actual_binding_Source_editor','actual_metadata_Source_editor','historical_metadata_Source_editor','immediate_predecessor_actual_metadata_Source_editor','content_author','implementation_Source_editor','inherited_reader_Source_editor','inherited_no_overwrite_writer_Source_editor','metadata_tool_Source_author','actual_content_actor','genuine_content_author_and_reviewer','original_peer_source_author_nominal','canonical_physical_actor','editor')
+author_contexts = ('Source','API','receipt','author_receipt','provenance','source_provenance','Source_provenance','content','implementation','binding','producer','publisher')
+i11_pin = dict(path=r'D:\Aenv\pro2\WORK\resume-20261025-001\i2_receipt_contract_014\i11\CURRENT_OWNER_FINITE8_CANONICAL_RECEIPT_METADATA_INERT_API_007.json',bytes=257593,sha256='eac8760d0ed56b1397c15666dfbed0983ea174081a3368bfc67a5b830ef0fa2f')
+constants = 'I13_OPERATIVE_ACTOR_KEYS = '+repr(actor_keys)+'\nI13_OPERATIVE_AUTHOR_CONTEXTS = '+repr(author_contexts)+'\nI11_FIXED_API_PIN = '+repr(i11_pin)+'\n'
+needle = 'ACTUAL_ENTRY_QUALIFIED = False\n'
+assert text.count(needle) == 1
+text = text.replace(needle,needle+constants,1)
+deltas.append(dict(region='new_exact_actor_and_I11_context_constants',before_utf8_base64='',after_utf8_base64=base64.b64encode(constants.encode()).decode()))
+
+raw = text.encode('utf-8')
+assert len(raw) <= 65536, len(raw)
+tree = ast.parse(raw)
+compile(raw,str(NEW),'exec',dont_inherit=True)
+rebuilt = raw
+for delta in reversed(deltas):
+    after = base64.b64decode(delta['after_utf8_base64']);before = base64.b64decode(delta['before_utf8_base64'])
+    assert rebuilt.count(after) == 1, delta['region']
+    rebuilt = rebuilt.replace(after,before,1)
+assert rebuilt == old
+beforetree = ast.parse(old)
+protected = ('_typed','_schema','_Peer','_i13_original','_i13_wrapper_inputs','_i13_result','emit_selected_peer_current_owner')
+for name in protected:
+    before = next(n for n in beforetree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))and n.name==name)
+    after = next(n for n in tree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))and n.name==name)
+    assert ast.dump(before,include_attributes=False)==ast.dump(after,include_attributes=False),name
+old_api_raw = OLD_API.read_bytes();api = json.loads(old_api_raw)
+assert len(api)==14
+api['Source'] = pin(NEW,raw)
+api_raw = (json.dumps(api,ensure_ascii=True,sort_keys=True,indent=2)+'\n').encode()
+regions=[];lines=raw.splitlines(keepends=True)
+for node in ast.walk(tree):
+    if isinstance(node,(ast.ClassDef,ast.FunctionDef)):
+        body=b''.join(lines[node.lineno-1:node.end_lineno])
+        regions.append(dict(name=node.name,first_line=node.lineno,last_line=node.end_lineno,bytes=len(body),sha256=hashlib.sha256(body).hexdigest(),AST_sha256=hashlib.sha256(ast.dump(node,include_attributes=False).encode()).hexdigest()))
+receipt=dict(schema_version=2,record_type='I13_actual_peer008_general_proof_and_operative_actor_Source_repair',author='/root/i2_resume_gap',actual_Source_editor='/root/i2_resume_gap',created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds'),Source=pin(NEW,raw),API=pin(NEW_API,api_raw),before_Source=pin(OLD,old),before_Source_bytes_base64=base64.b64encode(old).decode(),before_API=pin(OLD_API,old_api_raw),before_API_bytes_base64=base64.b64encode(old_api_raw).decode(),prior_receipt=pin(OUT/'I13_PEER_CANONICAL_AUTHOR_SOURCE_AUTHOR_RECEIPT_007.json'),independent_refusal=pin(REFUSAL),independent_full_refusal=pin(REFUSAL_FULL),Root_repair_scope=pin(SCOPE),deltas=deltas,regions=regions,whole_before_inverse_verified=True,protected_top_level_regions_AST_unchanged=list(protected),operative_actor_aliases=list(actor_keys),nested_generic_author_contexts=list(author_contexts),consuming_context_policy='Only typed code API, original role body, raw27/decision/witness/inverse, and explicit review/adoption/full proof edges parsed for actors. Known operative aliases recursive; generic author requires operative Source/API/receipt/provenance context. Review-root author/reviewer/reviewer_agent-only roles do not self-exclude. Named actual_content_authors and actual_content_authors_additional lists additive. Exact fixed I11 API root literal_case_catalogue alone retains complete shared-node/type/depth/surrogate accounting but skips semantic examples and permits escaped C0 there; no filename dispatch.',proof_policy='Every consumed general capsule/full/adoption has exact required typed header/nativeFalse/direct closed fact3 subjects, fullcheck3/name512/counts, UTC6 and actual adoption links. General proof dictionaries retain open extensions. No purpose17 substitution. Original raw27/decision/witness/inverse schemas and original UTC6/7 wires unchanged.',fixture_followup='Future fixture004 must augment all fabricated general proofs with positive required fields, add focused F01/F02 controls including review-root-author positive and operative nested-author refusals, then copy final new outer helper for five canonical peer positives. No fixture run admitted.',target_execution=False,tests_executed=False,operational_authority=False,scientific_authority=False,native_Parser_executed=False,actual_producer_issued=False,actual_family_publication=False)
+receipt_raw=(json.dumps(receipt,ensure_ascii=True,sort_keys=True,indent=2)+'\n').encode()
+assert len(receipt_raw)<=2097152
+for path,body in ((NEW,raw),(NEW_API,api_raw),(RECEIPT,receipt_raw)):write_new(path,body)
+print(json.dumps(dict(Source=pin(NEW),API=pin(NEW_API),receipt=pin(RECEIPT)),sort_keys=True))

@@ -1,0 +1,67 @@
+"""Adopt a genuine saved data-only snapshot review; never replays or calls any subject."""
+import datetime as dt,hashlib,json,os,re,sys
+from pathlib import Path
+R=Path(__file__).parent;C=R/'m3_peer_contracts_016';LIMIT=2097152
+def raw(p):
+ p=Path(p);a=p.stat();assert p.is_file()and not p.is_symlink()and a.st_nlink==1 and a.st_size<=LIMIT
+ for q in(p,*p.parents):assert not getattr(q.lstat(),'st_file_attributes',0)&1024
+ b=p.read_bytes();z=p.stat();assert b==p.read_bytes()and len(b)==a.st_size==z.st_size and a.st_mtime_ns==z.st_mtime_ns
+ return b
+def pin(p):
+ p=Path(p);b=raw(p);return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def read(p):return json.loads(raw(p))
+def occurs(v,p):
+ if type(v)is dict:return v==p or any(occurs(x,p)for x in v.values())
+ return type(v)is list and any(occurs(x,p)for x in v)
+assert len(sys.argv)==4 and sys.argv[1].isdigit();n=int(sys.argv[1]);assert n>=1
+cp=Path(sys.argv[2]);assert cp.is_relative_to(R)and re.fullmatch('[0-9a-f]{64}',sys.argv[3])and pin(cp)['sha256']==sys.argv[3]
+cap=read(cp);fp=cap['full_proof'];assert pin(fp['path'])==fp;full=read(fp['path'])
+assert cap['reviewer']==full['reviewer']=='/root/i13_final_review'
+assert cap['verdict']==full['verdict']and(cap['verdict']=='PASS'or cap['verdict'].startswith('PASS_'))
+checks=full['checks'];assert type(checks)is list and len(checks)>0
+assert all(type(x)is dict and type(x.get('name'))is str and x.get('passed')is True for x in checks)
+assert len({x['name']for x in checks})==len(checks)==cap['checks_passed']==full['checks_passed']
+assert type(cap['checks_failed'])is int and cap['checks_failed']==full['checks_failed']==0
+for x in(cap,full):assert all(x[k]is False for k in('target_execution','actual_family_publication','operational_authority','scientific_authority','native_Parser_executed','tests_executed'))
+for x in cap['subjects']:assert pin(x['path'])==x
+scopep=C/('ROOT_I13_ONCE_INPUT_SNAPSHOT_SCOPE_%03d.json'%n);scope=read(scopep)
+witp=C/('ROOT_I13_INPUT_SNAPSHOT%03d_PARENT_TOOL_CONSOLE_AND_EXIT_WITNESS_001.json'%n);wit=read(witp)
+su=read(scope['outputs']['supervisor_result']);supin=pin(scope['outputs']['supervisor_result'])
+assert wit['saved_own_custody_closed']is True and wit['reaped']is wit['streams_drained']is True
+assert all(x is True for x in wit['actual_stream_EOF'].values())and all(x is None for x in wit['stream_pump_errors'].values())
+assert wit['scope']==pin(scopep)and wit['supervisor_result']==supin and su['custody_error']is None
+for p in(pin(scopep),pin(witp),supin):assert p in cap['subjects']or occurs(full,p)
+childpin=wit['child_result'];child=None if childpin is None else read(childpin['path'])
+if childpin is not None:assert pin(childpin['path'])==childpin and(childpin in cap['subjects']or occurs(full,childpin))
+success=wit['final_console_and_actual_tool_exit_acceptance']is True
+if success:
+ assert wit['Root_observed_tool_exit_code']==0 and child['record_type']=='I13_owned_data_only_input_snapshot_result'
+ assert child['scope']==pin(scopep)and child['owned_pid']==wit['owned_pid']
+ ledger=child['ledger'];assert ledger['plan_is_actual_target_trace']is False and ledger['validator_exports_called']==0
+ summary=[dict(role=g['role'],record_count=g['record_count'],total_record_bytes=g['total_record_bytes'],
+  routes=[dict(route=x['route'],planned_parent_local_total=x['planned_parent_local_total'],
+  planned_child_local_total=x['planned_child_local_total'],planned_conservative_total=x['planned_conservative_total'],
+  first_planned_50000_crossing=x['first_planned_50000_crossing'])for x in g['route_ledgers']])for g in ledger['graphs']]
+else:summary=None
+sourcep=R/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_003.json';source=read(sourcep);now=dt.datetime.now(dt.timezone.utc)
+assert pin(sourcep)['sha256']=='726c201dd6349aca56122129acf71b259b821a667c0720a3a4838ffb8aefe1ad'
+assert(dt.datetime.fromisoformat(source['interval_end'])-now).total_seconds()>60
+v=dict(schema_version=1,record_type='Root_I13_saved_data_only_input_snapshot_different_review_adoption',author='/root',
+ created_utc=now.isoformat(),verdict='ACCEPT_SAVED_DATA_ONLY_I13_INPUT_SNAPSHOT_REPORT_AND_OWN_CUSTODY_ONLY',
+ snapshot_scope=pin(scopep),Source_scope=pin(sourcep),Source_adoption=scope['source_adoption'],
+ genuine_different_saved_result_capsule=pin(cp),genuine_different_saved_result_full_proof=fp,
+ checks_passed=len(checks),checks_failed=0,actual_Root_tool_witness=pin(witp),supervisor_result=supin,child_result=childpin,
+ snapshot_operation_completed=success,saved_own_custody_closed=True,roles=wit['roles'],reported_graph_summary=summary,
+ Root_judgment='Accept exact saved metadata snapshot reports and owned cleanup. Fixed retained raw inputs are independently recountable; generated synthetic raw bodies were not separately saved, so their counts/readsets are reports of the exact reviewed export execution. All route totals and first crossings are Source-planned hypotheses, never an actual Target trace. No old test case or current936 qualification follows.',
+ raw_synthetic_input_bodies_independently_reread=False,actual_saved_once008_failure_location_established=False,
+ kernel_Source_compiled=False,kernel_exports_called=0,old_original_targets_imported_or_called=0,
+ original936_case_results_changed=False,main_current_partition_passed=20,main_current_partition_failed=12,
+ full_original_I2_DAG_closed=False,authentic_loader_qualified=False,metadata_only=True,
+ tests_executed=False,target_execution=False,actual_family_publication=False,operational_authority=False,
+ scientific_authority=False,native_Parser_executed=False,Native8=False,runtime=False,science=False,
+ claim_reuse_or_replay_authorized=False)
+out=C/('ROOT_I13_INPUT_SNAPSHOT%03d_DIFFERENT_SAVED_RESULT_ADOPTION_001.json'%n)
+b=(json.dumps(v,sort_keys=True,indent=2,allow_nan=False)+'\n').encode();assert len(b)<=LIMIT and not os.path.lexists(out)
+with out.open('xb')as h:assert h.write(b)==len(b);h.flush();os.fsync(h.fileno())
+assert raw(out)==b
+print(json.dumps(dict(adoption=pin(out),snapshot_completed=success,saved_own_custody_closed=True,roles=wit['roles'],main936_qualified=False)))

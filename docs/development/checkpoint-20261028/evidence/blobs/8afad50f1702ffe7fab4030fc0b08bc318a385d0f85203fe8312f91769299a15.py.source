@@ -1,0 +1,72 @@
+"""Root exact current diagnostic handoff from adopted saved metadata; no target calls."""
+import datetime as dt,hashlib,json,os,re,sys
+from pathlib import Path
+R=Path(__file__).parent;C=R/'m3_peer_contracts_016';LIMIT=2097152
+def raw(p):
+ p=Path(p);a=p.stat();assert p.is_file()and not p.is_symlink()and a.st_nlink==1 and a.st_size<=LIMIT
+ for q in(p,*p.parents):assert not getattr(q.lstat(),'st_file_attributes',0)&1024
+ b=p.read_bytes();z=p.stat();assert b==p.read_bytes()and len(b)==a.st_size==z.st_size and a.st_mtime_ns==z.st_mtime_ns
+ return b
+def pin(p):
+ p=Path(p);b=raw(p);return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def read(p):return json.loads(raw(p))
+def occurs(v,p):
+ if type(v)is dict:return v==p or any(occurs(x,p)for x in v.values())
+ return type(v)is list and any(occurs(x,p)for x in v)
+assert len(sys.argv)==3;cp=Path(sys.argv[1]);assert cp.is_relative_to(R)and re.fullmatch('[0-9a-f]{64}',sys.argv[2])and pin(cp)['sha256']==sys.argv[2]
+cap=read(cp);fullpin=cap['full_proof'];assert pin(fullpin['path'])==fullpin;full=read(fullpin['path'])
+assert cap['reviewer']==full['reviewer']=='/root/i13_final_review'and cap['verdict']==full['verdict']and(cap['verdict']=='PASS'or cap['verdict'].startswith('PASS_'))
+checks=full['checks'];assert all(x['passed']is True for x in checks)and len({x['name']for x in checks})==len(checks)==cap['checks_passed']==full['checks_passed']
+assert cap['checks_failed']==full['checks_failed']==0
+proposalp=C/'m3_protocol_audit_001/external_publisher_frontier_feasibility_proposal_001/I13_SIX_ROLE_SAVED_NODE_LEDGER_AND_NEW_PARENT_FRONTIER_CONTRACT_FEASIBILITY_PROPOSAL_001.json'
+assert pin(proposalp)['sha256']=='6516b1c2e745c26e02d73fa6d69f5cf6f51dd79b30d10bb1833fd63081473cb5'
+assert occurs(cap,pin(proposalp))and occurs(full,pin(proposalp))
+snapshots=[];graphs=[];checkcount=0
+for n in(1,2,3):
+ ap=C/('ROOT_I13_INPUT_SNAPSHOT%03d_DIFFERENT_SAVED_RESULT_ADOPTION_001.json'%n);a=read(ap)
+ assert a['author']=='/root'and a['snapshot_operation_completed']is a['saved_own_custody_closed']is True and a['claim_reuse_or_replay_authorized']is False
+ snapshots.append(dict(adoption=pin(ap),scope=a['snapshot_scope'],actual_Root_tool_witness=a['actual_Root_tool_witness'],result=a['child_result'],
+  genuine_different_review=a['genuine_different_saved_result_capsule'],checks_passed=a['checks_passed']))
+ graphs+=a['reported_graph_summary'];checkcount+=a['checks_passed']
+roles=[g['role']for g in graphs];assert roles==['capture_template','metadata_manifest','plan','capture_bound','metadata_binding','phase_binding']and checkcount==7675
+assert sum(len(g['routes'])for g in graphs)==12 and all(x['planned_conservative_total']>50000 for g in graphs for x in g['routes'])
+sourcep=R/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_003.json';source=read(sourcep);now=dt.datetime.now(dt.timezone.utc)
+assert pin(sourcep)['sha256']=='726c201dd6349aca56122129acf71b259b821a667c0720a3a4838ffb8aefe1ad'
+def reserve():
+ assert(dt.datetime.fromisoformat(source['interval_end'])-dt.datetime.now(dt.timezone.utc)).total_seconds()>60
+reserve()
+sourceadoptp=C/'ROOT_I13_INPUT_SNAPSHOT_SOURCE_SET_DIFFERENT_REVIEW_ADOPTION_001.json';assert pin(sourceadoptp)['sha256']=='96199a3cf1c71c7e775f4ef0225b6c0a7ed98d1fab9155dca9ca3b2bfad4e292'
+oldledger=R/'ROOT_I13_CURRENT_RECEIPT_CONTRACT_PROGRESS_LEDGER_002.json'
+preservep=R/'ROOT_I13_CURRENT_WORKSPACE_AND_OLD_SOURCE_PRESERVATION_003.json'
+releasep=R/'coordination/ROOT_I13_THREE_INPUT_SNAPSHOTS_EXPLICIT_OWN_CUSTODY_RELEASE_001.json'
+assert pin(preservep)['sha256']=='f07d96ff3ee95f24a232ce18d42544710f73f407d8cf68242c93d6fef6775243'
+assert pin(releasep)['sha256']=='83352d5d9c86844a97378f7bdb0a0b23270d6a0b2d6d13204c9f453706fe9227'
+v=dict(schema_version=1,record_type='Root_I13_current_fixed6_data_only_node_ledger_and_next_contract_decision_handoff',author='/root',
+ created_utc=now.isoformat(),Source_scope=pin(sourcep),Source_window_end_utc=source['interval_end'],Source_scope_grants_operational_lease=False,
+ previous_dated_progress_ledger=pin(oldledger),snapshot_Source_adoption=pin(sourceadoptp),
+ Source_reviews=dict(fixture_and_model=316,Root_controls=142,protocol=254),
+ three_exact_disjoint_consumed_snapshots=snapshots,saved_evidence_checks_passed=7675,saved_evidence_checks_failed=0,
+ reported_graphs=graphs,planned_route_count=12,all12_Source_planned_routes_exceed_50000=True,
+ actual_saved_once008_failure_location_established=False,Source_planned_counts_are_Target_trace=False,
+ all_snapshot_owned_process_and_stream_custody_closed=True,explicit_own_custody_release=pin(releasep),
+ measurement_limit='45 fixed/current raw records per graph were independently recounted. Other synthetic raw input bodies were not saved; their node/depth/use reports are evidence of exact reviewed snapshot export execution, not an independent second reconstruction.',
+ current_main936=dict(Source_set=5,consumed_partition='001',completed_cases=32,passed=20,failed=12,
+  remaining_current_cases_unestablished=904,full936_pass=False,prior_history_cases_not_recounted_as_current=True),
+ feasibility_analysis_proposal=pin(proposalp),genuine_different_feasibility_analysis_review=dict(capsule=pin(cp),full_proof=fullpin,checks_passed=len(checks)),
+ Root_feasibility_judgment='Accept the bounded Source-only analysis as a next-design handoff, not a closed replacement contract or permission to implement it. Small event factoring and a frontier-only change under the current parent bootstrap cannot establish all-six feasibility. A new exact parent-specific schema/bootstrap and explicit child/context/actor/artifact/post-publication boundary needs its own protocol, genuine different review and Root adoption. Existing Sources and guards remain unchanged.',
+ next_step='Design the new bounded external publisher parent contract and prove a complete cost/readset model before implementation. Retain all original raw inputs,50000 combined nodes,conservative separate-cache sum and full child addition,result54,256records/2MiB/32MiB/depth48,all chronology/actor/provenance/output caps. No cap waiver,shared mutable counter,reset,opaque record encoding or skipped semantic guard is authorized.',
+ no_new_parent_contract_adopted=True,no_new_parent_contract_implemented=True,new_Source_fit_or_execution_qualification=False,
+ current_workspace_and_old_Source_preservation=pin(preservep),unique_repository_baseline_pins_verified=418,repository_status_identities_preserved=409,
+ old_I2_006_and_caller003_complete_bytes_preserved=True,old_I12_complete_bytes_preserved=True,old75_spent_identities_unreplayed=True,
+ primary_six_documents_unchanged=True,STEP081_published=False,managed_I13_copy_published=False,
+ managed_copy_status='Optional managed copy remains unpublished; original512row/64MiB/2MiB caps are unchanged. No broader compression or cap waiver was authorized.',
+ Source_only_metadata=True,old_I0_through_I12_targets_imported_or_called=0,kernel_Source_compiled=False,kernel_exports_called=0,
+ actual_family_publication=False,new_operational_lease_issued=False,actual6=False,Native8=False,Parser=False,runtime=False,science=False,
+ target_execution=False,operational_authority=False,scientific_authority=False,full_original_I2_DAG_closed=False,authentic_loader_qualified=False,
+ standing_science_dated_not_recounted=dict(complete_fits=150,models=270,synced_fits=149,local_only_fits=1,untouched_cases=111),
+ staged=False,committed=False,pushed=False,peer_result_accepted=False,whole_host_quiet_claimed=False,physical_handle_absence_claimed=False)
+out=R/'ROOT_I13_FIXED6_NODE_LEDGER_AND_NEXT_CONTRACT_DECISION_HANDOFF_001.json'
+b=(json.dumps(v,sort_keys=True,indent=2,allow_nan=False)+'\n').encode();assert len(b)<=LIMIT and not os.path.lexists(out);reserve()
+with out.open('xb')as h:assert h.write(b)==len(b);h.flush();os.fsync(h.fileno())
+assert raw(out)==b
+print(json.dumps(dict(handoff=pin(out),saved_evidence_checks=7675,planned_routes=12,full936_pass=False,execution_gates_held=True)))

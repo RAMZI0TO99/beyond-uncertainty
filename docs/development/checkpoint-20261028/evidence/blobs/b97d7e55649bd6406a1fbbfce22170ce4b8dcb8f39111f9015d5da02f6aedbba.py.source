@@ -1,0 +1,55 @@
+"""Join one peer batch custody report, without accepting candidate/science results."""
+import datetime as dt,decimal,hashlib,json,os,re,sys
+from pathlib import Path
+R=Path(__file__).parent.parent
+def raw(p):
+ p=Path(p);s=p.stat();assert p.is_file()and not p.is_symlink()and s.st_nlink==1 and s.st_size<=2097152
+ for q in(p,*p.parents):assert not getattr(q.lstat(),'st_file_attributes',0)&1024
+ b=p.read_bytes();z=p.stat();assert b==p.read_bytes()and len(b)==s.st_size==z.st_size and s.st_mtime_ns==z.st_mtime_ns
+ return b
+def pin(p):
+ b=raw(p);return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def read(p):return json.loads(raw(p),parse_float=decimal.Decimal)
+assert len(sys.argv)==4;number=int(sys.argv[1]);bid=sys.argv[2];sha=sys.argv[3]
+assert number>=17 and bid in('a','b','c')and re.fullmatch('[0-9a-f]{64}',sha)
+P=Path('D:/Aenv/pro3/runs/coordination/cho51_canonical_boundary_20261025_v5_'+bid)
+gp=R/('coordination/PRO2_PRO3_COMPUTE_RELEASE_20261025_%03d.json'%number);g=read(gp);assert pin(gp)['sha256']==sha and g['batch_id']==bid
+expected={'a':36,'b':44,'c':53}[bid];assert g['expected_metadata_tests']==expected and g['expected_full_tests']==133 and g['expected_stdlib_controls']==34
+lp=P/'lease-closeout_001.json';cp=P/'closeout-result.json';sp=P/'closeout-supervision_001.json';l=read(lp);c=read(cp);s=read(sp)
+assert l['peer_release_sha256']==sha and l['external_closeout_sha256']==pin(cp)['sha256']and l['external_supervision_sha256']==pin(sp)['sha256']
+assert l['pins_sha256']==c['pins_sha256']==g['pins_sha256']
+assert l['full_compute_custody_released']is l['launcher_session_reaped']is l['external_owned_tree_reaped']is l['external_stdout_eof']is l['external_stderr_eof']is True
+assert l['guard_attempts_consumed']==l['jobs_created']==l['jobs_executed']==1 and l['native_result']=='normal_exit_0'
+assert l['native_closed_empty']is l['native_handles_closed']is l['fresh_named_job_absent']is True
+assert s['exit_code']==l['external_exit_code']==0 and s['limit_seconds']==l['external_limit_seconds']==300
+assert decimal.Decimal(0)<s['elapsed_seconds']==l['external_elapsed_seconds']<=300
+assert s['timed_out']is False and s['stop_reason']is None and s['owned_tree_reaped']is s['stdout_eof']is s['stderr_eof']is True
+assert s['candidate_imported']is s['job_created']is s['scientific_admission']is False
+assert c['passed']is l['validation_passed']is True and c['normal_exit']==0 and c['tests']==c['selected_tests']==l['selected_tests']==expected
+for k in('batch_id','batch_plan_sha256','expected_full_tests'):assert c[k]==l[k]==g[k]
+for k in('batch_functions','batch_function_counts'):assert c[k]==g[k]
+assert c['stdlib_guard_controls']==34 and len(c['full_collection'])==len(set(c['full_collection']))==133
+assert len(c['collected'])==len(set(c['collected']))==expected and len(c['deselected'])==len(set(c['deselected']))==133-expected
+assert not set(c['collected'])&set(c['deselected'])and set(c['collected'])|set(c['deselected'])==set(c['full_collection'])
+assert c['current_counter_ledger']==g['expected_numerical_budget']and all(type(v)is int and v==0 for v in c['current_counter_ledger'].values())
+assert l['scientific_admission']is c['scientific_admission']is c['runtime_for_future_execution_qualified']is l['automatic_retry_permitted']is False
+np=Path(c['native_directory'])/'receipt.json';assert pin(np)['sha256']==l['native_receipt_sha256']==c['native_receipt_sha256']
+helper=P/'closeout.py';assert pin(helper)['sha256']==s['auditor_sha256']
+end=dt.datetime.fromisoformat(g['window_end_utc']);assert dt.datetime.fromisoformat(s['ended_utc'])<=dt.datetime.fromisoformat(l['released_utc'])<=end
+scopep=R/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_005.json';scope=read(scopep);now=dt.datetime.now(dt.timezone.utc)
+assert(dt.datetime.fromisoformat(scope['interval_end'])-now).total_seconds()>60
+v=dict(schema_version=1,record_type='Root_retained_peer_v5_selected_batch_and_reported_full_custody_release_only',author='/root',created_utc=now.isoformat(),Source_scope=pin(scopep),
+ grant=number,batch_id=bid,compute_grant=pin(gp),grant_consumed_closed=True,peer_lease_closeout=pin(lp),peer_closeout=pin(cp),peer_external_supervision=pin(sp),peer_native_receipt=pin(np),peer_frozen_closeout_Source=pin(helper),
+ reported_full_compute_custody_released=True,peer_explicit_released_utc=l['released_utc'],peer_reported_jobs_created=1,peer_reported_native_exit=0,
+ peer_reported_selected_passed=expected,peer_reported_controls_passed=34,peer_reported_full_collected=133,peer_reported_complementary_deselected=133-expected,
+ peer_reported_full_collection_sha256=c['full_collection_sha256'],reported_selected_and_deselected_metadata_self_consistent=True,
+ peer_reported_counter_ledger=c['current_counter_ledger'],peer_counter_metadata_exact_integer_zeros=True,independent_runtime_counter_observation_claimed=False,
+ peer_reported_external_elapsed_seconds_decimal=str(s['elapsed_seconds']),peer_reported_external_exit_code=0,peer_reported_owned_tree_reaped=True,
+ full133_suite_qualified=False,final_aggregate_qualified=False,old_grant_reuse_authorized=False,new_peer_grant_issued=False,new_Job_or_retry_authorized=False,
+ Root_acceptance=dict(peer_result_accepted=False,scientific_acceptance=False,whole_host_quiet_proved=False,physical_handle_absence_proved=False),
+ Pro2_actual_family_Native8_Parser_runtime_science_admission=False,target_execution=False,operational_authority=False,scientific_authority=False,
+ original_I13_result_unchanged=dict(passed=20,failed=12,remaining_current_cases_unestablished=904,full936_pass=False))
+out=R/('coordination/ROOT_RETAINED_PRO3_%03d_BATCH_%s_AND_FULL_CUSTODY_RELEASE_REPORT_001.json'%(number,bid.upper()));b=(json.dumps(v,sort_keys=True,indent=2,allow_nan=False)+'\n').encode()
+assert len(b)<=2097152 and not os.path.lexists(out)
+with out.open('xb')as h:assert h.write(b)==len(b);h.flush();os.fsync(h.fileno())
+assert raw(out)==b;print(json.dumps(pin(out)))

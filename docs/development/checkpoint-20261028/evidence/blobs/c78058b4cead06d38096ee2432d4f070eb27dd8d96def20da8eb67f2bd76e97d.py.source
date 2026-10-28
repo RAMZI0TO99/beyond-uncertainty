@@ -1,0 +1,568 @@
+"""Fixed one-use data-only input snapshot supervisor. Unrun pending exact Source admission."""
+import datetime as dt
+import hashlib,types,json,os,re,subprocess,sys,threading,time
+from pathlib import Path
+
+def need(ok, message):
+    if not ok:
+        raise ValueError(message)
+
+def wire(value):
+    return (json.dumps(value, sort_keys=True, indent=2, allow_nan=False) + '\n').encode('utf8')
+
+def utc():
+    return dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds')
+
+def pairs(items):
+    result = {}
+    for k, v in items:
+        need(k not in result, 'duplicate JSON name')
+        result[k] = v
+    return result
+
+def bad_number(value):
+    raise ValueError('non-integer JSON number')
+
+def decode(raw):
+    return json.loads(raw.decode('utf8'), object_pairs_hook=pairs, parse_float=bad_number, parse_constant=bad_number)
+
+def ordinary(path, file=True):
+    path = Path(path)
+    need(path.is_absolute() and '..' not in path.parts, 'absolute ordinary path')
+    for parent in reversed(path.parents):
+        info = parent.lstat()
+        need(parent.is_dir() and not parent.is_symlink() and not getattr(info, 'st_file_attributes', 0) & 1024, 'ordinary parent')
+    if file:
+        info = path.lstat()
+        need(path.is_file() and not path.is_symlink() and info.st_nlink == 1 and
+             not getattr(info, 'st_file_attributes', 0) & 1024, 'ordinary single-link file')
+    return path
+
+def read_pin(pin, cap=2097152):
+    need(type(pin) is dict and set(pin) == {'path', 'bytes', 'sha256'} and
+         type(pin['bytes']) is int and 0 < pin['bytes'] <= cap and type(pin['sha256']) is str and
+         re.fullmatch('[0-9a-f]{64}', pin['sha256']) is not None, 'exact bounded positive pin')
+    path = ordinary(pin['path'])
+    before = path.stat()
+    with path.open('rb') as handle:
+        first = handle.read(cap + 1)
+        handle.seek(0)
+        second = handle.read(cap + 1)
+        fd = os.fstat(handle.fileno())
+    after = path.stat()
+    names = ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns', 'st_mode', 'st_nlink', 'st_file_attributes', 'st_birthtime_ns')
+    vector = lambda value: tuple(getattr(value, name, None) for name in names)
+    need(vector(before) == vector(after) and all(getattr(fd, k, None) == getattr(after, k, None)
+         for k in ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_nlink', 'st_file_attributes', 'st_birthtime_ns')), 'owned input changed')
+    need(first == second and len(first) == pin['bytes'] and hashlib.sha256(first).hexdigest() == pin['sha256'], 'whole bytes pin')
+    return first
+
+def read_limited(path, cap=2097152):
+    path = ordinary(path)
+    with path.open('rb') as handle:
+        raw = handle.read(cap + 1)
+    need(0 < len(raw) <= cap, 'bounded metadata input')
+    return raw
+
+def fact(path, raw):
+    return dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+
+def occurs(value, pin):
+    if type(value) is dict:
+        if set(value) == {'path', 'bytes', 'sha256'} and all(type(value[k]) is type(v) and value[k] == v for k, v in pin.items()):
+            return True
+        return any(occurs(v, pin) for v in value.values())
+    return type(value) is list and any(occurs(v, pin) for v in value)
+
+def write_new(path, body):
+    need(type(body) is bytes and len(body) <= 2097152, 'bounded owned output')
+    path = ordinary(path, False)
+    need(not os.path.lexists(path), 'exclusive absent owned output')
+    with path.open('xb') as handle:
+        need(handle.write(body) == len(body), 'whole owned output')
+        handle.flush()
+        os.fsync(handle.fileno())
+    return fact(path, body)
+
+SOURCES = {'m3': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_M3_guard_contract_metadata_011.py', 'bytes': 64586, 'sha256': 'bc86c0885d0dbee71c2cd4832831ce338a4910fd29922a44f25390d1fb881692'}, 'peer': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_selected_peer_author_packet_metadata_011.py', 'bytes': 63531, 'sha256': 'e51ea4010c297689df737ab2f4cbdcb063999975294f73cc78a5bd525c9e11c3'}, 'publisher': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_selected_role_publisher_metadata_006.py', 'bytes': 65474, 'sha256': '7be450cf7233642a9f508f18e168e4262044c763e7b91ffa257ccf6933d948dd'}}
+APIS = {'m3': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\CURRENT_OWNER_M3_GUARD_CONTRACT_METADATA_INERT_API_011.json', 'bytes': 3020, 'sha256': '6dcd9a8b90f9842e336c7de631b1ae2c546ac63152daf38fd45e42df2a986809'}, 'peer': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\CURRENT_OWNER_SELECTED_PEER_CANONICAL_AUTHOR_METADATA_INERT_API_011.json', 'bytes': 1748, 'sha256': '8f93bb19a32d613e933c1594f2823380e8fbd02d2ee9e241183703710fe32a0a'}, 'publisher': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\CURRENT_OWNER_SELECTED_ROLE_PUBLISHER_METADATA_INERT_API_006.json', 'bytes': 4291, 'sha256': 'd7031a4a5a9ea417a92ce5899923f3172508ee31bcb007147479dab8cd4dd65f'}}
+CATALOGUE = {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\m3_protocol_audit_001\\I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_008.json', 'bytes': 139618, 'sha256': 'c02cd1387cb66bbb50c4f11996a3bb72acc90f6ea35caf09e830a93b60d70cbe'}
+FIXTURE = {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\exercise_M3_guard_and_publisher_metadata_memory_015.py', 'bytes': 570281, 'sha256': '568904c774f12506fab8992028f0db04a5dd63a13b9a1935f7dc6d2a4f942e30'}
+ROLE_PLAN = {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\I13_FIXED6_INPUT_SNAPSHOT_DISJOINT_ROLE_SOURCE_PLAN_001.json', 'bytes': 4231, 'sha256': '6e2bd6b82f88371635cc709a7f990ad6f5ecb1141334db463bff353ce8b9d950'}
+ROLE_PLAN_VALUE = {'schema_version': 1, 'record_type': 'Root_I13_exact_fixed_input_snapshot_disjoint_role_Source_plan', 'author': '/root', 'created_utc': '2026-10-25T16:58:39.423523+00:00', 'protocol_adoption': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\ROOT_I13_FIXED_INPUT_NODE_LEDGER_PROTOCOL002_DIFFERENT_SOURCE_REVIEW_ADOPTION_001.json', 'bytes': 18530, 'sha256': 'a2dbe90c868b55e8f0b647d3a6809c9ca39549bb402e2a7441e3f850b3088ff0'}, 'fixture': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\exercise_M3_guard_and_publisher_metadata_memory_015.py', 'bytes': 570281, 'sha256': '568904c774f12506fab8992028f0db04a5dd63a13b9a1935f7dc6d2a4f942e30'}, 'Source_inputs': {'fixture_basis': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\exercise_M3_guard_and_publisher_metadata_memory_014.py', 'bytes': 537177, 'sha256': '0fc108b3c357d8d75b94c03948292e6cdc38711cbab253667448b859d58100aa'}, 'm3_Source': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_M3_guard_contract_metadata_011.py', 'bytes': 64586, 'sha256': 'bc86c0885d0dbee71c2cd4832831ce338a4910fd29922a44f25390d1fb881692'}, 'm3_API': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\CURRENT_OWNER_M3_GUARD_CONTRACT_METADATA_INERT_API_011.json', 'bytes': 3020, 'sha256': '6dcd9a8b90f9842e336c7de631b1ae2c546ac63152daf38fd45e42df2a986809'}, 'publisher_Source': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_selected_role_publisher_metadata_006.py', 'bytes': 65474, 'sha256': '7be450cf7233642a9f508f18e168e4262044c763e7b91ffa257ccf6933d948dd'}, 'publisher_API': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\CURRENT_OWNER_SELECTED_ROLE_PUBLISHER_METADATA_INERT_API_006.json', 'bytes': 4291, 'sha256': 'd7031a4a5a9ea417a92ce5899923f3172508ee31bcb007147479dab8cd4dd65f'}, 'peer_Source': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_selected_peer_author_packet_metadata_011.py', 'bytes': 63531, 'sha256': 'e51ea4010c297689df737ab2f4cbdcb063999975294f73cc78a5bd525c9e11c3'}, 'peer_API': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\CURRENT_OWNER_SELECTED_PEER_CANONICAL_AUTHOR_METADATA_INERT_API_011.json', 'bytes': 1748, 'sha256': '8f93bb19a32d613e933c1594f2823380e8fbd02d2ee9e241183703710fe32a0a'}, 'catalogue': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\m3_protocol_audit_001\\I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_008.json', 'bytes': 139618, 'sha256': 'c02cd1387cb66bbb50c4f11996a3bb72acc90f6ea35caf09e830a93b60d70cbe'}, 'protocol': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\m3_protocol_audit_001\\input_node_readset_ledger_protocol_proposal_001\\I13_PROPOSED_FIXED_M3_INPUT_NODE_AND_SOURCE_READSET_LEDGER_PROTOCOL_002.json', 'bytes': 67530, 'sha256': '3f5956127c9a6e56dfced9209fbf6f28c013526147a2191f4904429c85c2f898'}}, 'fixed_roles': ['capture_template', 'metadata_manifest', 'plan', 'capture_bound', 'metadata_binding', 'phase_binding'], 'maximum_roles_per_snapshot': 2, 'maximum_route_ledgers_per_graph': 2, 'groups': [{'group_id': 'I13_INPUT_GROUP_001', 'roles': ['capture_template', 'metadata_manifest']}, {'group_id': 'I13_INPUT_GROUP_002', 'roles': ['plan', 'capture_bound']}, {'group_id': 'I13_INPUT_GROUP_003', 'roles': ['metadata_binding', 'phase_binding']}], 'snapshot_calls_admitted': 0, 'automatic_retry_permitted': False, 'old936_qualification': False, 'target_execution': False, 'operational_authority': False, 'scientific_authority': False, 'actual_family_publication': False}
+SOURCE_SCOPE = {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_003.json', 'bytes': 8839, 'sha256': '726c201dd6349aca56122129acf71b259b821a667c0720a3a4838ffb8aefe1ad'}
+PROTOCOL_ADOPTION = {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\ROOT_I13_FIXED_INPUT_NODE_LEDGER_PROTOCOL002_DIFFERENT_SOURCE_REVIEW_ADOPTION_001.json', 'bytes': 18530, 'sha256': 'a2dbe90c868b55e8f0b647d3a6809c9ca39549bb402e2a7441e3f850b3088ff0'}
+SOURCE_INPUTS = {'fixture_basis': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\exercise_M3_guard_and_publisher_metadata_memory_014.py', 'bytes': 537177, 'sha256': '0fc108b3c357d8d75b94c03948292e6cdc38711cbab253667448b859d58100aa'}, 'm3_Source': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_M3_guard_contract_metadata_011.py', 'bytes': 64586, 'sha256': 'bc86c0885d0dbee71c2cd4832831ce338a4910fd29922a44f25390d1fb881692'}, 'm3_API': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\CURRENT_OWNER_M3_GUARD_CONTRACT_METADATA_INERT_API_011.json', 'bytes': 3020, 'sha256': '6dcd9a8b90f9842e336c7de631b1ae2c546ac63152daf38fd45e42df2a986809'}, 'publisher_Source': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_selected_role_publisher_metadata_006.py', 'bytes': 65474, 'sha256': '7be450cf7233642a9f508f18e168e4262044c763e7b91ffa257ccf6933d948dd'}, 'publisher_API': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\CURRENT_OWNER_SELECTED_ROLE_PUBLISHER_METADATA_INERT_API_006.json', 'bytes': 4291, 'sha256': 'd7031a4a5a9ea417a92ce5899923f3172508ee31bcb007147479dab8cd4dd65f'}, 'peer_Source': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\validate_selected_peer_author_packet_metadata_011.py', 'bytes': 63531, 'sha256': 'e51ea4010c297689df737ab2f4cbdcb063999975294f73cc78a5bd525c9e11c3'}, 'peer_API': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\i13\\CURRENT_OWNER_SELECTED_PEER_CANONICAL_AUTHOR_METADATA_INERT_API_011.json', 'bytes': 1748, 'sha256': '8f93bb19a32d613e933c1594f2823380e8fbd02d2ee9e241183703710fe32a0a'}, 'catalogue': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\m3_protocol_audit_001\\I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_008.json', 'bytes': 139618, 'sha256': 'c02cd1387cb66bbb50c4f11996a3bb72acc90f6ea35caf09e830a93b60d70cbe'}, 'protocol': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\m3_protocol_audit_001\\input_node_readset_ledger_protocol_proposal_001\\I13_PROPOSED_FIXED_M3_INPUT_NODE_AND_SOURCE_READSET_LEDGER_PROTOCOL_002.json', 'bytes': 67530, 'sha256': '3f5956127c9a6e56dfced9209fbf6f28c013526147a2191f4904429c85c2f898'}}
+M3_I2_SOURCE = {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-002\\receipt_caller_integration_015\\i2\\build_M3_metadata_current_owner_deferred_006.py', 'bytes': 126615, 'sha256': '790ac83005d95fecb1e2837322dd8832b3b59671af85b27f509a35a5fee42c90'}
+LEDGER_LIMITS = {'record_count': 256, 'rawbytes': 33554432, 'perrecord': 2097152, 'output': 2097152, 'source_node_guard': 50000, 'depth': 48}
+ROLE_STAGES = {'capture_template': 'templates', 'metadata_manifest': 'manifest', 'plan': 'capture', 'capture_bound': 'capture', 'metadata_binding': 'capture', 'phase_binding': 'phase_binding'}
+SOURCE_SITE_IDS = ['fixture:_Outer.add_raw', 'fixture:_Outer.add', 'fixture:_Outer.rewrite', 'fixture:_Outer.proof', 'fixture:_Outer.code', 'fixture:_Outer.context', 'fixture:_Outer.child_inputs', 'fixture:_Outer.input_closure', 'fixture:_Outer.envelope', 'fixture:_ow_descriptor', 'fixture:_ow_descriptor_keys', 'fixture:_new_base', 'fixture:_M3Build.__init__', 'fixture:_M3Build.prior', 'fixture:_M3Build.finish', 'fixture:_fixture_make', 'm3:_Store.__init__', 'm3:_Store.body', 'm3:_Store.record', 'm3:_Graph.__init__', 'm3:_Graph.prime', 'm3:_Graph.proof', 'm3:_Graph.adoption', 'm3:_Graph.code', 'm3:_Graph.common', 'm3:_Graph.result', 'm3:_lease_link', 'm3:_observations', 'm3:_prior', 'm3:_body_joins', 'm3:_m3', 'publisher:_Store.__init__', 'publisher:_Store.body', 'publisher:_Store.record', 'publisher:_Graph.__init__', 'publisher:_Graph.prime', 'publisher:_Graph.proof', 'publisher:_Graph.adoption', 'publisher:_Graph.code', 'publisher:_Graph.common', 'publisher:_port', 'publisher:_direct', 'publisher:_purpose', 'publisher:_child_inputs', 'publisher:_prewrite', 'publisher:_outer_result', 'publisher:validate_selected_role_prewrite_metadata', 'publisher:validate_selected_role_canonical_dependency_metadata', 'publisher:_lease_link', 'publisher:_publisher_code', 'publisher:_observe']
+BUDGETS = {'total_seconds': 60, 'wait_seconds': 50, 'cleanup_seconds': 10, 'reap_seconds': 5, 'stdout_maximum_bytes': 2097152, 'stderr_maximum_bytes': 2097152}
+SCOPE_KEYS = ('schema_version', 'record_type', 'author', 'created_utc', 'interval_start', 'interval_end', 'operation', 'maximum_snapshot_invocations', 'source_scope', 'protocol_adoption', 'source_adoption', 'modules', 'APIs', 'catalogue', 'fixture', 'supervisor', 'runtime', 'prelaunch', 'outputs', 'budgets', 'target_execution', 'operational_authority', 'scientific_authority', 'actual_family_publication', 'role_plan', 'role_group_id')
+OUTPUT_KEYS = ('claim', 'child_entry', 'child_result', 'stdout', 'stderr', 'supervisor_result')
+HOLDS = ('target_execution', 'operational_authority', 'scientific_authority', 'actual_family_publication')
+OWNED_PARENT_ROOT = Path(__file__).parent / 'owned_input_snapshot_runs'
+
+
+def selected_roles(value):
+    need(value['role_plan'] == ROLE_PLAN, 'exact role plan')
+    plan = decode(read_pin(ROLE_PLAN))
+    need(plan == ROLE_PLAN_VALUE, 'exact closed frozen role plan')
+    need(type(value['role_group_id']) is str, 'builtin role group')
+    rows = [r for r in plan['groups'] if r['group_id'] == value['role_group_id']]
+    need(len(rows) == 1, 'one fixed role group')
+    return rows[0]['roles']
+
+def scope(path, expected_hash):
+    path = ordinary(path)
+    raw = read_limited(path)
+    need(hashlib.sha256(raw).hexdigest() == expected_hash, 'exact once scope')
+    v = decode(raw)
+    need(type(v) is dict and set(v) == set(SCOPE_KEYS), 'closed scope')
+    need(type(v['schema_version']) is int and v['schema_version'] == 1 and v['author'] == '/root'
+         and v['record_type'] == 'Root_I13_once_data_only_input_snapshot_scope'
+         and v['operation'] == 'NEW_I13_DATA_ONLY_INPUT_SNAPSHOT'
+         and type(v['maximum_snapshot_invocations']) is int and v['maximum_snapshot_invocations'] == 1
+         and v['budgets'] == BUDGETS, 'one metadata snapshot only')
+    need(all(v[k] is False for k in HOLDS), 'held execution gates')
+    now = dt.datetime.now(dt.timezone.utc)
+    parse = dt.datetime.fromisoformat
+    need(parse(v['created_utc']) <= now and parse(v['interval_start']) <= now < parse(v['interval_end']), 'fresh scope')
+    need(v['source_scope'] == SOURCE_SCOPE and v['protocol_adoption'] == PROTOCOL_ADOPTION
+         and v['modules'] == SOURCES and v['APIs'] == APIS and v['catalogue'] == CATALOGUE
+         and v['fixture'] == FIXTURE, 'frozen exact inputs')
+    selected_roles(v)
+    need(Path(v['supervisor']['path']) == Path(__file__), 'own supervisor path')
+    for key in ('source_scope','protocol_adoption','source_adoption','catalogue','fixture','supervisor','runtime','prelaunch','role_plan'):
+        read_pin(v[key])
+    for name,pin in SOURCES.items():
+        read_pin(pin, cap=65536)
+        need(decode(read_pin(APIS[name]))['Source'] == pin, 'API whole Source join')
+    need(os.path.normcase(v['runtime']['path']) == os.path.normcase(sys.executable), 'general runtime only')
+    src = decode(read_pin(SOURCE_SCOPE))
+    need(src['author'] == '/root' and src['target_execution'] is src['operational_authority'] is False
+         and parse(src['interval_start']) <= now and (parse(src['interval_end']) - now).total_seconds() > 60
+         and parse(v['interval_end']) <= parse(src['interval_end']), 'Source-only window and original reserve')
+    adoption = decode(read_pin(v['source_adoption']))
+    need(adoption.get('author') == '/root' and type(adoption.get('verdict')) is str
+         and adoption['verdict'].startswith('ACCEPT_EXACT_I13_INPUT_SNAPSHOT_SOURCE')
+         and all(adoption.get(k) is False for k in HOLDS + ('tests_executed',)), 'exact Root Source adoption only')
+    need(all(occurs(adoption,p) for p in list(SOURCES.values()) + list(APIS.values())
+             + [CATALOGUE,FIXTURE,ROLE_PLAN,v['supervisor'],PROTOCOL_ADOPTION]), 'Source adoption exact subject coverage')
+    pre = decode(read_pin(v['prelaunch']))
+    need(pre.get('record_type') == 'Root_I13_fresh_once_input_snapshot_prelaunch_metadata'
+         and pre.get('source_scope') == SOURCE_SCOPE and pre.get('source_adoption') == v['source_adoption']
+         and pre.get('role_group_id') == v['role_group_id']
+         and pre.get('peer_reported_full_custody_release') is True and pre.get('new_peer_grant_after_release') is False
+         and all(pre.get(k) is False for k in ('target_execution','operational_authority','scientific_authority')), 'fresh prelaunch join')
+    need(type(pre.get('available_RAM_bytes')) is int and pre['available_RAM_bytes'] >= 1073741824
+         and type(pre.get('disk_free_bytes')) is int and pre['disk_free_bytes'] >= 10737418240
+         and 0 <= (now-parse(pre['observed_utc'])).total_seconds() <= 60, 'fresh native resources')
+    peer = decode(read_pin(pre['peer_custody_release_report']))
+    need(peer.get('reported_full_compute_custody_released') is True and peer.get('grant_consumed_closed') is True
+         and peer.get('Root_acceptance',{}).get('peer_result_accepted') is False, 'reported full peer release only')
+    q = SOURCE_SCOPE['path']
+    coordination = Path(q).parent/'coordination'
+    grants = sorted(coordination.glob('PRO2_PRO3_COMPUTE_RELEASE_20261025_*.json'))
+    need(type(peer.get('grant')) is int and max(int(p.stem.rsplit('_',1)[1]) for p in grants) == peer['grant'], 'no later peer grant')
+    pausebase = Path(q).parents[1]
+    for day in ('20261007','20261012','20261013','20261015','20261025'):
+        need(not (pausebase/('resume-'+day+'-001/coordination/PRO2_REQUEST_PRO3_PAUSE.json')).exists(), 'pause inventory unchanged')
+    need(type(v['outputs']) is dict and set(v['outputs']) == set(OUTPUT_KEYS), 'six exact outputs')
+    outputs = [ordinary(x,False) for x in v['outputs'].values()]
+    need(len({str(p).casefold() for p in outputs}) == 6 and len({p.parent for p in outputs}) == 1
+         and all(p.parent.parent == OWNED_PARENT_ROOT and p.suffix in ('.json','.txt') for p in outputs), 'one owned namespace')
+    need(not any(str(p).casefold() == inp['path'].casefold() for p in outputs for inp in list(SOURCES.values())
+                 +list(APIS.values())+[CATALOGUE,FIXTURE,ROLE_PLAN,v['supervisor']]), 'disjoint inputs outputs')
+    return v, fact(path,raw)
+
+def data_carrier(name):
+    pin = SOURCES[name]
+    module = types.ModuleType('_i13_snapshot_data_'+name)
+    module.__source_pin__ = dict(pin)
+    module.__source_bytes__ = read_pin(pin,cap=65536)
+    module.__API_pin__ = dict(APIS[name])
+    module.__API_bytes__ = read_pin(APIS[name])
+    if name == 'm3':
+        module.CATALOGUE_PIN = dict(CATALOGUE)
+        module.I2_SOURCE = dict(M3_I2_SOURCE)
+    return module
+
+def load_fixture_only():
+    raw = read_pin(FIXTURE)
+    module = types.ModuleType('_i13_snapshot_fixture')
+    module.__file__ = FIXTURE['path']
+    exec(compile(raw,FIXTURE['path'],'exec'),module.__dict__)
+    module.__source_pin__ = dict(FIXTURE)
+    module.__source_bytes__ = raw
+    return module
+
+def integer(v,minimum=0):
+    return type(v) is int and v >= minimum
+
+def closed(v,keys):
+    return type(v) is dict and all(type(k) is str for k in v) and set(v) == set(keys)
+
+def check_fact(v):
+    need(closed(v,('path','bytes','sha256')) and type(v['path']) is str and 0<len(v['path'])<=32768
+         and integer(v['bytes'],1) and v['bytes']<=2097152 and type(v['sha256']) is str
+         and re.fullmatch('[0-9a-f]{64}',v['sha256']) is not None, 'closed bounded fact3')
+
+def check_use(v):
+    need(closed(v,('designation','first_parse_ordinal','Source_site_ids','body_call_count','parse_call_count')), 'closed use')
+    need(v['designation'] in ('SUPPLIED_ONLY','RAW_BODY','JSON_PARSE')
+         and type(v['Source_site_ids']) is list and len(v['Source_site_ids'])<=64
+         and all(type(x) is str and x in SOURCE_SITE_IDS for x in v['Source_site_ids'])
+         and len(set(v['Source_site_ids']))==len(v['Source_site_ids'])
+         and integer(v['body_call_count']) and integer(v['parse_call_count']), 'typed use')
+    need((v['designation']=='JSON_PARSE' and integer(v['first_parse_ordinal'],1) and v['first_parse_ordinal']<=256 and v['parse_call_count']>0)
+         or (v['designation']!='JSON_PARSE' and v['first_parse_ordinal'] is None and v['parse_call_count']==0), 'parse designation')
+
+
+def check_phase_plan(route,rows,g):
+    allowed=SOURCE_SITE_IDS
+    bypath={r['pin']['path']:r for r in rows}
+    p=c=0;added=0;merged=False
+    starts={'PARENT':False,'CHILD':False};contexts={'PARENT':False,'CHILD':False}
+    parsed={'PARENT':set(),'CHILD':set()}
+    childdone=decoded=parentdone=False
+    first=None
+    for event in route['phase_rows']:
+        cache=event['cache'];op=event['operation'];site=event['Source_site_id']
+        need(event['phase']==op and site in allowed,'exact phase and Source site enums')
+        if parentdone:need(False,'no phase after final parent result')
+        if cache=='CONSERVATIVE_SUM':
+            need(op=='CHILD_TOTAL_ADDITION' and site=='publisher:_prewrite' and childdone and decoded
+                 and not merged and event['subject'] is None and event['charge_nodes']==c,'one child total addition')
+            before=p;charge=c;added=c;merged=True;local=p+c;conservative=p+c;after=p+c
+        else:
+            need(cache in ('PARENT','CHILD') and site.startswith('publisher:' if cache=='PARENT' else 'm3:'),'cache Source namespace')
+            if cache=='PARENT':
+                need(not starts['CHILD'] or childdone,'no interleaved child execution')
+                before=p+added
+            else:
+                need(contexts['PARENT'] and not childdone and not merged,'child execution order')
+                before=c
+            current=p if cache=='PARENT' else c
+            if op=='EAGER_SNAPSHOT':
+                need(not starts[cache] and not contexts[cache] and current==0 and event['subject'] is None
+                     and site==('publisher:_Store.__init__' if cache=='PARENT' else 'm3:_Store.__init__'),'eager Source/order')
+                charge=1+11*g['record_count'];starts[cache]=True
+            elif op=='CONTEXT':
+                need(starts[cache] and not contexts[cache] and current==1+11*g['record_count'] and event['subject'] is None
+                     and site==('publisher:_Graph.__init__' if cache=='PARENT' else 'm3:_Graph.__init__'),'context Source/order')
+                charge=7;contexts[cache]=True
+            elif op=='JSON_PARSE':
+                need(contexts[cache] and (cache=='CHILD' or not starts['CHILD'] or merged),'JSON phase order')
+                subject=event['subject'];check_fact(subject)
+                row=bypath.get(subject['path']);need(row is not None and row['pin']==subject,'JSON subject belongs to exact roster')
+                use=row['child_use' if cache=='CHILD' else 'parent_'+route['route']+'_use']
+                need(use['designation']=='JSON_PARSE' and row['strict_JSON']['status']=='VALID' and site in use['Source_site_ids']
+                     and subject['path'] not in parsed[cache] and use['first_parse_ordinal']==len(parsed[cache])+1,'first cache miss and Source join')
+                parsed[cache].add(subject['path']);charge=row['strict_JSON']['nodes']
+            elif op=='CHILD_RESULT_DECODE':
+                need(cache=='PARENT' and contexts['PARENT'] and childdone and not decoded and not merged
+                     and site=='publisher:_direct' and event['subject'] is None,'child result decode Source/order')
+                charge=route['parent_child_result_decode_nodes'];decoded=True
+            elif op=='FINAL_RESULT':
+                need(contexts[cache] and event['subject'] is None,'result phase context')
+                if cache=='CHILD':
+                    need(site=='m3:_Graph.result','child result Source')
+                    charge=route['child_result_nodes'];childdone=True
+                else:
+                    need(merged and decoded and site=='publisher:_outer_result','parent result Source/order')
+                    charge=route['parent_final_result_nodes'];parentdone=True
+            else:
+                need(False,'unsupported cache phase')
+            need(event['charge_nodes']==charge,'exact Source-derived phase charge')
+            if cache=='PARENT':
+                p+=charge;local=p;conservative=p+added;after=p+added
+            else:
+                c+=charge;local=c;conservative=p+c;after=c
+        need(event['charge_nodes']==charge and event['local_cumulative_nodes']==local
+             and event['conservative_cumulative_nodes']==conservative,'recomputed local/conservative cumulative counts')
+        if first is None and after>50000:
+            need(before<=50000 and after==before+charge,'first Source guard crossing arithmetic')
+            first=dict(phase=event['phase'],cache=cache,Source_site_id=site,before=before,charge=charge,after=after)
+    need(all(starts.values()) and all(contexts.values()) and childdone and decoded and merged and parentdone,'complete ordered cache/result phases')
+    need(p==route['planned_parent_local_total'] and c==route['planned_child_local_total']
+         and p+c==route['planned_conservative_total'],'phase totals join headlines')
+    for cache in ('PARENT','CHILD'):
+        key='child_use' if cache=='CHILD' else 'parent_'+route['route']+'_use'
+        need(parsed[cache]=={r['pin']['path'] for r in rows if r[key]['designation']=='JSON_PARSE'},'all unique JSON charges represented')
+    need(route['first_planned_50000_crossing']==first,'exact earliest Source guard crossing')
+
+def validate_ledger(v,roles):
+    keys=('schema_version','record_type','metadata_only','counting_semantics','roles','graphs','Source_inputs','limits',
+          'plan_is_actual_target_trace','validator_exports_called','target_execution','operational_authority','scientific_authority',
+          'native_Parser_executed','actual_family_publication','full_original_I2_DAG_closed','authentic_loader_qualified')
+    need(closed(v,keys) and type(v['schema_version']) is int and v['schema_version']==2
+         and v['record_type']=='I13_fixture_input_node_and_Source_planned_readset_ledger'
+         and v['metadata_only'] is True and v['counting_semantics']=='FULL_KEYS_VALUES_LOCAL_CACHE_THEN_CONSERVATIVE_SUM'
+         and type(v['validator_exports_called']) is int and v['validator_exports_called']==0, 'closed diagnostic ledger')
+    need(all(v[k] is False for k in ('plan_is_actual_target_trace','target_execution','operational_authority','scientific_authority',
+         'native_Parser_executed','actual_family_publication','full_original_I2_DAG_closed','authentic_loader_qualified')), 'no qualification or actual trace')
+    need(v['Source_inputs']==SOURCE_INPUTS and v['limits']==LEDGER_LIMITS, 'exact ledger Sources and unchanged limits')
+    need(type(v['roles']) is list and v['roles']==roles and type(v['graphs']) is list and len(v['graphs'])==len(roles), 'exact selected graph order')
+    graphkeys=('role','stage','record_count','total_record_bytes','record_set_LF_fact3_sha256','packet_pins','record_ledger','route_ledgers','global_seals_unchanged')
+    reckeys=('ordinal','pin','labels','strict_JSON','parent_prewrite_use','parent_canonical_use','child_use')
+    routekeys=('route','packet','context_nodes','parent_store_snapshot_nodes','child_store_snapshot_nodes','parent_unique_JSON_nodes',
+       'child_unique_JSON_nodes','child_result_nodes','parent_child_result_decode_nodes','parent_final_result_nodes','phase_rows',
+       'planned_parent_local_total','planned_child_local_total','planned_conservative_total','first_planned_50000_crossing',
+       'unmodeled_Source_sites','all_non_node_predicates_assumed_satisfied')
+    phasekeys=('phase','cache','operation','subject','Source_site_id','charge_nodes','local_cumulative_nodes','conservative_cumulative_nodes')
+    for role,g in zip(roles,v['graphs']):
+        need(closed(g,graphkeys) and g['role']==role and g['stage']==ROLE_STAGES[role]
+             and integer(g['record_count'],1) and g['record_count']<=256 and integer(g['total_record_bytes'],1)
+             and g['total_record_bytes']<=33554432 and g['global_seals_unchanged'] is True, 'closed bounded graph')
+        need(type(g['record_set_LF_fact3_sha256']) is str and re.fullmatch('[0-9a-f]{64}',g['record_set_LF_fact3_sha256']) is not None, 'record roster hash')
+        need(closed(g['packet_pins'],('author','prewrite','canonical')), 'three packets')
+        for p in g['packet_pins'].values(): check_fact(p)
+        rows=g['record_ledger']; need(type(rows) is list and len(rows)==g['record_count'], 'complete all-record roster')
+        pins=[]
+        for i,row in enumerate(rows,1):
+            need(closed(row,reckeys) and type(row['ordinal']) is int and row['ordinal']==i, 'record ordinal and schema')
+            check_fact(row['pin']); pins.append(row['pin'])
+            need(type(row['labels']) is list and len(row['labels'])<=256 and all(type(x) is str for x in row['labels'])
+                 and row['labels']==sorted(set(row['labels'])), 'label aliases')
+            j=row['strict_JSON']
+            need(closed(j,('status','nodes','maximum_depth','root_type','error_code')), 'JSON inventory schema')
+            if j['status']=='VALID':
+                need(integer(j['nodes'],1) and integer(j['maximum_depth']) and j['maximum_depth']<=48 and
+                     j['root_type'] in ('dict','list','str','int','bool','NoneType') and j['error_code'] is None, 'whole JSON facts')
+            else:
+                need(j['status']=='NON_JSON' and j['nodes'] is j['maximum_depth'] is j['root_type'] is None
+                     and type(j['error_code']) is str and 0<len(j['error_code'])<=128, 'opaque nonJSON fact')
+            for k in ('parent_prewrite_use','parent_canonical_use','child_use'): check_use(row[k])
+        need(len({x['path'].casefold() for x in pins})==len(pins) and sum(x['bytes'] for x in pins)==g['total_record_bytes'], 'unique full raw roster')
+        roster=(json.dumps(pins,sort_keys=True,separators=(',',':'),ensure_ascii=False)+'\n').encode('utf8')
+        need(hashlib.sha256(roster).hexdigest()==g['record_set_LF_fact3_sha256'], 'complete roster fact hash')
+        routes=g['route_ledgers'];need(type(routes) is list and len(routes)==2 and [x.get('route') for x in routes]==['prewrite','canonical'], 'exact two route plans')
+        for route in routes:
+            need(closed(route,routekeys) and route['packet']==g['packet_pins'][route['route']]
+                 and route['unmodeled_Source_sites']==[] and route['all_non_node_predicates_assumed_satisfied'] is True
+                 and type(route['context_nodes']) is int and route['context_nodes']==7, 'complete conditional route')
+            numeric=('parent_store_snapshot_nodes','child_store_snapshot_nodes','parent_unique_JSON_nodes','child_unique_JSON_nodes',
+                     'child_result_nodes','parent_child_result_decode_nodes','parent_final_result_nodes',
+                     'planned_parent_local_total','planned_child_local_total','planned_conservative_total')
+            need(all(integer(route[k]) for k in numeric), 'exact node totals')
+            eager=1+11*g['record_count']
+            need(route['parent_store_snapshot_nodes']==route['child_store_snapshot_nodes']==eager
+                 and route['child_result_nodes']==route['parent_child_result_decode_nodes'], 'unchanged eager and double result charge')
+            for side,usekey,totalkey in [('parent','parent_'+route['route']+'_use','parent_unique_JSON_nodes'),('child','child_use','child_unique_JSON_nodes')]:
+                selected=[r for r in rows if r[usekey]['designation']=='JSON_PARSE']
+                need(all(r['strict_JSON']['status']=='VALID' for r in selected), 'planned JSON valid')
+                need(sum(r['strict_JSON']['nodes'] for r in selected)==route[totalkey], 'whole distinct cached JSON costs')
+                need(sorted(r[usekey]['first_parse_ordinal'] for r in selected)==list(range(1,len(selected)+1)), 'complete cache-miss order')
+            parent=eager+7+route['parent_unique_JSON_nodes']+route['parent_child_result_decode_nodes']+route['parent_final_result_nodes']
+            child=eager+7+route['child_unique_JSON_nodes']+route['child_result_nodes']
+            need(route['planned_parent_local_total']==parent and route['planned_child_local_total']==child
+                 and route['planned_conservative_total']==parent+child, 'separate cache conservative sum')
+            phases=route['phase_rows'];need(type(phases) is list and 1<=len(phases)<=1024,'bounded charge phases')
+            for phase in phases:
+                need(closed(phase,phasekeys) and type(phase['phase']) is str and 0<len(phase['phase'])<=256
+                     and phase['cache'] in ('PARENT','CHILD','CONSERVATIVE_SUM') and phase['operation'] in
+                     ('EAGER_SNAPSHOT','CONTEXT','JSON_PARSE','CHILD_RESULT_DECODE','CHILD_TOTAL_ADDITION','FINAL_RESULT')
+                     and type(phase['Source_site_id']) is str and 0<len(phase['Source_site_id'])<=256
+                     and all(integer(phase[k]) for k in ('charge_nodes','local_cumulative_nodes','conservative_cumulative_nodes')), 'closed charge phase')
+                if phase['subject'] is not None: check_fact(phase['subject'])
+            check_phase_plan(route,rows,g)
+            crossing=route['first_planned_50000_crossing']
+            if crossing is not None:
+                need(closed(crossing,('phase','cache','Source_site_id','before','charge','after'))
+                     and all(integer(crossing[k]) for k in ('before','charge','after'))
+                     and crossing['before']<=50000 and crossing['after']==crossing['before']+crossing['charge']
+                     and crossing['after']>50000, 'conditional first crossing')
+            else: need(parent<=50000 and child<=50000 and parent+child<=50000,'no unreported planned crossing')
+
+def child(scope_path,expected_hash):
+    value,scope_pin=scope(scope_path,expected_hash)
+    need(sys.flags.isolated==1 and sys.flags.no_site==1 and sys.flags.dont_write_bytecode==1,'isolated -I -S -B')
+    outputs=value['outputs']; claim=decode(read_limited(outputs['claim']))
+    need(claim.get('record_type')=='I13_once_input_snapshot_scope_claim' and claim.get('scope')==scope_pin
+         and claim.get('supervisor')==value['supervisor'] and type(claim.get('parent_pid')) is int
+         and claim['parent_pid']==os.getppid() and type(claim.get('snapshot_invocations_maximum')) is int
+         and claim['snapshot_invocations_maximum']==1,'owned parent and consumed claim')
+    write_new(outputs['child_entry'],wire(dict(record_type='I13_data_only_input_snapshot_child_entry',created_utc=utc(),pid=os.getpid(),scope=scope_pin)))
+    roles=selected_roles(value)
+    print(json.dumps(dict(event='INPUT_SNAPSHOT_ENTRY',roles=roles)),flush=True)
+    m3=data_carrier('m3'); publisher=data_carrier('publisher'); peer=data_carrier('peer')
+    fixture=load_fixture_only()
+    try:
+        result_raw=fixture.snapshot_I13_M3_input_node_ledger(m3=m3,publisher=publisher,peer=peer,catalogue_bytes=read_pin(CATALOGUE),roles=tuple(roles))
+        need(type(result_raw) is bytes and 0<len(result_raw)<=2097152,'bounded exact snapshot bytes')
+        result=decode(result_raw);validate_ledger(result,roles)
+    except MemoryError:
+        raise
+    except ValueError as exc:
+        code=getattr(exc,'code',None)
+        refusal=dict(schema_version=1,record_type='I13_owned_data_only_input_snapshot_typed_refusal',scope=scope_pin,owned_pid=os.getpid(),
+            created_utc=utc(),roles=roles,exception_type=type(exc).__name__[:128],
+            diagnostic_code=code[:128] if type(code) is str else None,message=str(exc)[:512],
+            metadata_only=True,target_execution=False,actual_family_publication=False,operational_authority=False,scientific_authority=False)
+        write_new(outputs['child_result'],wire(refusal))
+        print(json.dumps(dict(event='INPUT_SNAPSHOT_REFUSED',diagnostic_code=refusal['diagnostic_code'])),flush=True)
+        return 1
+    wrapper=dict(schema_version=1,record_type='I13_owned_data_only_input_snapshot_result',scope=scope_pin,owned_pid=os.getpid(),
+        created_utc=utc(),roles=roles,ledger=result,metadata_only=True,target_execution=False,actual_family_publication=False,
+        operational_authority=False,scientific_authority=False)
+    write_new(outputs['child_result'],wire(wrapper))
+    print(json.dumps(dict(event='INPUT_SNAPSHOT_COMPLETE',roles=roles,graphs=len(result['graphs']),validator_exports_called=0)),flush=True)
+    return 0
+
+def parent(scope_path,expected_hash):
+    start=time.monotonic()
+    value,scope_pin=scope(scope_path,expected_hash)
+    roles=selected_roles(value)
+    outputs = value['outputs']
+    need((dt.datetime.fromisoformat(value['interval_end']) - dt.datetime.now(dt.timezone.utc)).total_seconds() > 60, 'original60 reserve before claim/child launch')
+    need(not any(os.path.lexists(p) for p in outputs.values()), 'all fresh owned identities absent; no reuse')
+    claim = write_new(outputs['claim'], wire(dict(record_type='I13_once_input_snapshot_scope_claim', created_utc=utc(), scope=scope_pin, supervisor=value['supervisor'], snapshot_invocations_maximum=1, parent_pid=os.getpid())))
+    try:
+        proc = subprocess.Popen([sys.executable, '-I', '-S', '-B', str(Path(__file__)), '--child', str(scope_path), expected_hash],
+                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+    except OSError as exc:
+        elapsed = time.monotonic() - start
+        refused = dict(schema_version=1, record_type='I13_owned_once_data_only_input_snapshot_supervisor_result', created_utc=utc(), scope=scope_pin,
+                       claim=claim, owned_pid=None, exit_code=None, reaped=False, child_launched=False,
+                       acceptance_at_record_preparation=False, refusal='CHILD_LAUNCH_REFUSAL', exception_type=type(exc).__name__,
+                       elapsed_milliseconds=int(elapsed*1000), budgets=BUDGETS, target_execution=False,
+                       actual_family_publication=False, operational_authority=False, scientific_authority=False,
+                       physical_host_or_PID_absence_proved=False)
+        result_pin = write_new(outputs['supervisor_result'], wire(refused))
+        final_elapsed = time.monotonic() - start
+        print(json.dumps(dict(accepted=False, refusal='CHILD_LAUNCH_REFUSAL', supervisor_result=result_pin,
+                              final_elapsed_milliseconds=int(final_elapsed*1000))), flush=True)
+        return 1
+    buffers = {'stdout': bytearray(), 'stderr': bytearray()}
+    counts = {'stdout': 0, 'stderr': 0}
+    overflow = threading.Event()
+    pump_failed = threading.Event()
+    stream_eof = {'stdout': False, 'stderr': False}
+    pump_errors = {'stdout': None, 'stderr': None}
+    def pump(name, pipe):
+        try:
+            while True:
+                chunk = pipe.read(65536)
+                if not chunk:
+                    stream_eof[name] = True
+                    break
+                counts[name] += len(chunk)
+                if counts[name] > 2097152:
+                    overflow.set()
+                remaining = 2097152 - len(buffers[name])
+                if remaining > 0:
+                    buffers[name].extend(chunk[:remaining])
+        except Exception as exc:
+            pump_errors[name] = type(exc).__name__
+            pump_failed.set()
+        finally:
+            try:
+                pipe.close()
+            except Exception as exc:
+                pump_errors[name] = type(exc).__name__
+                pump_failed.set()
+    threads = [threading.Thread(target=pump, args=(name, getattr(proc, name)), daemon=True) for name in ('stdout', 'stderr')]
+    for thread in threads:
+        thread.start()
+    reason = None
+    while proc.poll() is None:
+        if pump_failed.is_set():
+            reason = 'STREAM_CAPTURE_REFUSAL'; break
+        if overflow.is_set():
+            reason = 'OUTPUT_CAP_REFUSAL'; break
+        if time.monotonic() - start >= 50:
+            reason = 'WAIT50_TIMEOUT'; break
+        time.sleep(0.01)
+    terminated = killed = False
+    custody_error = None
+    if proc.poll() is None:
+        try:
+            proc.terminate(); terminated = True
+            try:
+                proc.wait(timeout=max(0, min(5, 60 - (time.monotonic() - start))))
+            except subprocess.TimeoutExpired:
+                proc.kill(); killed = True
+                try:
+                    proc.wait(timeout=max(0, min(5, 60 - (time.monotonic() - start))))
+                except subprocess.TimeoutExpired:
+                    reason = 'FINAL_REAP_TIMEOUT'
+        except OSError as exc:
+            custody_error = type(exc).__name__
+            reason = 'OWNED_CLEANUP_REFUSAL'
+    else:
+        try:
+            proc.wait(timeout=max(0, min(5, 60 - (time.monotonic() - start))))
+        except subprocess.TimeoutExpired:
+            reason = 'FINAL_REAP_TIMEOUT'
+    for thread in threads:
+        thread.join(timeout=max(0, min(1, 60 - (time.monotonic() - start))))
+    threads_finished = not any(t.is_alive() for t in threads)
+    drained = threads_finished and all(stream_eof.values()) and not any(pump_errors.values())
+    if not drained:
+        reason = reason or 'STREAM_DRAIN_REFUSAL'
+    stdout = write_new(outputs['stdout'], bytes(buffers['stdout']))
+    stderr = write_new(outputs['stderr'], bytes(buffers['stderr']))
+    result = None
+    if os.path.lexists(outputs['child_result']):
+        try:
+            path = ordinary(outputs['child_result']); body = read_limited(path)
+            decoded = decode(body)
+            need(type(decoded) is dict, 'child result object')
+            result = dict(pin=fact(path, body), value=decoded)
+        except (OSError, ValueError, UnicodeError) as exc:
+            reason = reason or 'CHILD_RESULT_REFUSAL'
+            child_result_error = type(exc).__name__
+        else:
+            child_result_error = None
+    else:
+        child_result_error = None
+    ledger_valid=False
+    typed_refusal=None
+    if result is not None:
+        try:
+            rv=result['value']
+            if rv.get('record_type')=='I13_owned_data_only_input_snapshot_typed_refusal':
+                typed_refusal=rv.get('diagnostic_code')
+            need(closed(rv,('schema_version','record_type','scope','owned_pid','created_utc','roles','ledger','metadata_only',
+                'target_execution','actual_family_publication','operational_authority','scientific_authority'))
+                and type(rv['schema_version']) is int and rv['schema_version']==1 and
+                rv['record_type']=='I13_owned_data_only_input_snapshot_result' and rv['scope']==scope_pin
+                and type(rv['owned_pid']) is int and rv['owned_pid']==proc.pid and rv['roles']==roles and rv['metadata_only'] is True
+                and all(rv[k] is False for k in HOLDS),'closed owned snapshot identity')
+            validate_ledger(rv['ledger'],roles)
+            ledger_valid=True
+        except (ValueError,TypeError,KeyError):
+            reason=reason or 'SNAPSHOT_RESULT_REFUSAL'
+    else:
+        reason=reason or 'SNAPSHOT_RESULT_ABSENT'
+    acceptance_elapsed_ns=int((time.monotonic()-start)*1000000000)
+    if acceptance_elapsed_ns>60000000000:reason='TOTAL60_REFUSAL'
+    accepted=reason is None and proc.returncode==0 and drained and not overflow.is_set() and ledger_valid and acceptance_elapsed_ns<=60000000000
+    witness=dict(schema_version=1,record_type='I13_owned_once_data_only_input_snapshot_supervisor_result',
+        created_utc=utc(),scope=scope_pin,claim=claim,owned_pid=proc.pid,exit_code=proc.returncode,
+        reaped=proc.returncode is not None,streams_drained=drained,terminated=terminated,killed=killed,
+        refusal=reason,stdout=stdout,stderr=stderr,observed_stream_bytes=counts,stream_threads_finished=threads_finished,
+        actual_stream_EOF=stream_eof,stream_pump_errors=pump_errors,elapsed_milliseconds=acceptance_elapsed_ns//1000000,
+        acceptance_elapsed_nanoseconds=acceptance_elapsed_ns,budgets=BUDGETS,child_result=None if result is None else dict(pin=result['pin']),
+        acceptance_at_record_preparation=accepted,final_acceptance_requires_saved_console_and_parent_exit0=True,
+        child_launched=True,custody_error=custody_error,child_result_error=child_result_error,roles=roles,
+        exact_snapshot_ledger_valid=ledger_valid,reported_typed_refusal=typed_refusal,validator_exports_called=0,
+        old_CASE_PASS_or_936_qualification=False,plan_is_actual_target_trace=False,actual_family_publication=False,
+        target_execution=False,operational_authority=False,scientific_authority=False,physical_host_or_PID_absence_proved=False)
+    witness_pin=write_new(outputs['supervisor_result'],wire(witness))
+    final_elapsed_ns=int((time.monotonic()-start)*1000000000)
+    final_accepted=accepted and final_elapsed_ns<=60000000000
+    final_reason='TOTAL60_REFUSAL' if final_elapsed_ns>60000000000 else reason
+    print(json.dumps(dict(accepted=final_accepted,refusal=final_reason,supervisor_result=witness_pin,owned_pid=proc.pid,
+        exit_code=proc.returncode,final_elapsed_nanoseconds=final_elapsed_ns,acceptance_at_record_preparation=accepted,
+        reaped=proc.returncode is not None,streams_drained=drained,actual_stream_EOF=stream_eof,
+        stream_pump_errors=pump_errors,total_budget_nanoseconds=60000000000)),flush=True)
+    return 0 if final_accepted else 1
+
+def main():
+    args=sys.argv[1:];is_child=bool(args and args[0]=='--child')
+    if is_child:args=args[1:]
+    need(len(args)==2 and re.fullmatch('[0-9a-f]{64}',args[1]) is not None,'exact scope path/hash')
+    return child(*args) if is_child else parent(*args)
+if __name__=='__main__':raise SystemExit(main())

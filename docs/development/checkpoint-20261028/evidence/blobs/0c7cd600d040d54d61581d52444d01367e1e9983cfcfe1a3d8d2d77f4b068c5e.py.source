@@ -1,0 +1,43 @@
+"""Author own immutable002 metadata-reader successors; execute no subject."""
+import ast,hashlib,json
+from pathlib import Path
+R=Path(__file__).parent
+cache='''
+BUFFERS={}
+def body(p):
+ p=Path(p);key=str(p.resolve()).casefold()
+ if key not in BUFFERS:
+  with p.open('rb') as h:raw=h.read(2097153)
+  assert 0<len(raw)<=2097152
+  BUFFERS[key]=raw
+ return BUFFERS[key]
+'''
+rows=[]
+for oldname,newname,expected in (
+ ('prepare_I13_final_Source_manifest_001.py','prepare_I13_final_Source_manifest_002.py','7a796d79d4471f512e1d4e8381ddba8067be8e3c4575df5c385a2f058242aaed'),
+ ('prepare_I13_once_admission_001.py','prepare_I13_once_admission_002.py','9ecb5d65fe53bbdeee2a9e89aa810685923a2c4e57b1af7589ff03528c836f9e'),
+ ('adopt_I13_final_new_Source_set_001.py','adopt_I13_final_new_Source_set_002.py','8c80c679a5c720db1a7f4bffe33bf3ce8bf318e2c840f9c318506721c64040f3')):
+ old=R/oldname;raw=old.read_bytes();assert hashlib.sha256(raw).hexdigest()==expected
+ text=raw.decode()
+ marker='from pathlib import Path\n';assert text.count(marker)==1
+ text=text.replace(marker,marker+cache)
+ text=text.replace("p=Path(p);b=p.read_bytes()","p=Path(p);b=body(p)")
+ text=text.replace("b=Path(p).read_bytes()","b=body(p)")
+ text=text.replace("p=Path(p);b=p.read_bytes();assert","p=Path(p);b=body(p);assert")
+ text=text.replace("p.read_bytes()","body(p)")
+ text=text.replace("Path(p['path']).read_bytes()","body(Path(p['path']))")
+ text=text.replace("Path(source['path']).read_bytes()","body(Path(source['path']))")
+ text=text.replace("Path(supervisor['path']).read_bytes()","body(Path(supervisor['path']))")
+ text=text.replace("q.read_bytes()","body(q)")
+ text=text.replace("Path(selection['catalogue']).read_bytes()","body(Path(selection['catalogue']))")
+ text=text.replace("Path(__file__).read_bytes()","body(Path(__file__))")
+ text=text.replace("Path(__file__).stat().st_size","len(body(Path(__file__)))")
+ text=text.replace("(C/'I13_ONCE_ADMISSION_INPUT_001.json').read_bytes()","body(C/'I13_ONCE_ADMISSION_INPUT_001.json')")
+ text=text.replace("(C/'I13_FINAL_SOURCE_SELECTION_INPUT_001.json').read_bytes()","body(C/'I13_FINAL_SOURCE_SELECTION_INPUT_001.json')")
+ text=text.replace("'prepare_I13_once_admission_001.py'","'prepare_I13_once_admission_002.py'")
+ assert 'read_bytes()' not in text,text
+ compile(ast.parse(text),newname,'exec')
+ out=R/newname
+ with out.open('xb') as h:h.write(text.encode())
+ b=out.read_bytes();rows.append(dict(before=dict(path=str(old),bytes=len(raw),sha256=expected),successor=dict(path=str(out),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())))
+print(json.dumps(dict(authored=rows,target_execution=False,metadata_helpers_executed=False)))

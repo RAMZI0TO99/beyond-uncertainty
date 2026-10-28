@@ -1,0 +1,56 @@
+"""Own narrow Source author only. No target/fixture imports or calls."""
+import ast
+import base64
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+ROOT=Path(__file__).parent
+OUT=ROOT/'receipt_caller_integration_015'/'i12'
+def pin(path,raw=None):
+    raw=path.read_bytes() if raw is None else raw
+    return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+def save(path,value):
+    raw=(json.dumps(value,sort_keys=True,indent=2)+'\n').encode();assert len(raw)<=2097152
+    with path.open('xb') as f:f.write(raw)
+    return pin(path,raw)
+old_path=OUT/'test_outside8_receipt_contract_memory_only_002.py'
+old=old_path.read_bytes()
+before=b"""        build.defs[spec['label']]=copy.deepcopy(build.defs[spec['replacement']])
+        assert set(build.defs[spec['label']])!=set(build.defs['request' if spec['label']=='publication' else 'publication']) or build.defs[spec['label']]['record_type']!=('Root_owner_v2_selected_role_Source_canonical_publication' if spec['label']=='publication' else 'Root_owner_v2_selected_role_exact_reviewed_Source_publication_request')"""
+after=b"""        source=build.defs[spec['replacement']]
+        assert type(source) is dict
+        projection={key:None for key in source}
+        projection['record_type']=source['record_type'];projection['schema_version']=source['schema_version']
+        # Closed tag/key-set dispatch control only: inert values avoid resolving
+        # publication.original_request back through the deliberately replaced request.
+        assert set(projection)==set(source)
+        build.defs[spec['label']]=_wire(projection)"""
+assert old.count(before)==1
+new=old.replace(before,after)
+assert new.replace(after,before)==old and len(new)<=2097152
+path=OUT/'test_outside8_receipt_contract_memory_only_003.py'
+old_ast=ast.parse(old);new_ast=ast.parse(new);compile(new,str(path),'exec',dont_inherit=True)
+def functions(tree):return {n.name:ast.dump(n,include_attributes=False) for n in tree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+a,b=functions(old_ast),functions(new_ast)
+assert set(a)==set(b) and [name for name in a if a[name]!=b[name]]==['_special_graph']
+def literal(tree,name):
+    return ast.literal_eval(next(n.value for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id==name for t in n.targets)))
+for name in ('FIXED','CASE_CATALOGUE','VARIANT_TO_LITERAL_CASES','CASE_NAME_DIGEST','AUTHORITY_FALSE_FLAGS','STATIC_FINDINGS_EXACT_CLOSURE','FINITE_EDGE_TABLE_LITERAL_CLOSURE'):
+    assert literal(old_ast,name)==literal(new_ast,name)
+with path.open('xb') as f:f.write(new)
+fixture=pin(path,new)
+catalogue=json.loads((OUT/'I12_FRESH_LITERAL_FIXTURE_CASE_CATALOGUE_002.json').read_text(encoding='utf8'))
+catalogue.update(fixture=fixture,predecessor_fixture=pin(old_path,old),correction='Only wrong_graph_abi now stores a detached raw JSON differing-shape projection; record_type/schema_version and exact keyset come from the synthetic replacement record, all other values inert None. No unresolved reference or self-cycle; ABI dispatch occurs before shape semantics. All1089 case specs/names/digests remain exact.')
+cat=save(OUT/'I12_FRESH_LITERAL_FIXTURE_CASE_CATALOGUE_003.json',catalogue)
+inventory=json.loads((OUT/'I12_FRESH_FIXTURE_SOURCE_REGION_AND_LITERAL_INVENTORY_002.json').read_text(encoding='utf8'))
+regions=[];lines=new.splitlines(keepends=True)
+for node in new_ast.body:
+    if isinstance(node,(ast.FunctionDef,ast.ClassDef)):
+        raw=b''.join(lines[node.lineno-1:node.end_lineno]);regions.append(dict(name=node.name,first_line=node.lineno,last_line=node.end_lineno,bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest()))
+inventory.update(created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),fixture=fixture,case_catalogue=cat,regions=regions,predecessor_fixture=pin(old_path,old),complete_inverse_verified_by_exact_reconstruction=True,only_changed_AST_region='_special_graph',exact_source_replacement=dict(old_base64=base64.b64encode(before).decode(),new_base64=base64.b64encode(after).decode(),old_occurrences=1,new_occurrences=1),preserved_inventory002=pin(OUT/'I12_FRESH_FIXTURE_SOURCE_REGION_AND_LITERAL_INVENTORY_002.json'))
+inv=save(OUT/'I12_FRESH_FIXTURE_SOURCE_REGION_AND_LITERAL_INVENTORY_003.json',inventory)
+receipt=json.loads((OUT/'I12_FRESH_MEMORY_ONLY_FIXTURE_STATIC_AUTHOR_RECEIPT_002.json').read_text(encoding='utf8'))
+receipt.update(created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),fixture=fixture,catalogue=cat,inventory=inv,preserved_fixture002=pin(old_path,old),preserved_author_receipt002=pin(OUT/'I12_FRESH_MEMORY_ONLY_FIXTURE_STATIC_AUTHOR_RECEIPT_002.json'),correction=catalogue['correction'],changed_AST_regions=['_special_graph'],complete_predecessor_inverse_static_verified=True,author_tool=pin(Path(__file__)))
+rec=save(OUT/'I12_FRESH_MEMORY_ONLY_FIXTURE_STATIC_AUTHOR_RECEIPT_003.json',receipt)
+print(json.dumps(dict(fixture=fixture,catalogue=cat,inventory=inv,author_receipt=rec,case_count=catalogue['case_count'],counts=catalogue['counts'],case_name_digest=catalogue['case_name_digest']),sort_keys=True))

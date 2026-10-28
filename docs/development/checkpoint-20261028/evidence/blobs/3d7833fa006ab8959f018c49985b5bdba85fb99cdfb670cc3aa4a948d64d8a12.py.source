@@ -1,0 +1,98 @@
+"""Fresh fixed one-use input-snapshot admission metadata; no child launch or automatic retry."""
+import ast,ctypes,datetime as dt,hashlib,json,os,re,shutil,sys
+from pathlib import Path
+R=Path(__file__).parent;C=R/'m3_peer_contracts_016';Q=R/'coordination';LIMIT=2097152
+def raw(p):
+ p=Path(p); a=p.stat()
+ assert p.is_file() and not p.is_symlink() and a.st_nlink==1 and 0<a.st_size<=LIMIT
+ for d in (p,*p.parents):assert not getattr(d.lstat(),'st_file_attributes',0)&1024
+ b=p.read_bytes();z=p.stat()
+ assert b==p.read_bytes() and len(b)==a.st_size==z.st_size and a.st_mtime_ns==z.st_mtime_ns
+ return b
+def pin(p):
+ p=Path(p);b=raw(p);return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def read(p):return json.loads(raw(p))
+def exact(v):
+ assert type(v) is dict and set(v)=={'path','bytes','sha256'} and pin(v['path'])==v
+ return read(v['path'])
+def occurs(v,p):
+ if type(v) is dict:return v==p or any(occurs(x,p) for x in v.values())
+ return type(v) is list and any(occurs(x,p) for x in v)
+def save(p,v):
+ assert not os.path.lexists(p)
+ b=(json.dumps(v,sort_keys=True,indent=2,allow_nan=False)+'\n').encode();assert len(b)<=LIMIT
+ with p.open('xb') as h:assert h.write(b)==len(b);h.flush();os.fsync(h.fileno())
+ assert raw(p)==b;return pin(p)
+assert len(sys.argv)==4
+group,configpath,sha=sys.argv[1:];cp=Path(configpath)
+assert cp.is_absolute() and cp.parent==C and cp.suffix=='.json' and re.fullmatch('[0-9a-f]{64}',sha)
+assert pin(cp)['sha256']==sha
+cfg=read(cp)
+assert set(cfg)=={'supervisor','Source_adoption','previous_consumed_adoption','peer_release_report','previous_snapshot_saved_adoption'}
+sup=Path(cfg['supervisor']['path']);assert sup.parent==C and pin(sup)==cfg['supervisor']
+constants={}
+wanted=('SOURCES','APIS','FIXTURE','CATALOGUE','ROLE_PLAN','SCOPE_KEYS','SOURCE_SCOPE','PROTOCOL_ADOPTION','BUDGETS')
+for n in ast.parse(raw(sup)).body:
+ if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id in wanted:
+  constants[n.targets[0].id]=ast.literal_eval(n.value)
+assert set(constants)==set(wanted)
+plan=exact(constants['ROLE_PLAN']);rows=[x for x in plan['groups'] if x['group_id']==group]
+assert len(rows)==1 and type(group) is str and type(rows[0]['roles']) is list and 1<=len(rows[0]['roles'])<=2
+adopt=exact(cfg['Source_adoption']);prior=exact(cfg['previous_consumed_adoption'])
+assert adopt['author']=='/root' and adopt['verdict'].startswith('ACCEPT_EXACT_I13_INPUT_SNAPSHOT_SOURCE')
+assert all(adopt[k] is False for k in ('target_execution','operational_authority','scientific_authority','actual_family_publication','tests_executed'))
+assert prior['author']=='/root' and prior['claim_reuse_or_replay_authorized'] is False and occurs(adopt,cfg['previous_consumed_adoption'])
+subjects=list(constants['SOURCES'].values())+list(constants['APIS'].values())+[constants[x] for x in ('FIXTURE','CATALOGUE','ROLE_PLAN','PROTOCOL_ADOPTION')]+[cfg['supervisor'],pin(__file__)]
+for p in subjects:assert pin(p['path'])==p and occurs(adopt,p)
+assert all(x['bytes']<=65536 for x in constants['SOURCES'].values())
+source_scope=exact(constants['SOURCE_SCOPE'])
+assert constants['SOURCE_SCOPE']['sha256']=='726c201dd6349aca56122129acf71b259b821a667c0720a3a4838ffb8aefe1ad'
+assert source_scope['target_execution'] is source_scope['operational_authority'] is False
+peer=exact(cfg['peer_release_report']);grant=peer['grant']
+assert type(grant) is int and peer['reported_full_compute_custody_released'] is peer['grant_consumed_closed'] is True
+assert peer['Root_acceptance']['peer_result_accepted'] is False
+grants=sorted(Q.glob('PRO2_PRO3_COMPUTE_RELEASE_20261025_*.json'))
+assert max(int(p.stem.rsplit('_',1)[1]) for p in grants)==grant
+assert not any((R.parent/('resume-'+day+'-001/coordination/PRO2_REQUEST_PRO3_PAUSE.json')).exists() for day in ('20261007','20261012','20261013','20261015','20261025'))
+oldscopes=sorted(C.glob('ROOT_I13_ONCE_SYNTHETIC_MEMORY_SCOPE_*.json'))
+newscopes=sorted(C.glob('ROOT_I13_ONCE_INPUT_SNAPSHOT_SCOPE_*.json'))
+for p in oldscopes+newscopes:
+ v=read(p)
+ assert Path(v['outputs']['claim']).exists(),'allocated prior identity not consumed or reconciled'
+ s=read(v['outputs']['supervisor_result'])
+ assert s['reaped'] is s['streams_drained'] is True and all(s['actual_stream_EOF'].values()) and s['custody_error'] is None
+ if p in newscopes:
+  assert not(v['source_adoption']==cfg['Source_adoption'] and v['role_group_id']==group),'Source+group already allocated; no replay'
+if newscopes:
+ last=pin(newscopes[-1]);saved=exact(cfg['previous_snapshot_saved_adoption'])
+ assert saved['author']=='/root' and saved['claim_reuse_or_replay_authorized'] is False and occurs(saved,last)
+ assert saved['saved_own_custody_closed'] is True
+else:assert cfg['previous_snapshot_saved_adoption'] is None
+number=1+max([int(p.stem.rsplit('_',1)[1]) for p in newscopes] or [0])
+class Memory(ctypes.Structure):
+ _fields_=[('length',ctypes.c_ulong),('load',ctypes.c_ulong)]+[(x,ctypes.c_ulonglong) for x in ('total_phys','available_phys','total_page','available_page','total_virtual','available_virtual','available_extended')]
+m=Memory();m.length=ctypes.sizeof(m);assert ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m))
+now=dt.datetime.now(dt.timezone.utc);end=now+dt.timedelta(minutes=10);disk=shutil.disk_usage(R).free
+assert dt.datetime.fromisoformat(source_scope['interval_start'])<=now and (dt.datetime.fromisoformat(source_scope['interval_end'])-end).total_seconds()>60
+assert m.available_phys>=1073741824 and disk>=10737418240
+runtime=Path(r'C:\Users\aladdin-alyanai\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe');rp=pin(runtime)
+assert rp['bytes']==107312 and rp['sha256']=='7a4102b91959bb234507850ea584e1d31d300a6831b171e4aadc59ff592f0234'
+owned=C/('owned_input_snapshot_runs/attempt%03d'%number);assert not os.path.lexists(owned);owned.mkdir(parents=True)
+pre=save(C/('ROOT_I13_FRESH_INPUT_SNAPSHOT_PRELAUNCH_METADATA_%03d.json'%number),dict(schema_version=1,
+ record_type='Root_I13_fresh_once_input_snapshot_prelaunch_metadata',author='/root',observed_utc=now.isoformat(timespec='microseconds'),
+ source_scope=constants['SOURCE_SCOPE'],source_adoption=cfg['Source_adoption'],role_group_id=group,
+ peer_reported_full_custody_release=True,new_peer_grant_after_release=False,peer_custody_release_report=cfg['peer_release_report'],
+ last_peer_grant_inventory=[pin(p) for p in grants],available_RAM_bytes=m.available_phys,disk_free_bytes=disk,
+ target_execution=False,operational_authority=False,scientific_authority=False,whole_host_quiet_claimed=False,physical_handle_absence_claimed=False))
+v=dict(schema_version=1,record_type='Root_I13_once_data_only_input_snapshot_scope',author='/root',
+ created_utc=now.isoformat(timespec='microseconds'),interval_start=now.isoformat(timespec='microseconds'),interval_end=end.isoformat(timespec='microseconds'),
+ operation='NEW_I13_DATA_ONLY_INPUT_SNAPSHOT',maximum_snapshot_invocations=1,source_scope=constants['SOURCE_SCOPE'],
+ protocol_adoption=constants['PROTOCOL_ADOPTION'],source_adoption=cfg['Source_adoption'],modules=constants['SOURCES'],APIs=constants['APIS'],
+ catalogue=constants['CATALOGUE'],fixture=constants['FIXTURE'],supervisor=cfg['supervisor'],runtime=rp,prelaunch=pre,
+ outputs={k:str(owned/name) for k,name in (('claim','SCOPE_CLAIM_001.json'),('child_entry','CHILD_ENTRY_001.json'),('child_result','CHILD_RESULT_001.json'),
+ ('stdout','CHILD_STDOUT_001.txt'),('stderr','CHILD_STDERR_001.txt'),('supervisor_result','SUPERVISOR_RESULT_001.json'))},
+ budgets=constants['BUDGETS'],target_execution=False,operational_authority=False,scientific_authority=False,actual_family_publication=False,
+ role_plan=constants['ROLE_PLAN'],role_group_id=group)
+assert set(v)==set(constants['SCOPE_KEYS']) and (dt.datetime.now(dt.timezone.utc)-now).total_seconds()<30
+out=save(C/('ROOT_I13_ONCE_INPUT_SNAPSHOT_SCOPE_%03d.json'%number),v)
+print(json.dumps(dict(once_scope=out,prelaunch=pre,role_group_id=group,roles=rows[0]['roles'],snapshot_invoked=False,owned_outputs=str(owned))))

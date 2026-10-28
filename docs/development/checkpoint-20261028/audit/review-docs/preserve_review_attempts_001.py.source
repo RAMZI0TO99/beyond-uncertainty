@@ -1,0 +1,39 @@
+"""Preserve this reviewer's own failed/oversized outputs as bounded inert evidence."""
+from pathlib import Path
+import hashlib
+import json
+import os
+
+root=Path('D:/Aenv/pro2/WORK/docs-publication-20261028-001/review-docs')
+path=root/'INDEPENDENT_DOCUMENTATION_CANDIDATE_FULL_PROOF_002.json'
+expected=(2635352,'d35878da9304a4e1009f1a97a78811dd09250cfa215710e30ef88c9591cd2a33')
+sha=hashlib.sha256();total=0;parts=[]
+with path.open('rb') as f:
+    while True:
+        data=f.read(1024*1024)
+        if not data:break
+        name='review002_original_exact_part_'+str(len(parts)+1).zfill(3)+'.bin.source'
+        target=root/name
+        with target.open('xb') as out:out.write(data);out.flush();os.fsync(out.fileno())
+        assert target.read_bytes()==data
+        parts.append({'path':str(target),'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()})
+        sha.update(data);total+=len(data)
+assert (total,sha.hexdigest())==expected
+reassembled=hashlib.sha256();reassembled_bytes=0
+for row in parts:
+    b=Path(row['path']).read_bytes();assert len(b)<=1024*1024
+    assert (len(b),hashlib.sha256(b).hexdigest())==(row['bytes'],row['sha256'])
+    reassembled.update(b);reassembled_bytes+=len(b)
+assert (reassembled_bytes,reassembled.hexdigest())==expected
+record={'record_type':'reviewer_original002_full_proof_exact_bounded_reassembly',
+'author':'/root/docs_publication_map','original':{'path':str(path),'bytes':total,'sha256':sha.hexdigest()},
+'parts_in_reassembly_order':parts,'whole_original_bytes_recovered':True,
+'first_checker_refusal':{'source':'review_candidate_001.py','tool_chunk':'abe4d6','exit_code':1,
+'original_error':"KeyError: 'summary'",'reason':'Own checker used h4 summary instead of actual retention_design_summary. No target or candidate defect; no proof created by001. First Source preserved unchanged.'},
+'corrected002':{'tool_chunk':'a779a0','exit_code':0,'passed':8107,'failed':0,'oversized_full_proof_preserved':True},
+'bounded003':{'tool_chunk':'ab7481','exit_code':0,'passed':8107,'failed':0,'all19_parts_individually_bounded':True},
+'candidate_or_original_guard_modified':False}
+data=(json.dumps(record,indent=2,sort_keys=True)+'\n').encode()
+target=root/'REVIEW_ATTEMPT_PRESERVATION_AND_REASSEMBLY_001.json'
+with target.open('xb') as out:out.write(data);out.flush();os.fsync(out.fileno())
+print(json.dumps({'path':str(target),'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'parts':len(parts)}))

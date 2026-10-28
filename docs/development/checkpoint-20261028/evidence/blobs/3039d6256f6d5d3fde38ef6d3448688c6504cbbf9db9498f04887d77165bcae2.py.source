@@ -1,0 +1,249 @@
+"""Metadata author only. Never imports, compiles or calls a project module."""
+import ast, datetime, hashlib, json, os, pathlib, sys
+
+D = pathlib.Path(__file__).parent
+R = D.parent
+O = pathlib.Path(r'D:\Aenv\pro2\WORK\resume-20261025-003')
+C = O / 'm3_peer_contracts_016'
+T = C / 'i13'
+A = C / 'm3_protocol_audit_001'
+CAP = 2097152
+
+def need(v, text):
+    if not v:
+        raise ValueError(text)
+
+def raw(p):
+    p = pathlib.Path(p)
+    for q in (p, *p.parents):
+        need(not q.is_symlink() and not (getattr(q.lstat(), 'st_file_attributes', 0) & 1024), 'ordinary lineage')
+    a = p.stat()
+    need(p.is_file() and a.st_nlink == 1 and 0 < a.st_size <= CAP, 'bounded metadata/source')
+    b = p.read_bytes()
+    z = p.stat()
+    need((a.st_ino, a.st_size, a.st_mtime_ns) == (z.st_ino, z.st_size, z.st_mtime_ns) and len(b) == a.st_size, 'stable complete bytes')
+    return b
+
+def pin(p):
+    b = raw(p)
+    return dict(path=str(p), bytes=len(b), sha256=hashlib.sha256(b).hexdigest())
+
+def pairs(rows):
+    d = {}
+    for k, v in rows:
+        need(k not in d, 'duplicate JSON key')
+        d[k] = v
+    return d
+
+def number(v):
+    raise ValueError('noninteger/nonfinite metadata number')
+
+def doc(p):
+    return json.loads(raw(p).decode('utf8'), object_pairs_hook=pairs, parse_float=number, parse_constant=number)
+
+S = R / 'ROOT_CURRENT_I13_RAW_INPUT_RETENTION_SOURCE_SCOPE_007.json'
+SA = R / 'ROOT_I13_SOURCE_SCOPE007_DIFFERENT_REVIEW_ADOPTION_001.json'
+
+def fresh():
+    s, a = doc(S), doc(SA)
+    need(pin(S)['sha256'] == 'e203fe614b01e19b4ecc6632ff77ddebc8c812a88dae46aba4bd3643454563f5', 'Source007')
+    need(pin(SA)['sha256'] == 'a517732dd0b4870e08381fb3ce31baa435385d6ae3e700dd2f014708df3a5969' and a['Source_scope'] == pin(S), 'Source007 adoption')
+    now = datetime.datetime.now(datetime.timezone.utc)
+    need(datetime.datetime.fromisoformat(s['interval_start']) <= now < datetime.datetime.fromisoformat(s['interval_end']) - datetime.timedelta(seconds=60), 'strict Source publication reserve')
+    return now.isoformat(timespec='microseconds')
+
+def save(name, value):
+    p = D / name
+    b = (json.dumps(value, sort_keys=True, indent=2, ensure_ascii=False, allow_nan=False) + '\n').encode('utf8')
+    need(0 < len(b) <= CAP and not os.path.lexists(p), 'unused bounded output')
+    fresh()
+    with p.open('xb') as f:
+        need(f.write(b) == len(b), 'whole write')
+        f.flush()
+        os.fsync(f.fileno())
+    need(raw(p) == b, 'readback')
+    return pin(p)
+
+def fixed_keys(value):
+    return sorted(value)
+
+def canonical(value, ascii_only=False):
+    return (json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=ascii_only, allow_nan=False) + '\n').encode('utf8')
+
+def digest(value):
+    return hashlib.sha256(canonical(value)).hexdigest()
+
+def verify_plan(plan, planpin):
+    need(planpin['bytes'] == 452561 and planpin['sha256'] == '97fdb498e51580f3eb8bc30ad291d72d5b67fb254f3840128f0ee19e9dbd91e5', 'exact frozen Root plan')
+    roles = [('capture_template','templates'),('metadata_manifest','manifest'),('plan','capture'),('capture_bound','capture'),('metadata_binding','capture'),('phase_binding','phase_binding')]
+    need([(g['role'],g['stage']) for g in plan['graphs']] == roles, 'fixed six original namespaces')
+    rows = partcount = rawsum = maxout = maxnodes = largest = 0
+    for g in plan['graphs']:
+        saved = doc(pathlib.Path(g['snapshot']['path']))
+        need(pin(pathlib.Path(g['snapshot']['path'])) == g['snapshot'], 'saved snapshot whole pin')
+        old = next(x for x in saved['ledger']['graphs'] if x['role'] == g['role'])
+        need(g['record_roster'] == [{k:x[k] for k in ('ordinal','pin','labels')} for x in old['record_ledger']], 'complete saved ordinal/pin/label roster')
+        roster = g['record_roster']; pins = [x['pin'] for x in roster]
+        need([x['ordinal'] for x in roster] == list(range(1,len(roster)+1)), 'original1-based ordinal order')
+        need(g['record_count'] == len(roster) <= 256 and g['total_record_bytes'] == sum(x['bytes'] for x in pins) <= 33554432, 'graph count/raw caps')
+        need(g['record_set_LF_fact3_sha256'] == digest(pins), 'whole roster digest')
+        need(g['graph_id'] == digest(dict(snapshot=g['snapshot'],role=g['role'],record_set_LF_fact3_sha256=g['record_set_LF_fact3_sha256'])), 'graph namespace digest')
+        groups=[]; current=[]; size=0
+        for x in roster:
+            n=x['pin']['bytes'];need(type(n)is int and 0<n<=1048576,'whole member partition fit')
+            if current and size+n>1048576:groups.append(current);current=[];size=0
+            current.append(x);size+=n
+        if current:groups.append(current)
+        need([p['ordinals'] for p in g['partitions']] == [[x['ordinal'] for x in group] for group in groups], 'exact greedy whole-record partitions')
+        for ordinal,(part,group) in enumerate(zip(g['partitions'],groups),1):
+            selected=[x['pin'] for x in group]
+            need(part['partition_id'] == g['graph_id']+'-part-%03d'%ordinal, 'fixed partition identifier')
+            b64=sum(4*((x['bytes']+2)//3) for x in selected)
+            empty=sum(len(canonical(dict(ordinal=x['ordinal'],pin=x['pin'],encoding='BASE64_RFC4648_CANONICAL',body_base64=''),True))-1 for x in group)
+            upper=65536+empty+b64+max(len(group)-1,0);nodes=4096+15*len(group)
+            need(part['rawbytes'] == sum(x['bytes'] for x in selected) <= 1048576 and part['row_count'] == len(group), 'partition raw count')
+            need(part['selected_fact3_LF_sha256'] == digest(selected), 'selected digest')
+            need(part['base64_character_count'] == b64 and part['canonical_empty_rows_size_upper_bound'] == empty, 'content-independent encoding arithmetic')
+            need(part['transport_output_bytes_upper_bound'] == upper <= CAP and part['transport_tree_nodes_upper_bound'] == nodes < 50000, 'strict output/node upper bounds')
+            partcount+=1;maxout=max(maxout,upper);maxnodes=max(maxnodes,nodes)
+        rows+=len(roster);rawsum+=sum(x['bytes'] for x in pins);largest=max(largest,max(x['bytes'] for x in pins))
+    need((rows,rawsum,partcount,largest,maxout,maxnodes) == (973,17399459,23,723621,1493609,6391), 'exact Root aggregate arithmetic')
+    return dict(graph_count=6,logical_record_occurrences=rows,total_rawbytes=rawsum,partition_count=partcount,largest_member_bytes=largest,maximum_output_upper_bound=maxout,maximum_transport_node_upper_bound=maxnodes,raw_bodies_read_or_constructed=False)
+
+def main():
+    need(len(sys.argv) == 2, 'exact Root selection plan path')
+    planpath = pathlib.Path(sys.argv[1])
+    need(planpath.is_relative_to(R / 'retention_selection_plan_001'), 'Root-owned plan only')
+    plan = doc(planpath)
+    planpin = pin(planpath)
+    plancheck = verify_plan(plan, planpin)
+    basis = []
+    def add(role, p, use):
+        f = pin(p)
+        if str(p).endswith('.json'):
+            doc(p)
+        basis.append(dict(role=role, subject=f, use=use))
+        return f
+    add('Source007', S, 'Current contract preparation scheduling only.')
+    add('Source007_Root_adoption', SA, 'No Source implementation or capture grant.')
+    scope = doc(S)
+    for k in ('current_adopted_handoff', 'current_handoff_adoption', 'current_workspace_refresh'):
+        f = scope[k]
+        need(pin(pathlib.Path(f['path'])) == f, 'scope basis exact')
+        add(k, pathlib.Path(f['path']), 'Current exact Root evidence; not raw acquisition.')
+    fixture = T / 'exercise_M3_guard_and_publisher_metadata_memory_015.py'
+    fp = add('fixture015', fixture, 'Read/AST only; exact prefix remains unchanged.')
+    need(fp['sha256'] == '568904c774f12506fab8992028f0db04a5dd63a13b9a1935f7dc6d2a4f942e30', 'fixture015 pin')
+    freeze = doc(T / 'I13_FIXTURE015_INPUT_NODE_LEDGER_SOURCE_FREEZE_001.json')
+    for name, role in [('I13_FIXTURE015_INPUT_NODE_LEDGER_SOURCE_FREEZE_001.json', 'fixture015_author_freeze'), ('I13_FIXTURE015_EXACT_INPUT_NODE_READSET_SOURCE_MODEL_DATA_001.json', 'Source_model51_regions139_sites'), ('I13_FIXED6_INPUT_SNAPSHOT_DISJOINT_ROLE_SOURCE_PLAN_002.json', 'old_consumed_role_plan')]:
+        add(role, T / name, 'Exact prior evidence only; no old call authority.')
+    for role, f in freeze['Source_inputs'].items():
+        need(pin(pathlib.Path(f['path'])) == f, 'closed9 Source input')
+        add('original_Source_inputs.' + role, pathlib.Path(f['path']), 'Inert bytes/data projections; never kernel compilation.')
+    for rel, role in [
+        ('input_snapshot_fixture015_different_Source_review_001/INDEPENDENT_I13_FIXTURE015_INPUT_NODE_READSET_SOURCE_CAPSULE_001.json', 'genuine_fixture015_316_review'),
+        ('input_node_readset_ledger_protocol_different_Source_review_001/INDEPENDENT_I13_INPUT_NODE_READSET_LEDGER_PROTOCOL002_SOURCE_CAPSULE_001.json', 'genuine_ledger_protocol002_254_review'),
+        ('causal_receipt_identity_protocol_different_review_001/INDEPENDENT_I13_CAUSAL_PARTIAL_PROTOCOL002_INTEGRITY_CAPSULE_001.json', 'genuine_causal002_109_integrity'),
+        ('causal_receipt_identity_protocol_different_review_001/INDEPENDENT_I13_CAUSAL_PARTIAL_PROTOCOL001_INTEGRITY_REFUSAL_CAPSULE_001.json', 'prior001_causal_rank_bootstrap_refusal'),
+        ('newcompactABI_assessment_001/INDEPENDENT_I13_COMPACT_ABI_NOT_READY_ASSESSMENT002_INTEGRITY_CAPSULE_001.json', 'genuine_NOT_READY_assessment002_64_integrity'),
+        ('newcompactABI_assessment_001/INDEPENDENT_I13_COMPACT_ABI_NOT_READY_ASSESSMENT001_INTEGRITY_REFUSAL_CAPSULE_001.json', 'prior001_NOT_READY_selected_slot_refusal')]:
+        p = O / rel
+        add(role, p, 'Prior review/refusal preserved; no acceptance enlarged.')
+        q = doc(p)
+        need(pin(pathlib.Path(q['full_proof']['path'])) == q['full_proof'], 'exact existing full-proof link')
+        add(role + '.full', pathlib.Path(q['full_proof']['path']), 'Complete existing proof, no rerun.')
+    for p, role in [
+        (C / 'ROOT_I13_INPUT_SNAPSHOT_SOURCE_SET_DIFFERENT_REVIEW_ADOPTION_001.json', 'old_snapshot_Source_adoption'),
+        (O / 'ROOT_I13_FIXED_INPUT_NODE_LEDGER_PROTOCOL002_DIFFERENT_SOURCE_REVIEW_ADOPTION_001.json', 'ledger_protocol002_adoption'),
+        (O / 'ROOT_I13_CAUSAL_RECEIPT_IDENTITY_PARTIAL_DESIGN002_INTEGRITY_ADOPTION_001.json', 'causal002_partial_integrity_only_adoption')]:
+        add(role, p, 'Dated exact adoption with no new acquisition authority.')
+    cd = A / 'causal_receipt_identity_protocol_design_001'
+    for name in ['I13_PROPOSED_PORTABLE_EVENT_WHOLE_PIN_IDENTITIES_AND_ACYCLIC_ROSTERS_PARTIAL_PROTOCOL_002.json', 'I13_CAUSAL_EVENT_IDENTITY_EXACT_ROOT_GRAMMAR_PROPOSAL_002.json', 'I13_CAUSAL_EVENT_IDENTITY_PARTIAL_PROTOCOL002_IMMUTABLE_AUTHOR_FREEZE_001.json', 'I13_CAUSAL_IDENTITY_PROTOCOL002_COMPLETE_THREE001_PREDECESSOR_INVERSE_001.json', 'I13_PROPOSED_PORTABLE_EVENT_WHOLE_PIN_IDENTITIES_AND_ACYCLIC_ROSTERS_PARTIAL_PROTOCOL_001.json', 'I13_CAUSAL_EVENT_IDENTITY_EXACT_ROOT_GRAMMAR_PROPOSAL_001.json', 'I13_CAUSAL_EVENT_IDENTITY_PARTIAL_PROTOCOL001_IMMUTABLE_AUTHOR_FREEZE_001.json']:
+        add('causal_history.' + name, cd / name, 'All11 NOT_READY cells survive; old bytes retained.')
+    nd = A / 'compact_external_parent_contract_design_assessment_001'
+    for name in ['I13_COMPACT_EXTERNAL_PARENT_AND_INDEXED_RECEIPT_ABI_NOT_READY_DESIGN_ASSESSMENT_PROPOSAL_002.json','I13_COMPACT_EXTERNAL_PARENT_AND_INDEXED_RECEIPT_ABI_NOT_READY_DESIGN_ASSESSMENT_PROPOSAL_001.json','I13_NOT_READY_DESIGN_ASSESSMENT002_SELECTED_SLOT_CLARIFICATION_COMPLETE001_INVERSE_FREEZE_001.json']:
+        add('NOT_READY_history.'+name,nd/name,'Corrected assessment and complete prior001 history, no closed new ABI or fit claim.')
+    for i in range(1, 4):
+        p = C / 'owned_input_snapshot_runs' / ('attempt%03d' % i) / 'CHILD_RESULT_001.json'
+        add('saved_consumed_snapshot%03d' % i, p, 'Exact ledger.graphs roster/size evidence, not raw-body availability or target trace.')
+        add('saved_snapshot_Root_adoption%03d' % i, C / ('ROOT_I13_INPUT_SNAPSHOT%03d_DIFFERENT_SAVED_RESULT_ADOPTION_001.json' % i), 'Prior operation consumed; never replayed.')
+    add('Root_new_exact_selection_plan', planpath, 'Metadata-only deterministic roster/partition plan, not capture.')
+    for name in ['ROOT_I13_RAW_RETENTION_SELECTION_PLAN_STATIC_ARITHMETIC_PROOF_001.json','ROOT_I13_RAW_RETENTION_SELECTION_PLAN_AUTHOR_FREEZE_001.json','ROOT_I13_PARTITION_DERIVER002_COMPLETE001_INVERSE_AND_REFUSAL_001.json']:
+        add('Root_selection_plan_history.'+name,planpath.parent/name,'Root metadata plan author evidence and retained first-deriver static refusal; not an acquisition or genuine different review.')
+    # Duplicate roles may cite the same whole subject; keep one complete pin with all roles.
+    unique = {}
+    for row in basis:
+        f = row['subject']
+        if f['path'] in unique:
+            need(unique[f['path']]['subject'] == f, 'basis pin conflict')
+            unique[f['path']]['roles'].append(row['role'])
+        else:
+            unique[f['path']] = dict(subject=f, roles=[row['role']], use=row['use'])
+    bp = save('I13_RAW_INPUT_RETENTION_COMPLETE_BASIS_AND_PRIOR_HISTORIES_001.json', dict(schema_version=1, record_type='I13_raw_retention_contract_exact_basis', author='/root/project_architecture', created_utc=fresh(), subjects=list(unique.values()), original_Source_inputs=freeze['Source_inputs'], both_prior001_refusal_histories_preserved=True, old_files_changed=False, target_execution=False, operational_authority=False, scientific_authority=False))
+    text = raw(fixture).decode('utf8')
+    tree = ast.parse(text)
+    allowed = {'_ow_wire','_ow_json','_ow_time','_ow_ns','_ow_pin','_ow_pins','_ow_replace','_ow_descriptor','_ow_descriptor_keys','_fixed','_new_base','_fixture_make','_fp','_ld_need','_ld_fact','_ld_carrier'}
+    regions = []
+    def region(n, name):
+        b = ''.join(text.splitlines(keepends=True)[n.lineno-1:n.end_lineno]).encode('utf8')
+        calls = sorted({ast.unparse(x.func) for x in ast.walk(n) if isinstance(x, ast.Call)})
+        regions.append(dict(symbol=name, line=n.lineno, end_line=n.end_lineno, UTF8_sha256=hashlib.sha256(b).hexdigest(), AST_sha256=hashlib.sha256(ast.dump(n, include_attributes=False).encode()).hexdigest(), call_expressions=calls))
+    for n in tree.body:
+        if isinstance(n, ast.FunctionDef) and n.name in allowed:
+            region(n, n.name)
+        elif isinstance(n, ast.ClassDef) and n.name in ('_Outer','_M3Build'):
+            for m in n.body:
+                if isinstance(m, ast.FunctionDef):
+                    region(m, n.name + '.' + m.name)
+    need(allowed <= {x['symbol'] for x in regions}, 'all helper regions')
+    closure = dict(schema_version=1, record_type='I13_raw_retention_static_builder_call_boundary', author='/root/project_architecture', created_utc=fresh(), Source=fp, regions=regions,
+        fixed_entry_spec="dict(stage=_LD_ROLES[role],selected_role=role,route='canonical'); no guard/phase_bound/peer/negative branch",
+        transitive_boundary=['A NEW additive fixture successor must preserve the complete015 byte prefix, old definitions/top-level AST/936 rows/runners/seals, and append only a reviewed retention export/helpers. Old015 module and public exports are not imported/called.', '_ld_carrier reads exact ModuleType.__dict__ raw Source/API bytes+fact3, verifies fixed closed9 pins, and makes fresh data-only projections; never copy module functions/error classes/__getattr__/callbacks.', '_fixture_make uses _M3Build/_Outer local preserved builder code and scalar/data attributes only. _Outer.code reads raw Source/API bytes and API.author, never a kernel export.', '_M3Build.finish and _Outer.envelope detach built-in-only graphs. Preserve every FIXED/current Source/API/body/label; no graph rewrite, record omission, proof coalescing or new compression.', 'Future export selects existing whole row.body bytes after validating all records/pins/roster. It does not call old snapshot, _LDPlan, run*, _diagnostic_one, _fixture_edit, any encode/constructor/validator/peer/I0-I12/actual entry.', 'Expected strict type/value seals are FIXED,CASE_CATALOGUE,_LD_INPUTS,_LD_ROLES,_LD_SITE_IDS,_LD_META_EDGES,_LD_LEASE_EDGES,_LD_PROOF_EDGES plus all new fixed plan/schema constants. Seal before/after every graph and finally. No incoming carrier/held flag mutation.'],
+        existing_snapshot_not_reused=dict(symbol='snapshot_I13_M3_input_node_ledger',line=1100,end_line=1132,reason='Old consumed operation returns count/readset only; NEW exporter will not call it.'),
+        raw_point=dict(symbol='_fixture_make',line=499,end_line=508,records='bundle.records[*] closed {pin,body}; body exact builtin bytes'),
+        roster_point=dict(symbol='snapshot_I13_M3_input_node_ledger',line=1120,end_line=1126,location='saved CHILD_RESULT.ledger.graphs[*].record_ledger'),
+        counter_and_qualification='No target is compiled/called; no result54 or original50000 semantic counter is changed/evaluated. Transport JSON counting does not establish original semantic fit.',
+        closure_status='EXACT_EXISTING_SOURCE_BOUNDARY_ONLY; FUTURE_EXPORT_SOURCE_AND_FULL_TRANSITIVE_CLOSURE_UNISSUED', target_execution=False, operational_authority=False, scientific_authority=False)
+    clp = save('I13_RAW_INPUT_RETENTION_STATIC_BUILDER_AND_NO_TARGET_CALL_CLOSURE_001.json', closure)
+    fields = {
+      'schema_version':'builtin int exactly1', 'record_type':'I13_raw_input_retention_partition_transport_v1', 'operation':'DATA_ONLY_RAW_RECORD_RETENTION_V1', 'capture_id':'builtin str canonical lowercase UUID, exact future scope/claim label; never authority',
+      'contract':'exact fixed whole contract fact3', 'schema':'exact fixed whole schema fact3', 'selection_plan':'exact Root plan fact3', 'partition_id':'exact selected fixed plan identifier', 'graph_id':'exact plan lowercase64hex', 'role':'one exact fixed6 role', 'stage':'exact fixed role-stage map', 'snapshot':'exact original accepted saved snapshot fact3', 'record_set_LF_fact3_sha256':'exact complete original ordered roster digest', 'graph_record_count':'exact original N<=256', 'graph_total_record_bytes':'exact original sum<=33554432', 'selected_ordinals':'exact nonempty plan ordinal list in original order', 'selected_fact3_LF_sha256':'exact canonical ordered selected-pin-list+LF digest', 'selected_raw_bytes':'exact sum,1..1048576', 'Source_inputs':'exact original closed9 fixed Source/API/catalogue/protocol/fixture_basis pins', 'records':'ordered nonempty rows matching selected ordinals exactly', 'limits':'exact closed limits below', 'global_seals_unchanged':'literal True or abort', 'metadata_only':'literal True', 'target_execution':'literal False', 'operational_authority':'literal False', 'native_Parser_executed':'literal False', 'scientific_authority':'literal False', 'actual_family_publication':'literal False', 'full_original_I2_DAG_closed':'literal False', 'authentic_loader_qualified':'literal False', 'compact_ABI_qualified':'literal False', 'validator_exports_called':'builtin int0', 'old_case_exports_called':'builtin int0'}
+    limits = dict(record_count=256, rawbytes=33554432, perrecord=2097152, partition_rawbytes=1048576, output=2097152, header_bytes=65536, header_nodes=4096, source_node_guard=50000, depth=48)
+    schemas = dict(schema_version=1, record_type='I13_prospective_raw_retention_closed_schema', author='/root/project_architecture', created_utc=fresh(), selection_plan=planpin,
+      input=dict(signature='retain_I13_M3_input_record_partition(*,m3,publisher,peer,catalogue_bytes,selection_bytes,partition_id,capture_id)',
+        module_carriers='exact ModuleType; only source/API raw builtin bytes and closed fact3 via __dict__; original closed9 fixed pins; no function/callback accepted', catalogue_bytes='builtin bytes exact original catalogue008 hash/length', selection_bytes='builtin strict JSON bytes exact original fixed Root plan raw hash/length,<=2MiB; preserve its original whitespace, never require or substitute a canonical reserialization', partition_id='exact builtin str selected fixed identifier; no arbitrary predicate/path/ordinal list', capture_id='canonical lowercase UUID from future exact Scope/claim; no authority'),
+      selection_plan_exact_root_keys=fixed_keys(plan), selection_plan_shape='Exact whole fixed Root plan plus its closed graph/roster/partition schemas and all digest/budget invariants in contract; no replacement by caller views.',
+      plan_graph_exact_keys=fixed_keys(plan['graphs'][0]),plan_roster_row_exact_keys=['ordinal','pin','labels'],plan_partition_exact_keys=fixed_keys(plan['graphs'][0]['partitions'][0]),
+      primitive_rules=dict(fact3=dict(exact_keys=['path','bytes','sha256'],path='builtin str exactly fixed original spelling,1..512characters; no normalization/alias/case substitution',bytes='builtin int/nonbool,1..2097152',sha256='builtin str exactly64 lowercase ASCII hexadecimal'),ordinal='builtin int/nonbool,1..256',capture_id='builtin str36characters, lowercase8-4-4-4-12 hexadecimal UUID spelling; parsed/reformatted value identical; identity only',labels='ordered list builtin str aliases copied exactly from original graph; not authority',enums_and_bools='type is exactly builtin; no subclasses/equality callbacks; every consumed key exact builtin str',nullable_fields='None only where expressly allowed; none of success transport fields nullable',input_JSON='strictUTF8, no BOM,duplicatekeys,floats/nonfinite,surrogates; complete byte cap and wholepin before data use',all_input_data='detached builtin-only snapshot; no arbitrary callbacks, predicates, module getters or mutable authority objects'),
+      output=dict(exact_keys=sorted(fields), fields=fields, row=dict(exact_keys=['ordinal','pin','encoding','body_base64'],ordinal='builtin int,nonbool, exact selected original1-based ordinal',pin='closed {path:str,bytes:int,sha256:str}; all3 exactly original graph pin',encoding='literal BASE64_RFC4648_CANONICAL',body_base64='builtin ASCII str; RFC4648 standard alphabet/padding; no whitespace; strict decode then reencode byte equality'),
+        limits=limits, canonical_wire="UTF8 json.dumps(sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False)+'\\n'; exact wire roundtrip; no BOM/duplicate/unknown keys/floats/nonfinite/surrogates/bool counters/subclasses",
+        header_budget='Replace records by [] in complete output; canonical bytes<=65536 and full key/value nodes<=4096. Complete output<=2097152/depth48/nodes50000; every4-field row adds15nodes.'),
+      failure=dict(export_behavior='Raise exact new typed error; never return successful partial transport. MemoryError/BaseException/seal corruption abort.',supervisor_failure_exact_keys=['schema_version','record_type','capture_id','selection_plan','partition_id','graph_id','status','step','error_code','exception_type','message','transport_created','target_execution','operational_authority','scientific_authority'],status='FAILED only',message='bounded builtin str<=512; no body/Base64/Source/traceback dump',authority_flags='allFalse; missing output remains absent, never filled'),
+      completion_manifest=dict(exact_keys=['schema_version','record_type','status','operation','contract','schema','selection_plan','Source_inputs','graph_summaries','partitions','failed_attempts','limits','metadata_only','target_execution','operational_authority','native_Parser_executed','scientific_authority','actual_family_publication','compact_ABI_qualified','ready_for_execution'],schema_version=1,record_type='I13_raw_input_retention_global_completion_manifest_v1',status='CAPTURE_COMPLETE_EXACT_BYTES_METADATA_ONLY only after all23 accepted whole transports; otherwise no completion manifest issued',operation='DATA_ONLY_RAW_RECORD_RETENTION_V1',graph_summary_exact_keys=['graph_id','role','snapshot','record_count','total_record_bytes','record_set_LF_fact3_sha256','partition_ids'],partition_row_exact_keys=['partition_id','graph_id','capture_id','selected_ordinals','selected_fact3_LF_sha256','selected_raw_bytes','transport','scope','claim','parent_witness','saved_result_review','Root_adoption'],failed_attempt_row_exact_keys=['capture_id','partition_id','scope','claim','failure','parent_witness'],record_references='Every transport/scope/claim/parent_witness/saved_result_review/Root_adoption/failure is a whole fact3; all existed before this manifest. Graph/partition data exactly fixed plan, graph order fixed6 and partition order original23. failed_attempts retains every known consumed unsuccessful attempt in recorded order; cannot count it as a successful partition.',bounds='Exact six graph summaries,exact23 successful partition rows; finite failed_attempt list such that complete manifest<=2097152bytes/50000nodes/depth48 and future package caps. If complete evidence cannot fit, typed refusal and separate reviewed design; no omissions.',truth='metadata_onlyTrue; all authority/runtime/compatibility/ready flagsFalse. Creation does not by itself accept manifest; separate genuinely different saved whole-byte/in-memory-reconstruction review and Root adoption are outside manifest, avoiding self-reference.'),
+      no_event_or_ABI_schemas_changed=True, target_execution=False, operational_authority=False, scientific_authority=False)
+    schp = save('I13_PROSPECTIVE_RAW_INPUT_RETENTION_CLOSED_SCHEMA_001.json', schemas)
+    errors=['E_RETENTION_SELECTION_PIN','E_RETENTION_SELECTION_SCHEMA','E_RETENTION_SOURCE_BINDING','E_RETENTION_CAPTURE_ID','E_RETENTION_PARTITION','E_RETENTION_GRAPH_NAMESPACE','E_RETENTION_RECORD','E_RETENTION_ROSTER','E_RETENTION_DIGEST','E_RETENTION_MEMBER_TOO_LARGE','E_RETENTION_RAW_CAP','E_RETENTION_OUTPUT_CAP','E_RETENTION_JSON','E_RETENTION_BASE64','E_RETENTION_GLOBAL_SEAL','E_RETENTION_UNMODELED_BUILD','E_RETENTION_CONSUMED','E_RETENTION_AUTHORITY','E_RETENTION_CUSTODY','E_RETENTION_INCOMPLETE']
+    contract = dict(schema_version=1, record_type='I13_prospective_data_only_whole_raw_input_retention_contract', author='/root/project_architecture', created_utc=fresh(), Source_scope=pin(S), Source_scope_adoption=pin(SA), schema=schp, complete_basis=bp, static_call_boundary=clp, selection_plan=planpin, metadata_author_Source=pin(pathlib.Path(__file__)),
+      status='PREPARATORY_SPECIFICATION_PENDING_DIFFERENT_REVIEW_AND_ROOT_ADOPTION_OPERATIONAL_UNISSUED',
+      operation='A future NEW data-only export builds one fresh fixed positive canonical graph once and retains only one closed plan partition of exact raw record bytes. It is not an old snapshot/case/export replay, original target execution, compact receipt ABI or scientific operation.',
+      explicit_old_output_rule_change='Original ledger protocol002 forbids raw body/diff/Source/Base64 in its node report. Preserve that report/export unchanged. ONLY this NEW separately reviewed retention operation prospectively allows bounded canonical Base64 as inert archival transport. It never makes Base64 a semantic node-count exemption.',
+      schema_and_signature=schemas['input'], original_Source_inputs=freeze['Source_inputs'],selection_plan_metadata_verification=plancheck,
+      selection_rules=['Exact saved result.ledger.graphs rosters are basis. graph_id=SHA256(canonical minified UTF8+LF {snapshot:fact3,role,record_set_LF_fact3_sha256}). No current/future data may substitute into that namespace.', 'Each graph roster keeps every original ordinal/pin/label. Same virtual path can have different bodies in different graphs; identities are (graph_id,ordinal,wholefact3), never bare path. No cross-graph deduplication/rebinding.', 'Plan partitions are deterministic greedy contiguous longest nonempty original-ordinal prefixes with sum<=1048576. Every member must fit whole; >1MiB typed refusal, never hidden splitting. Every ordinal covered once, no overlap/gap/reorder.', 'Full roster and selected pin digests use ordered complete fact3 list, sort_keys/minified/ensure_ascii=False/UTF8+LF. Labels are only aliases, not identity/authority. Partition rows need ordinals only; original pins are resolved from this exact graph roster.', 'Existing three snapshots and all old cases/scopes remain spent. Exact new retention Source/API/plan/partition logical identity is consume-once and distinct from old operation identity. Fresh captureUUID alone cannot authorize replay.'],
+      future_export_steps=['Before builders validate all exact builtin input types, closed fixed Source/API raw bytes/pins, catalogue, plan wholepin/schema, captureUUID and partition. Make fresh data-only projections as existing _ld_carrier does; never copy module callbacks.', 'Seal original globals/new fixed constants. Construct exactly dict(stage=_LD_ROLES[role],selected_role=role,route=canonical) once via preserved local builder code in NEW additive fixture successor. No guard/peer/negative/phase_bound or old public export.', 'Validate EVERY built record exact {pin,body}, builtin bytes, whole size/SHA, full count<=256/rawsum<=32MiB/perrecord<=2MiB, unique casefold path within graph; compare complete roster/labels/graph digest to saved plan. No trimming to selected records before whole graph checks.', 'Select only exact planned ordinals. Copy whole original body bytes unchanged into canonical Base64. Never decode/parse/normalize/reserialize a body; arbitrary nonJSON/binary/duplicate-key/NaN/nonUTF8 bytes remain exact.', 'Check each row pin/length/hash and canonical Base64 reconstruction; selected rawsum/digest/ordered ordinals exact. Construct full closed output with allfalse authorities and exact original Source_inputs.', 'Enforce header<=65536bytes/4096nodes, complete result<=2MiB/50000fullkeyvaluenodes/depth48, and final global/incoming-data seals. Return one canonical bytes result only after every selected member and seal succeeds. Finally seal always; corruption/MemoryError/BaseException abort, never an expected passing case.'],
+      budget_proof=dict(raw_partition_limit=1048576, per_member_limit=1048576, Base64_length='4*((pin.bytes+2)//3)', exact_bound='65536 + sum(empty_row_canonical_bytes + 4*ceil(pin.bytes/3)) + max(k-1,0)', empty_row='Complete known ordinal,pin,encoding and body_base64 empty ONLY for sizing; never emitted as a successful body.', escaping='Actual wire/digests use ensure_ascii=False UTF8. ensure_ascii=True empty-row lengths are a conservative upper bound for possible nonASCII path spelling.', tree_bound='Header4096 +15*k; k<=256 -> at most7936 transport nodes<50000. Full actual tree/depth still checked. This is transport algebra, NOT original50000 semantic guard acceptance.', content_independent='All body bytes encode into ASCII Base64 with no JSON escaping. Bound uses saved sizes, not invented bodies. Header includes records[] brackets/LF; commas add max(k-1,0).', runtime='No runtime/headroom/graph-construction success guaranteed by sizing. Future exact Source and custody reviews/admission still required.'),
+      identity_and_authority=['Declared original pins/virtual paths identify in-memory synthetic graph records. NEVER write973 original virtual paths or publish their canonical subjects. Store one inert bounded transport file per partition and bounded manifest/witnesses; reconstruct individual bodies only in memory during audit.', 'Export has no filesystem/process/runtime/claim I/O and cannot itself enforce consume-once. Parent custodian validates exact Sources/API/adoptions/plan/scope, exclusively claims, injects data carriers, invokes ONLY new export once and binds result wholepin/captureUUID/partition to actual parent/child custody.', 'Parent witness separately pins actual exporter Source/API, supervisor Source, Root Source/protocol adoptions, scope/claim/prelaunch/resources/tool exit/result. This avoids a self-Source/manifest hash cycle. Mechanical recorded pins are not authentic-loader/human/physical capability proof.', 'CaptureUUID is canonical lowercase identity label only. Logical consumed key=(operation,exporterSource,exporterAPI,selectionPlan,partition_id), excluding captureUUID/scope-wrapper as replay bypass. Missing output/failure consumes the attempt; no automatic retry. Any corrective Source/version requires separate reviewed decision/new exact admission and full preserved failed history.', 'Future parent reads result, checks whole output pin/canonical schema, reconstructs Base64 in memory with exact original graph ordinals/pins and reencoding, fsyncs only unused contained evidence identities, readbacks complete bytes, then obtains genuine different saved-results review and Root adoption. A child success Boolean alone is insufficient.'],
+      custody_and_failure=['Current Source007 authorizes contract preparation only. Exporter/API/supervisor/Source review/adoptions/fresh exact once scopes are ALL UNISSUED. No operation, implementation, fixture change, compile/import/test or capture is permitted now.', 'Future pure once custody retains60total/50wait/10cleanup/5reap, existing2MiB result/stream caps and original resource floors RAM1GiB/disk10GiB with resource age<=60s, all peer release/pauses/combined Root3/shared5 constraints. No new lease family or original75 identity reset.', 'Fresh applicable Source interval and strict>60 publication reserve checked immediately before every actual creation/open/write. A future exact scope must fit its complete own deadline/cleanup/evidence publication; no internal stopwatch-only proof or postcutoff acceptance.', 'Parent keeps unused output/claim/prelaunch identities and exact owned child identity; records actual exit, full reap/drain/EOF/error/cap/time/resource evidence. No whole-host quiet, unrelated process kill, native Parser/science or physical-handle absence inference.', 'On any exception, cap, timeout, bad seal/body/hash/Base64/roster, missing result or custody gap: preserve partial existing artifacts plus bounded typed failure; list genuinely absent outputs, never fill them. No partial graph/partition/global-completion PASS. No automatic replay/retry under a newUUID.'],
+      global_completion=['Completion is a separate new bounded metadata manifest after ALL fixed plan partitions have exactly one accepted complete transport. It binds plan/schema/contract/Source_inputs, per-partition result/scope/claim/witness/review/Root adoption and graph roster/digest coverage; no self/future hash link.', 'Verify original ordered ordinals1..N exactly once for EACH of6 graph namespaces and every decoded full body pin, all inter-partition coverage/no overlap/gaps and actual closed custody. Failed/partial earlier receipts stay preserved and cannot be counted as complete.', 'Until genuine different complete readback review and Root decision, global state is INCOMPLETE/UNACCEPTED. Even CAPTURE_COMPLETE_EXACT_BYTES_METADATA_ONLY would qualify only archival availability, not payload semantic correctness or compact ABI.', 'Every physical evidence/copy row, Source, contract, witness, failure, transport and manifest counts toward any later proposed512row/64MiB/perfile2MiB managed package. No973rawfile publication, dedupe by virtualpath, rowcap waiver or assumed global fit. Whole optional package needs its own actual inventory/reviews/adoption; publication remains unadmitted.'],
+      preserved_semantic_boundaries=['All old supplied raw records remain byte-exact, all original Source/render/codec/inverse/gate/I/O routines remain unchanged. Future oldJSON body analysis must strict-decode/count COMPLETE original keys/values and retain all field-specific actor/purpose/chronology/deep-observation duties.', 'Transport Base64/string node count is not a claim that original semantic JSON is cheap, valid, eligible or current-authoritative. Separate parent/child caches, complete child addition/result54,50000nodes/depth48/allcaps remain exactly held; no new result54 fields or cache/reset/shared-counter allowance.', 'All11 compact ABI blockers and original current main20PASS/12FAIL/904unestablished remain. Both causal identity/roster cells are only partial, profile bootstrap UNISSUED, legacy compatibility/fit/Source implementation/runtime/science unproved.'],
+      error_precedence=['Before builders: exact builtin type/closed carrier+selection pin and bounds -> Source/API/catalogue pin joins -> captureUUID -> fixed partition/graph namespace -> complete plan/roster/digests.', 'After one fresh build: global seal -> all records count/rawcaps/type/pins -> exact full saved roster+labels/digest -> selected whole member fit -> canonical Base64/pins -> header/output/treecaps -> final/finally seals. Parent claim/admission/custody are separately prior/final obligations; the pure export never fabricates their success.', 'A malformed body is not a transport JSON error; retain arbitrary exact builtin bytes without semantic body parsing. Transport JSON/base64 malformed means E_RETENTION_JSON/E_RETENTION_BASE64. Strict budget violations remain cap errors, never passing semantic refusal controls.'],
+      error_class_contract='Future exact error class I13RawRetentionError(ValueError), builtin .code one literal typed_errors entry and bounded str message<=512, no body text. Public operational generate/publish/execute entries remain literalFalse plus unconditional refusal before any inspection, if future API declares them. Export is data-only and future-held by external admission.',
+      typed_errors=errors, remaining_blockers=doc(cd / 'I13_PROPOSED_PORTABLE_EVENT_WHOLE_PIN_IDENTITIES_AND_ACYCLIC_ROSTERS_PARTIAL_PROTOCOL_002.json')['remaining_blockers'],
+      future_assets=dict(exporter_Source='UNISSUED', exporter_API='UNISSUED', supervisor_Source='UNISSUED', protocol_Root_adoption='UNISSUED', implementation_Source_review='UNISSUED', implementation_Source_adoption='UNISSUED', one_use_scopes='UNISSUED', captured_transports='NONE', global_completion_manifest='UNISSUED'),
+      metadata_only=True, protocol_adopted=False, operational_UNISSUED=True, ready_for_execution=False, new_target_or_fixture_Source_authorized=False, capture_admitted=False, overall_ABI_NOT_READY=True, target_execution=False, operational_authority=False, native_Parser_executed=False, scientific_authority=False, node_fit_proven=False, Source_size_fit_proven=False, legacy_compatibility_proven=False, actual_family_publication=False)
+    conp = save('I13_PROSPECTIVE_RAW_INPUT_RETENTION_CONTRACT_001.json', contract)
+    out = dict(schema_version=1, record_type='I13_raw_retention_contract001_metadata_author_freeze', author='/root/project_architecture', created_utc=fresh(), Source_scope=pin(S), Source_scope_adoption=pin(SA), contract=conp, schema=schp, basis=bp, call_closure=clp, selection_plan=planpin, metadata_author_Source=pin(pathlib.Path(__file__)), original_fixture015=fp, prior_files_modified=0, outputs_exclusive_fsync_readback=True, old_target_fixture_builder_exports_called=0, project_Source_imported_or_compiled=False, raw_graphs_constructed=False, body_capture=False, old_records_changed=False, independent_review=False, protocol_adopted=False, ready_for_execution=False, operational_UNISSUED=True, overall_ABI_NOT_READY=True, target_execution=False, operational_authority=False, scientific_authority=False)
+    freezeout = save('I13_RAW_INPUT_RETENTION_CONTRACT001_IMMUTABLE_AUTHOR_FREEZE_001.json', out)
+    print(json.dumps(dict(contract=conp, schema=schp, basis=bp, call_closure=clp, freeze=freezeout), ensure_ascii=True))
+
+if __name__ == '__main__':
+    main()

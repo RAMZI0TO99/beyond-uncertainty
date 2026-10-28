@@ -1,0 +1,59 @@
+"""Own Source read/hash/AST/compile metadata and exclusive API author; no imports/calls."""
+import ast
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+ROOT=Path(__file__).parent
+BASE=ROOT/'receipt_caller_integration_015'
+OUT=BASE/'i12'
+CAP=2097152
+def pin(path,raw=None):
+    raw=path.read_bytes() if raw is None else raw
+    return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+def read(path):
+    raw=path.read_bytes();assert len(raw)<=CAP
+    return json.loads(raw.decode('utf8')),raw
+def save(path,value):
+    raw=(json.dumps(value,sort_keys=True,indent=2)+'\n').encode();assert len(raw)<=CAP
+    with path.open('xb') as f:f.write(raw)
+    return pin(path,raw)
+c,craw=read(BASE/'I12_EXACT_RECEIPT_FORMAT_SCHEMA_AND_FIXED_DATA_CATALOGUE_002.json')
+protocol=pin(BASE/'I12_EXACT_OUTSIDE8_RECEIPT_FORMAT_AND_METADATA_GRAPH_PROTOCOL_002.json')
+catalogue=pin(BASE/'I12_EXACT_RECEIPT_FORMAT_SCHEMA_AND_FIXED_DATA_CATALOGUE_002.json',craw)
+source_names=dict(formats='receipt_contract_formats_001.py',single='validate_generic_single_receipt_metadata_001.py',peer='validate_selected_peer_receipt_metadata_001.py',emitter='declare_generic_single_emitter_source_only_001.py')
+sources={};regions=[];audit=[]
+for kind,name in source_names.items():
+    path=OUT/name;raw=path.read_bytes();assert len(raw)<=65536
+    tree=ast.parse(raw);compile(raw,str(path),'exec',dont_inherit=True)
+    sources[kind]=pin(path,raw)
+    imports=[]
+    for n in ast.walk(tree):
+        if isinstance(n,ast.Import):imports.extend(x.name for x in n.names)
+        if isinstance(n,ast.ImportFrom):imports.append(n.module)
+    assert set(imports)<=set(('base64','datetime','hashlib','json','re'))
+    assert not any(isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id in ('exec','eval','open','__import__','compile') for n in ast.walk(tree))
+    assert not any(isinstance(n,ast.ImportFrom) for n in ast.walk(tree))
+    lines=raw.splitlines(keepends=True)
+    for n in tree.body:
+        if isinstance(n,(ast.FunctionDef,ast.ClassDef)):
+            part=b''.join(lines[n.lineno-1:n.end_lineno])
+            regions.append(dict(Source=sources[kind],name=n.name,first_line=n.lineno,last_line=n.end_lineno,bytes=len(part),sha256=hashlib.sha256(part).hexdigest()))
+    audit.append(dict(kind=kind,Source=sources[kind],AST_and_compile_only=True,imports=imports,target_imports=0,target_calls=0))
+common=dict(schema_version=1,author='/root/i2_resume_gap',actual_Source_editor='/root/i2_resume_gap',protocol=protocol,catalogue=catalogue,operational_authority=False,scientific_authority=False)
+api=dict(common,record_type='Root_owner_v2_outside8_receipt_format_constructor_inert_API',Source=sources['formats'],implemented_record_kinds=c['constructor_implemented_record_kinds'],format_only=True,producer_route_qualified=False,physical_publication_qualified=False)
+assert set(api)==set(c['schemas']['constructor_API13']['fields'])
+apis=dict(formats=save(OUT/'CURRENT_OWNER_OUTSIDE8_RECEIPT_FORMAT_CONSTRUCTOR_INERT_API_001.json',api))
+for kind,method,record,roles,name in (('single','validate_generic_single_dependency_metadata','Root_owner_v2_single_receipt_metadata_graph_inert_API',c['generic9_roles'],'CURRENT_OWNER_SINGLE_RECEIPT_METADATA_GRAPH_INERT_API_001.json'),('peer','validate_selected_peer_receipt_metadata','Root_owner_v2_selected_peer_receipt_metadata_graph_inert_API',c['peer_format_roles'],'CURRENT_OWNER_SELECTED_PEER_RECEIPT_METADATA_GRAPH_INERT_API_001.json')):
+    value=dict(common,record_type=record,Source=sources[kind],method=method,roles=roles,metadata_only=True,actual_entry_qualified=False)
+    assert set(value)==set(c['schemas'][kind+'_graph_API13']['fields'])
+    apis[kind]=save(OUT/name,value)
+value=dict(common,record_type='Root_owner_v2_generic_single_receipt_emitter_inert_API',Source=sources['emitter'],roles=c['generic9_roles'],request_record_type=c['schemas']['single_request14_v2']['record_type'],publication_record_type=c['schemas']['single_publication29_v2']['record_type'],stage_record_type=c['schemas']['generic_stage_receipt29_v2']['record_type'],real_entry_qualified=False)
+assert set(value)==set(c['schemas']['held_generic_emitter_API14']['fields'])
+apis['emitter']=save(OUT/'CURRENT_OWNER_GENERIC_SINGLE_EMITTER_DECLARATION_INERT_API_001.json',value)
+subjects=[pin(BASE/name) for name in ('I12_EXACT_OUTSIDE8_RECEIPT_FORMAT_AND_METADATA_GRAPH_PROTOCOL_002.json','I12_EXACT_RECEIPT_FORMAT_SCHEMA_AND_FIXED_DATA_CATALOGUE_002.json','I12_EXACT_PACKET_RESULT_ACTOR_AND_REFERENCE_TYPE_CLOSURE_COMPANION_001.json','I12_FIXED_PHYSICAL_KERNEL_EDITOR_EXCLUSION_CLARIFICATION_001.json','I12_SINGLE29_OBSERVATION_PREDICATE_APPLICABILITY_CLARIFICATION_001.json','ROOT_I12_FORMAT_PROTOCOL002_DIFFERENT_SOURCE_REVIEW_ADOPTION_001.json')]
+inventory=dict(schema_version=1,record_type='I12_frozen_new_kernel_Source_regions_and_no_target_predecessor_inventory',author='/root/i2_resume_gap',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),sources=sources,APIs=apis,metadata_subjects=subjects,regions=regions,Source_AST_audit=audit,predecessors='All four targets are new absent-path components; no predecessor target replaced. Existing I0-I11 Sources/APIs stay unchanged. Exact own pre-freeze draft bytes are separately preserved.',pre_freeze_history=pin(ROOT/'I12_PRE_FREEZE_SOURCE_EDIT_READBACK_001.json'),Source_caps_each=65536,metadata_caps_each=CAP,target_imports=0,target_calls=0,tests_executed=False,operational_authority=False,scientific_authority=False)
+inventory_pin=save(OUT/'I12_FROZEN_KERNEL_SOURCE_REGIONS_AND_GENESIS_INVENTORY_001.json',inventory)
+receipt=dict(schema_version=1,record_type='I12_actual_static_kernel_Source_and_API_author_receipt',author='/root/i2_resume_gap',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),sources=sources,APIs=apis,inventory=inventory_pin,subjects=subjects,Root_Source_scope=pin(ROOT/'ROOT_CURRENT_I12_RECEIPT_CALLER_SOURCE_SCOPE_001.json'),source_authoring_authority='Exact six-subject format protocol Root adoption; subsequent applicability clarification to be independently reviewed/adopted with Source. This receipt grants no target import/test/actual entry.',strict_implementation_bounds=dict(native_path_max_characters=32767,actor_max_characters=512,metadata_bytes=CAP,Source_bytes=65536,record_count=256,total_body_bytes=33554432,JSON_depth=48,per_call_aggregate_parsed_graph_nodes=50000,catalogue_decode='Exact immutable SHA/length-bound catalogue decoded under its own depth48/nodes50000 limit; not added to mutable per-call graph budget. Every designated packet/API/proof/metadata record shares one per-call graph node counter and a cache; same record counted once, pin snapshots also count. Source/unused body bytes remain data.',old_I11_path_max512_unchanged=True),descriptor_dispatch='Exact literal KNOWN_TYPE_DESCRIPTORS finite whitelist + exact fixed catalogue hash; unknown descriptors typed-refused, no eval/permissive fallback. Record version/tag/key/type checks occur before indexing. Output closed49 typed/canonical JSON bytes.',held_emitter='Minimal new Source/API declares owner-v2 generic names only; not an I5 successor/port or qualified algorithm/producer/publisher. Its execute_stage unconditionally UNWIRED and it is not loaded by fixture/supervisor.',review_status='FROZEN_FOR_GENUINE_DIFFERENT_SOURCE_REVIEW; fixture still separately to be authored/frozen and reviewed before any tests.',target_imports=0,target_calls=0,tests_executed=False,target_execution=False,actual_family_publication=False,full_G01_closed=False,operational_authority=False,scientific_authority=False,author_tool=pin(Path(__file__)))
+receipt_pin=save(OUT/'I12_ACTUAL_STATIC_KERNEL_SOURCE_AUTHOR_RECEIPT_001.json',receipt)
+print(json.dumps(dict(sources=sources,APIs=apis,inventory=inventory_pin,author_receipt=receipt_pin),sort_keys=True))

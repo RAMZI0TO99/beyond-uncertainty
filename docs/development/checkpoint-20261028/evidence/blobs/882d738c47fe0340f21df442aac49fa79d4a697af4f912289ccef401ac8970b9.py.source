@@ -1,0 +1,139 @@
+"""Apply six static review corrections; preserve whole unrun parent/child001."""
+import ast,base64,datetime as dt,hashlib,json,os,stat
+from pathlib import Path
+R=Path(__file__).parent
+END=dt.datetime.fromisoformat('2026-10-27T15:10:56.767745+00:00')
+
+def need(v,m):
+ if not v:raise ValueError(m)
+
+def raw(path):
+ p=Path(path)
+ for q in (p,*p.parents):need(not q.is_symlink() and not getattr(q.lstat(),'st_file_attributes',0)&1024,'ordinary nonreparse lineage')
+ a=p.stat();need(stat.S_ISREG(a.st_mode) and a.st_nlink==1 and 0<=a.st_size<=2097152,'singlelink bounded metadata')
+ with p.open('rb') as h:d=os.fstat(h.fileno());b=h.read(2097153);e=os.fstat(h.fileno())
+ z=p.stat();k=lambda s:(s.st_dev,s.st_ino,s.st_mode,s.st_nlink,s.st_size,s.st_mtime_ns)
+ need(k(a)==k(d)==k(e)==k(z) and len(b)==a.st_size,'stable exactbytes');return b
+
+def pin(p,b=None):
+ if b is None:b=raw(p)
+ return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+
+def write(name,b,cap=2097152):
+ need(len(b)<=cap and (END-dt.datetime.now(dt.timezone.utc)).total_seconds()>60,'originalcap/fresh60reserve')
+ p=R/name
+ with p.open('xb') as h:need(h.write(b)==len(b),'wholeexclusive');h.flush();os.fsync(h.fileno())
+ need(raw(p)==b,'whole savedreadback');return pin(p,b)
+
+def data(name,v):return write(name,(json.dumps(v,sort_keys=True,indent=2,allow_nan=False)+'\n').encode())
+
+pp=R/'ROOT_I13_HELD_RAW_RETENTION_SUPERVISOR_001.py';pb=raw(pp)
+cp=R/'I13_HELD_RAW_RETENTION_CHILD_001.py.source';cb=raw(cp)
+need(pin(pp,pb)['sha256']=='bcdff95f33d764758b70cc8e93c476bef9993eba45095e4f24a0853e66e2a32c' and pin(cp,cb)['sha256']=='2e46d83231cbf82e5bb8bd671aa7417a63a536d45086b30c1dc29649db74e6d8','frozen001pins')
+parent=pb.decode();child=cb.decode()
+child=child.replace('class HeldRetentionChildError(ValueError):\n    pass',"class HeldRetentionChildError(ValueError):\n    def __init__(self,code):\n        self.code=code if type(code) is str and code in FIXED['errors'] else 'E_RETENTION_CUSTODY'\n        super().__init__(self.code)")
+child=child.replace('def _nodes(value,depth=1):','def _nodes(value,depth=0):')
+old="""    value=json.loads(raw.decode('utf8','strict'),object_pairs_hook=pairs,
+                     parse_float=bad,parse_constant=bad)
+    _nodes(value);_need(_wire(value)==raw,'E_RETENTION_JSON')
+    return value"""
+new="""    try:
+        value=json.loads(raw.decode('utf8','strict'),object_pairs_hook=pairs,
+                         parse_float=bad,parse_constant=bad)
+        _nodes(value);_need(_wire(value)==raw,'E_RETENTION_JSON')
+        return value
+    except HeldRetentionChildError:
+        raise
+    except (ValueError,UnicodeError,RecursionError):
+        raise HeldRetentionChildError('E_RETENTION_JSON') from None"""
+need(child.count(old)==1,'exactchilddecoder');child=child.replace(old,new)
+need(parent.count(repr(cb.decode()))==1,'whole embeddedoldchild');parent=parent.replace(repr(cb.decode()),repr(child))
+parent=parent.replace('def _tree(value, depth=1):','def _tree(value, depth=0):')
+parent=parent.replace("    except (UnicodeError, json.JSONDecodeError, RecursionError):\n        raise I13RawRetentionSupervisorError('E_RETENTION_JSON') from None", "    except I13RawRetentionSupervisorError:\n        raise\n    except (UnicodeError, ValueError, RecursionError):\n        raise I13RawRetentionSupervisorError('E_RETENTION_JSON') from None")
+marker='def _check_time(source_end, operation_end, deadline, reserve=True):'
+date="""def _date(value):
+    _need(type(value) is str,'E_RETENTION_AUTHORITY')
+    try:
+        result=dt.datetime.fromisoformat(value)
+    except (ValueError,TypeError):
+        raise I13RawRetentionSupervisorError('E_RETENTION_AUTHORITY') from None
+    _need(result.tzinfo is not None,'E_RETENTION_AUTHORITY')
+    return result
+
+
+def _claim_present(path):
+    _activation_required()
+    return os.path.lexists(path)
+
+
+"""
+need(parent.count(marker)==1,'exacttimehelper');parent=parent.replace(marker,date+marker)
+parent=parent.replace('    parse = dt.datetime.fromisoformat\n    for end in (parse(source_end), parse(operation_end)):', '    for end in (_date(source_end), _date(operation_end)):')
+parent=parent.replace("dt.datetime.fromisoformat(admission['interval_start'])","_date(admission['interval_start'])").replace("dt.datetime.fromisoformat(admission['interval_end'])","_date(admission['interval_end'])")
+parent=parent.replace('def _prelaunch(admission):','def _prelaunch(admission,deadline):')
+parent=parent.replace("observed = dt.datetime.fromisoformat(pre['observed_utc'])","observed = _date(pre['observed_utc'])")
+needle="    _check_time(scope['interval_end'], admission['interval_end'], time.monotonic()+60)"
+replacement="""    _need(_date(scope['interval_start']) <= dt.datetime.now(dt.timezone.utc), 'E_RETENTION_AUTHORITY')
+    _check_time(scope['interval_end'], admission['interval_end'], deadline)"""
+need(parent.count(needle)==1,'exactprelaunchdeadline');parent=parent.replace(needle,replacement)
+old="""    request, admission = _admission(request_bytes, admission_bytes)
+    scope, pre = _prelaunch(admission)
+    deadline = time.monotonic()+60"""
+new="""    # Complete admitted-operation timer includes input/Source/resource checks.
+    deadline = time.monotonic()+60
+    request, admission = _admission(request_bytes, admission_bytes)
+    scope, pre = _prelaunch(admission,deadline)"""
+need(parent.count(old)==1,'exactcompleteoperationtimer');parent=parent.replace(old,new)
+old="""    claim_pin = _write_owned(paths['claim'],_wire(claim),scope['interval_end'],admission['interval_end'],deadline)
+    step = 'CLAIMED'
+    transport_created = False
+    evidence = {}
+    custody = None
+    try:
+        child_input = _child_input(admission)"""
+new="""    claim_pin = None
+    claim_present_after_error = None
+    step = 'CLAIM_CREATION'
+    transport_created = False
+    evidence = {}
+    custody = None
+    try:
+        claim_pin = _write_owned(paths['claim'],_wire(claim),scope['interval_end'],admission['interval_end'],deadline)
+        step = 'CLAIMED'
+        child_input = _child_input(admission)"""
+need(parent.count(old)==1,'claimfailurecustody');parent=parent.replace(old,new)
+old="""        _check_time(scope['interval_end'],admission['interval_end'],deadline)
+        stdout,stderr,custody = _owned_child"""
+new="""        # Recheck the SAME pinned native prelaunch at the actual launch
+        # boundary. A stale observation refuses; no inferred refresh.
+        scope, pre = _prelaunch(admission,deadline)
+        _check_time(scope['interval_end'],admission['interval_end'],deadline)
+        stdout,stderr,custody = _owned_child"""
+need(parent.count(old)==1,'actuallaunchfreshness');parent=parent.replace(old,new)
+needle="""        code = exc.code if type(exc) is I13RawRetentionSupervisorError else 'E_RETENTION_CUSTODY'
+        for key,body in ("""
+replacement="""        code = exc.code if type(exc) is I13RawRetentionSupervisorError else 'E_RETENTION_CUSTODY'
+        try:
+            claim_present_after_error = _claim_present(paths['claim'])
+        except BaseException:
+            pass
+        for key,body in ("""
+need(parent.count(needle)==1,'claimerrorobservation');parent=parent.replace(needle,replacement)
+parent=parent.replace("graph_id=graph['graph_id'],claim=claim_pin,evidence=evidence,custody=custody,", "graph_id=graph['graph_id'],claim=claim_pin,claim_intended_path=str(paths['claim']),\n                claim_write_and_readback_completed=claim_pin is not None,\n                claim_present_after_error=claim_present_after_error,evidence=evidence,custody=custody,")
+p2=parent.encode();c2=child.encode();need(len(p2)<=65536 and len(c2)<=65536,'Sourcecaps')
+pa=ast.parse(parent);ca=ast.parse(child)
+need(next(x for x in pa.body if type(x) is ast.Assign and any(type(t)is ast.Name and t.id=='CHILD_SOURCE' for t in x.targets)).value.value==child,'newembeddedchildwhole')
+np=write('ROOT_I13_HELD_RAW_RETENTION_SUPERVISOR_002.py',p2,65536)
+nc=write('I13_HELD_RAW_RETENTION_CHILD_002.py.source',c2,65536)
+inv=data('ROOT_HELD_SUPERVISOR002_COMPLETE_UNRUN001_SOURCE_INVERSE_001.json',dict(schema_version=1,author='/root',record_type='Root_held_supervisor002_complete_unrun001_Source_inverse',predecessors=[dict(pin=pin(pp,pb),whole_base64=base64.b64encode(pb).decode()),dict(pin=pin(cp,cb),whole_base64=base64.b64encode(cb).decode())],successors=[np,nc],predecessors_imported_compiled_or_called=False,static_findings_source='/root/project_architecture',corrections=['Start60s before admission/prelaunch; pass deadline through.','Claim creation/readback inside failurehandler; nullable claim and explicit partialpresence.','Parent/child JSON integer-digit ValueError mappedtyped without swallowingtypedguards or MemoryError.','Transportdepth root0 matches exporter/oldledger.','Require Sourceinterval_start<=now.','Revalidate samepinned resource age at actual launch, no inferred refresh.','Child typederrorclass retains its literalcode.'],all_execution_gates_held=True))
+oldfreeze=json.loads(raw(R/'ROOT_I13_HELD_SUPERVISOR001_IMMUTABLE_AUTHOR_FREEZE_001.json'))
+def report(source,root):
+ lines=source.splitlines(keepends=True);out=[]
+ for n in ast.walk(root):
+  if type(n) in (ast.FunctionDef,ast.ClassDef):
+   block=''.join(lines[n.lineno-1:n.end_lineno]).encode()
+   out.append(dict(symbol=n.name,line=n.lineno,end_line=n.end_lineno,UTF8_sha256=hashlib.sha256(block).hexdigest(),AST_sha256=hashlib.sha256(ast.dump(n,include_attributes=False).encode()).hexdigest(),calls=sorted(set(ast.unparse(c.func) for c in ast.walk(n) if type(c)is ast.Call))))
+ return out
+proof=data('ROOT_I13_HELD_SUPERVISOR002_STATIC_GUARD_AND_CALL_CLOSURE_001.json',dict(schema_version=1,author='/root',record_type='Root_held_retention_supervisor002_static_Source_guard_and_call_inventory',parent_Source=np,embedded_child_Source=nc,Source_scope=oldfreeze['Source_scope'],Source_scope_adoption=oldfreeze['Source_scope_adoption'],Source_interface_contract=oldfreeze['Source_interface_contract'],exporter_Source=oldfreeze['exporter_Source'],exporter_API=oldfreeze['exporter_API'],contract=oldfreeze['contract'],schema=oldfreeze['schema'],selection_plan=oldfreeze['selection_plan'],complete001inverse=inv,parent_regions=report(parent,pa),child_regions=report(child,ca),same_pinned_prelaunch_rechecked_at_launch=True,whole_operation_timer_before_admission=True,claim_failures_in_failure_custody=True,root_depth=0,Source_qualification_only=True,independent_review_pending=True,subject_Source_compiled=False,subject_Source_imported=False,subject_calls=0,capture_admitted=False,all_execution_gates_held=True))
+freeze=data('ROOT_I13_HELD_SUPERVISOR002_IMMUTABLE_AUTHOR_FREEZE_001.json',dict(schema_version=1,author='/root',record_type='Root_held_retention_supervisor002_Source_author_freeze',Source_scope=oldfreeze['Source_scope'],Source_scope_adoption=oldfreeze['Source_scope_adoption'],parent_Source=np,embedded_child_Source=nc,static_guard_call_proof=proof,complete001inverse=inv,complete_prior_freeze=pin(R/'ROOT_I13_HELD_SUPERVISOR001_IMMUTABLE_AUTHOR_FREEZE_001.json'),Source_interface_contract=oldfreeze['Source_interface_contract'],exporter_Source=oldfreeze['exporter_Source'],exporter_API=oldfreeze['exporter_API'],contract=oldfreeze['contract'],schema=oldfreeze['schema'],selection_plan=oldfreeze['selection_plan'],author_Source=pin(Path(__file__)),independent_Source_review_pending=True,subject_Source_compiled=False,subject_Source_imported=False,subject_functions_called=0,tests_executed=False,capture_admitted=False,supervisor_launched=False,all_execution_gates_held=True))
+print(json.dumps(dict(supervisor=np,child=nc,inverse=inv,proof=proof,freeze=freeze,all_execution_gates_held=True)))

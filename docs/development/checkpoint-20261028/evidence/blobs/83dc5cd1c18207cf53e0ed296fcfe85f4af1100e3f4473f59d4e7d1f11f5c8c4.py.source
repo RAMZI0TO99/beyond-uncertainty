@@ -1,0 +1,119 @@
+"""Reviewer-owned Source/AST/literal accounting. No subject import or function call."""
+import ast
+import base64
+import datetime
+import hashlib
+import json
+from pathlib import Path
+import zlib
+
+R=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003')
+P=R/'m3_peer_contracts_016'
+I=P/'i13'
+O=R/'saved_once006_partition_failure_review_001'
+subjects=[];checks=[];evidence=[]
+def pin(p):
+    raw=p.read_bytes();d=dict(path=str(p),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest());subjects.append(d);return raw
+def read_source(name,size,sha):
+    p=I/name;raw=pin(p);assert len(raw)==size and hashlib.sha256(raw).hexdigest()==sha
+    s=raw.decode('utf8');return p,s,ast.parse(s)
+def ck(name,passed,proof):
+    assert name not in {x['name']for x in checks}
+    checks.append(dict(name=name,passed=bool(passed),evidence=proof))
+def nodes(x):
+    if type(x)is dict:return 1+sum(1+nodes(v)for v in x.values())
+    if type(x)is list:return 1+sum(nodes(v)for v in x)
+    assert x is None or type(x)in(bool,int,str)
+    return 1
+def fn(t,name):return next(n for n in ast.walk(t)if isinstance(n,ast.FunctionDef)and n.name==name)
+def method(t,cls,name):return next(n for c in t.body if isinstance(c,ast.ClassDef)and c.name==cls for n in c.body if isinstance(n,ast.FunctionDef)and n.name==name)
+def seg(path,s,start,end,purpose):
+    evidence.append(dict(path=str(path),start_line=start,end_line=end,purpose=purpose,exact_UTF8_lines='\n'.join(s.splitlines()[start-1:end])))
+
+pp,ps,pt=read_source('validate_selected_role_publisher_metadata_004.py',65507,'f1df1975bee9c7fcd546f4c94f9d09a6371165aea83b6dcaa783f0ad7d7dd6bc')
+mp,ms,mt=read_source('validate_M3_guard_contract_metadata_009.py',63213,'b91eefd28fb8d120addd510949e2cca82b310379da7fa81ec3ddd435285d49f2')
+fp,fs,ft=read_source('exercise_M3_guard_and_publisher_metadata_memory_012.py',535712,'6095dd20159a172e1ab2585d9d5d515ce1f64ed16dd5b5f480f5a2e4a15d6ea0')
+hp,hs,ht=read_source('I13_NEW_OUTER_ENVELOPE_FIXTURE_HELPER_009.py.source',32098,'ff7f5bd066262d05ea17e519ca2cc53dcd581b63c8f5e52b50d121fe4e2b0d93')
+cp=P/'m3_protocol_audit_001/I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_007.json'
+catraw=pin(cp);assert len(catraw)==219028 and hashlib.sha256(catraw).hexdigest()=='d565de0ef802629303403570437e951247c0bc6b16d2a9c8276d56aa2aa3b9ea'
+cat=json.loads(catraw)
+fix=ast.literal_eval(next(n.value for n in ft.body if isinstance(n,ast.Assign)and any(isinstance(x,ast.Name)and x.id=='FIXED'for x in n.targets)))
+decoded={}
+for name in ('base_catalogue','historical45','M3_inventory17','predecessor_plan'):
+    entry=fix[name];raw=zlib.decompress(base64.b64decode(entry['compressed_base64'],validate=True))
+    assert len(raw)==entry['pin']['bytes']and hashlib.sha256(raw).hexdigest()==entry['pin']['sha256']
+    actual=pin(Path(entry['pin']['path']));assert actual==raw
+    decoded[name]=json.loads(raw)
+ck('all_subjects_current_whole_pins_verified',len(subjects)==9,subjects)
+for name,source,tree in [('publisher',ps,pt),('M3',ms,mt)]:
+    tr=ast.get_source_segment(source,fn(tree,'_tree'))
+    ck(name+'_charged_tree_counts_container_key_value_nodes',all(s in tr for s in ('counter[0] += 1',"'E_NODE_BUDGET'"))and len([n for n in ast.walk(fn(tree,'_tree'))if isinstance(n,ast.Call)and isinstance(n.func,ast.Name)and n.func.id=='_tree'])>=3,[name,'_tree',70,91])
+    sr=ast.get_source_segment(source,method(tree,'_Store','record'))
+    ck(name+'_cache_decodes_each_distinct_body_once','not in' in sr and '_decode(' in sr and '.cache[' in sr,[name,'_Store.record'])
+    ctor=ast.get_source_segment(source,method(tree,'_Graph','__init__'))
+    ck(name+'_mandatory_common_and_base_decoded',all(s in ctor for s in ('.record(CATALOGUE_PIN)',"['peer_base_catalogue']")),[name,'_Graph.__init__'])
+    common=ast.get_source_segment(source,method(tree,'_Graph','common'))
+    ck(name+'_current_synthetic_selection_decoded',".record(selection['selection'])" in common,[name,'_Graph.common'])
+
+ck('common_catalogue_cost_exact',nodes(cat)==9373,[str(cp),nodes(cat)])
+ck('base_catalogue_cost_exact',nodes(decoded['base_catalogue'])==2259,[fix['base_catalogue']['pin'],2259])
+ck('inventory_cost_exact',nodes(decoded['M3_inventory17'])==6004,[fix['M3_inventory17']['pin'],6004])
+oldrows=decoded['historical45']['rows']
+ck('old45_rows_cost_exact',len(oldrows)==45 and nodes(oldrows)==1126,[fix['historical45']['pin'],1126])
+newbase=ast.get_source_segment(fs,fn(ft,'_new_base'))
+ck('synthetic_selection_rows_keep_node_type_shape',all(s in newbase for s in ("rows=copy.deepcopy(old['rows'])","if role=='composer':continue","row['predecessor']=_fixed('predecessor_'+role)[0]",'selected_ordinal=1,must_change_Source_bytes=True')), [str(fp),'_new_base'])
+ck('selection_shape13_four_pins_and_eight_scalars',cat['schemas']['selection13']['field_count']==13 and 'current_complete45_inventory=' in newbase and 'current_selection=' in newbase and 'new_canonical_lease=' in newbase and 'current_owner_scope=' in newbase,[str(fp),'_new_base',str(cp),'selection13'])
+selection_cost=1+13+1126+4*7+8
+ck('synthetic_selection_cost_1176',selection_cost==1176,[dict(container=1,keys=13,rows=1126,four_fact3_values=28,eight_scalar_values=8)])
+
+roles=cat['M3_complete_stage_roles']['capture']
+ck('capture_exact_three_distinct_receipts',len(roles)==3 and len(set(roles))==3,roles)
+deps=cat['original_required_dependencies']['capture']
+ck('capture_exact_five_prior_dependencies',len(deps)==5 and len(set(deps))==5,deps)
+bindings=decoded['predecessor_plan']['bindings']
+renew={'guard_profile_sha256':'profile','guard_harness_static_review_sha256':'static','preparer_static_review_sha256':'metadata_peer'}
+carried=[k for k in bindings if k not in renew]
+ck('capture_binding_roster_nine_with_six_carried_sources',len(bindings)==9 and len(carried)==6 and all('binding_'+k in fix for k in carried),list(bindings))
+ck('six_fixed_binding_source_paths_are_distinct',len({fix['binding_'+k]['pin']['path'].casefold()for k in carried})==6,[fix['binding_'+k]['pin']for k in carried])
+init=ast.get_source_segment(fs,method(ft,'_M3Build','__init__'))
+prior=ast.get_source_segment(fs,method(ft,'_M3Build','prior'))
+ck('capture_binding_proofs_two_unique_pins_for_each_binding',"o.proof('binding_proof_'+key,[sp],5,6)" in init and "supports[key]=dict(source=sp,different_review=sr,Root_adoption=sa)" in init,[str(fp),391,395])
+ck('each_prior_declares_exact_four_unique_input_paths',all(s in prior for s in ('dep_canonical_','dep_reference_','dep_pub_','dep_recon_','original_publication=pp','late_reconciliation=rr')), [str(fp),435,452])
+ck('declaration_inputs_deduplicate_whole_pin_paths',"declared=_ow_pins(facts)+_ow_pins(self.owner)+[facts_pin,source,api]+[a['predecessor']for a in artifacts]" in init and "{p['path']:p for p in declared}" in init,[str(fp),413,417])
+ck('all_created_paths_must_be_unique_before_hypothetical_success',"all(r['pin']['path'].casefold() != path.casefold() for r in self.b['records'])" in hs,[str(hp),76,83])
+roster_categories=dict(tool4_lease5_selection3_inventory1=13,prior_five_times_four_unique=20,binding_six_fixed_plus_eighteen_reviews_and_adoptions=24,owner_scope_review_adoption=3,facts_and_three_predecessors=4)
+N=sum(roster_categories.values())
+ck('capture_declared_input_roster_conservative_64',N==64,[roster_categories])
+ck('purpose_inputs_are_that_same_roster',"purpose=dict(schema_version=2,stage=stage,role=role,facts=facts_pin,inputs=inputs,output_paths=outputs)" in init,[str(fp),417])
+ck('each_receipt_embeds_complete_same_purpose_inputs',"stage_purpose=purpose" in init and "metadata_Source_provenance=provenance" in init,[str(fp),430,431])
+ck('each_receipt_has_one_observation_for_each_input',"for pin in inputs:" in init and "finite_actual_Source_observations=observations" in init,[str(fp),420,431])
+obskeys=cat['schemas']['M3_read_observation9']['exact_keys']
+ck('observation_is_exact9_with_two_raw9_and_shared7',len(obskeys)==9 and set(obskeys)=={'path','sha256','bytes','cap','path9','descriptor9','shared_identity_indexes','two_read_match','observed_utc'} and "[0,1,2,3,6,7,8]" in init,[str(cp),'M3_read_observation9',str(fp),427])
+observation_cost=1+9+6+2*(1+9)+(1+7)
+fact3_cost=1+3+3
+ck('observation44_and_fact3_7_exact_charge',observation_cost==44 and fact3_cost==7,[dict(observation_components=[1,9,6,20,8],fact3_components=[1,3,3])])
+m3body=ast.get_source_segment(ms,fn(mt,'_m3'))
+ck('child_explicitly_decodes_every_artifact_receipt',"for a in artifacts:" in m3body and "receipt = g.s.record(a['author_receipt'])" in m3body,[str(mp),673,680])
+ck('parent_prime_recurses_into_author_and_receipt_edges',"g.prime(author)" in ast.get_source_segment(ps,fn(pt,'_prewrite')) and 'q2.prime(raw)' in ast.get_source_segment(ps,method(pt,'_Graph','prime')) and "'author_receipt'" in ps,[str(pp),350,372,664,678])
+ck('child_inventory_decode_mandatory_before_success',"inventory = g.s.record(INVENTORY_PIN)" in m3body,[str(mp),659,662])
+direct=ast.get_source_segment(ps,fn(pt,'_direct'))
+ck('parent_adds_child_total_without_counter_reset',"g.s.count[0] += view['charged_metadata_nodes']" in direct and "g.s.count[0] <= 50000" in direct,[str(pp),549,551])
+receipt_subtrees=len(roles)*N*(observation_cost+fact3_cost)
+fixed=9373+2259
+lower_bound=2*(fixed+selection_cost+receipt_subtrees)+6004
+ck('capture_receipt_subtrees_each_cache_at_least_9792',receipt_subtrees==9792,[dict(artifacts=3,inputs=64,observation=44,purpose_fact3=7)])
+ck('capture_parent_combined_lower_bound_51204_exceeds50000',lower_bound==51204 and lower_bound>50000,[dict(common_plus_base_per_cache=fixed,selection_per_cache=selection_cost,receipt_subtrees_per_cache=receipt_subtrees,mandatory_child_inventory=6004,combined_lower_bound=lower_bound,unchanged_cap=50000)])
+ck('observed_template_pair_is_a_different_stage',cat['M3_complete_stage_roles']['templates']!=roles and cat['original_required_dependencies']['templates']==[],[dict(template_roles=cat['M3_complete_stage_roles']['templates'],capture_roles=roles)])
+for path,text,a,b,purpose in [(pp,ps,70,108,'charged tree semantics and whole decode'),(pp,ps,142,147,'per-path cache'),(pp,ps,315,334,'fixed common/base decodes'),(pp,ps,350,372,'recursive prime all author receipts'),(pp,ps,533,552,'combined child charge and unchanged 50k cap'),(mp,ms,633,660,'child common and mandatory inventory'),(mp,ms,673,704,'all artifact receipts and exact purpose inputs'),(fp,fs,378,395,'capture dependencies and nine separate binding proofs'),(fp,fs,413,431,'declared inputs and repeated receipt subtree layout'),(hp,hs,267,269,'raw9 width and shared identity width')]:seg(path,text,a,b,purpose)
+assert all(x['passed']for x in checks),[x['name']for x in checks if not x['passed']]
+limit=('Source-only conservative arithmetic for the current capture-stage parent composition with three outputs and unchanged kernels. Hypothetical success requires at least 51,204 combined charged nodes before many further mandatory costs, exceeding the unchanged 50,000 combined cap. Earlier guards may reject first; no runtime guard/cost was measured, no claim about a particular saved first guard follows. This is not the templates-stage capture_template pair observed with E_NODE_BUDGET in attempt006; its distinct roster/output count needs separate analysis. No target/fixture/helper function was called, no cache/counter reset, sharing, guard, schema, result, port, cap, or Source edit is proposed or accepted by this accounting.')
+now=datetime.datetime.now(datetime.timezone.utc).isoformat()
+common=dict(schema_version=1,reviewer='/root/i13_final_review',created_utc=now,verdict='PASS_I13_SOURCE_ONLY_CAPTURE_STAGE_CONSERVATIVE_NODE_LOWER_BOUND_ONLY',subjects=subjects,checks_passed=len(checks),checks_failed=0,claim_limit=limit,target_execution=False,tests_executed=False,native_Parser_executed=False,operational_authority=False,scientific_authority=False,actual_family_publication=False)
+full=dict(common,record_type='Independent_I13_capture_stage_node_lower_bound_Source_full_proof',checks=checks,Source_evidence=evidence,static_accounting=dict(input_roster_categories=roster_categories,input_count=64,artifact_count=3,observation9_nodes=44,fact3_nodes=7,receipt_subtrees_per_cache=9792,common_base_per_cache=11632,synthetic_selection_per_cache=1176,child_inventory=6004,combined_lower_bound=51204,cap=50000),omitted_nonnegative_costs=['record ingestion and context','parent/child packet bodies and all other receipt fields','owner and lease bodies and their proofs','stage facts, purpose, generic proofs and adoptions','role drafts/predecessors and port APIs','parent purpose/publication/reconciliation and proofs','child result and parent decode/output result'])
+def write(path,obj):
+    with path.open('xb')as f:f.write((json.dumps(obj,ensure_ascii=False,sort_keys=True,indent=2,allow_nan=False)+'\n').encode('utf8'))
+out=O/'INDEPENDENT_I13_CAPTURE_STAGE_NODE_LOWER_BOUND_SOURCE_FULL_PROOF_001.json';write(out,full)
+raw=out.read_bytes();proof=dict(path=str(out),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+cap=O/'INDEPENDENT_I13_CAPTURE_STAGE_NODE_LOWER_BOUND_SOURCE_CAPSULE_001.json';write(cap,dict(common,record_type='Independent_I13_capture_stage_node_lower_bound_Source_capsule',full_proof=proof))
+for p in(out,cap):
+    raw=p.read_bytes();print(json.dumps(dict(path=str(p),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest(),checks_passed=len(checks))))

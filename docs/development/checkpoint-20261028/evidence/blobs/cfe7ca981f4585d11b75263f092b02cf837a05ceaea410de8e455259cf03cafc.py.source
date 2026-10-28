@@ -1,0 +1,130 @@
+"""Independent saved-file review only. No subject import, function, export, or rerun."""
+import ast
+import datetime
+import hashlib
+import json
+from pathlib import Path
+import stat
+
+R=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003')
+P=R/'m3_peer_contracts_016'
+A=P/'owned_memory_runs/attempt007'
+O=R/'saved_once007_partition_pass_review_001'
+checks=[];subjects=[];seen={}
+def ck(name,ok,evidence):
+    assert name not in {r['name']for r in checks}
+    checks.append(dict(name=name,passed=bool(ok),evidence=evidence))
+def pairs(rows):
+    d={}
+    for k,v in rows:
+        if k in d:raise ValueError('duplicate JSON key')
+        d[k]=v
+    return d
+def bad(token):raise ValueError('noninteger JSON token '+token)
+def dec(raw):return json.loads(raw.decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def fp(path):
+    raw=path.read_bytes();return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest()),raw
+def read(name,path,expected=None,JSON=False):
+    path=Path(path);st=path.lstat()
+    ck(name+'_ordinary_absolute',path.is_absolute()and stat.S_ISREG(st.st_mode)and not(st.st_file_attributes&1024),str(path))
+    fact,raw=fp(path)
+    ck(name+'_exact_pin',expected is None or fact==expected,fact)
+    ck(name+'_within_original_file_cap',len(raw)<=2097152,[fact,2097152])
+    if str(path)not in seen:seen[str(path)]=fact;subjects.append(fact)
+    if JSON:
+        value=dec(raw);ck(name+'_strict_JSON',type(value)is dict,fact);return value,fact,raw
+    return raw,fact
+def exact(name,a,b):ck(name,a==b,[a,b])
+def fact_expected(path,size,sha):return dict(path=str(path),bytes=size,sha256=sha)
+
+wp=P/'ROOT_I13_ONCE007_PARENT_TOOL_CONSOLE_AND_EXIT_WITNESS_001.json'
+w,wf,wr=read('Root_parent_witness',wp,fact_expected(wp,2887,'48bcea6ce7b626ecc78291b475879eecbd1da1d57b66c062b3f86734eb1469e2'),True)
+rp=A/'SUPERVISOR_RESULT_001.json'
+result,rf,rr=read('saved_supervisor_result',rp,fact_expected(rp,6968,'2c412c21e181c32c8dd5d747a98fdc7ecd0a55036212d5d2ef72a6f8b709441c'),True)
+child,cf,cr=read('complete_child_result',A/'CHILD_RESULT_001.json',result['child_result']['pin'],True)
+tool,tf,tr=read('actual_parent_tool_return',A/'ROOT_ACTUAL_PARENT_EXEC_TOOL_RETURN_001.json',w['actual_parent_tool_return'],True)
+scope,sf,sr=read('consumed_scope007',Path(w['scope']['path']),fact_expected(Path(w['scope']['path']),5928,'eb995257074a1babaca91349cbcea240a8f1d7651fd54dba61b1e3c20a3d3982'),True)
+entry,ef,er=read('owned_child_entry',A/'CHILD_ENTRY_001.json',None,True)
+claim,claimf,claimr=read('consumed_claim',A/'SCOPE_CLAIM_001.json',result['claim'],True)
+stdout,of=read('stdout',A/'CHILD_STDOUT_001.txt',result['stdout'])
+stderr,errf=read('stderr',A/'CHILD_STDERR_001.txt',result['stderr'])
+console,conf=read('parent_console',A/'PARENT_TOOL_STDOUT_RETAINED_001.txt',w['retained_parent_console'])
+plan,planf,planr=read('plan004',Path(scope['partition_plan']['path']),scope['partition_plan'],True)
+superraw,superf=read('Supervisor009',Path(scope['supervisor']['path']),scope['supervisor'])
+adopt,adoptf,adoptr=read('Root_SourceSet3_adoption',Path(scope['source_adoption']['path']),scope['source_adoption'],True)
+pre,pre_f,pre_r=read('saved_prelaunch007',Path(scope['prelaunch']['path']),scope['prelaunch'],True)
+for key in ('modules','APIs','fixtures'):
+    for name,value in scope[key].items():
+        raw,fact=read(key+'_'+name,Path(value['path']),value)
+        ck('Root_adoption_covers_'+key+'_'+name,fact in adopt['subjects'],[fact,adoptf])
+catraw,catf=read('catalogue007',Path(scope['catalogue']['path']),scope['catalogue'])
+ck('Root_adoption_covers_catalogue',catf in adopt['subjects'],[catf,adoptf])
+ck('Root_adoption_covers_partition_plan',planf in adopt['subjects'],[planf,adoptf])
+ck('Root_adoption_covers_supervisor',superf in adopt['subjects'],[superf,adoptf])
+review_pin=adopt['review_adoptions'][0]['capsule']
+source_review,review_f,review_r=read('genuine_SourceSet3_review289',Path(review_pin['path']),review_pin,True)
+review_subjects=list(source_review['subjects'].values())if type(source_review['subjects'])is dict else source_review['subjects']
+ck('current_exactSource_review_retained',source_review['checks_passed']==289 and source_review['checks_failed']==0 and all(v in review_subjects for v in [scope['modules']['m3'],scope['modules']['peer'],scope['modules']['publisher'],scope['fixtures']['m3_publisher'],scope['fixtures']['peer'],planf,superf]),review_f)
+
+for name,a,b in [('parent_result',w['supervisor_result'],rf),('console_result',w['retained_console_value']['supervisor_result'],rf),('result_child',result['child_result']['pin'],cf),('result_scope',result['scope'],sf),('child_scope',child['scope'],sf),('entry_scope',entry['scope'],sf),('claim_scope',claim['scope'],sf),('parent_scope',w['scope'],sf),('result_claim',result['claim'],claimf),('parent_supervisor',w['supervisor'],superf),('claim_supervisor',claim['supervisor'],superf),('parent_console',w['retained_parent_console'],conf),('result_stdout',result['stdout'],of),('result_stderr',result['stderr'],errf),('parent_actualtool',w['actual_parent_tool_return'],tf)]:exact(name+'_exact_join',a,b)
+console_value=dec(console)
+actual_value=dec(tool['output'].encode('utf8'))
+exact('retained_consoles_exact_JSON_value',console_value,actual_value)
+exact('Root_witness_retained_console_exact_JSON_value',w['retained_console_value'],console_value)
+ck('actual_tool_output_exact_retained_console_bytes',tool['output'].encode('utf8')==console,[tf,conf])
+exact('embedded_child_matches_saved_complete',result['child_result']['value'],child)
+ck('Root_actual_tool_exit0_chunk6dd9ae',tool['Root_observed_tool_exit_code']==0 and tool['chunk_id']=='6dd9ae' and tool['wall_time_seconds']=='2.5657119' and w['Root_observed_tool_exit_code']==0,[tf,wf])
+ck('child_normal_exit0_parent_acceptance_true',result['exit_code']==0 and console_value['exit_code']==0 and console_value['accepted']is True and w['Root_partition_acceptance']is True,[rf,console_value,wf])
+ck('Root_whole936_not_accepted',w['Root_whole936_suite_acceptance']is False,wf)
+ck('no_refusal_in_complete_pass',result['refusal']is None and console_value['refusal']is None,[rf,console_value])
+ck('exact_owned_PID302992',result['owned_pid']==child['owned_pid']==entry['pid']==console_value['owned_pid']==302992,[rf,cf,ef,console_value])
+ck('owned_reap_drain_EOF_threads',result['reaped']is True and result['streams_drained']is True and result['stream_threads_finished']is True and all(result['actual_stream_EOF'][k]is True for k in ('stdout','stderr')) and console_value['reaped']is True and console_value['streams_drained']is True and all(console_value['actual_stream_EOF'][k]is True for k in ('stdout','stderr')),[rf,console_value])
+ck('normal_completion_no_termination_or_kill',result['terminated']is False and result['killed']is False,rf)
+ck('all_capture_custody_errors_null',result['custody_error']is None and result['child_result_error']is None and all(result['stream_pump_errors'][k]is None and console_value['stream_pump_errors'][k]is None for k in ('stdout','stderr')),[rf,console_value])
+ck('distinct_preparation_final_elapsed_exact',result['acceptance_elapsed_nanoseconds']==2265000000 and result['elapsed_milliseconds']==2265 and console_value['final_elapsed_nanoseconds']==2281000000,[dict(preparation_nanoseconds=2265000000,final_nanoseconds=2281000000,actual_tool_wall_seconds=tool['wall_time_seconds'])])
+ck('elapsed_inside_original50_60',0<result['acceptance_elapsed_nanoseconds']<=console_value['final_elapsed_nanoseconds']<50000000000<60000000000,[rf,console_value])
+budgets=dict(total_seconds=60,wait_seconds=50,cleanup_seconds=10,reap_seconds=5,stdout_maximum_bytes=2097152,stderr_maximum_bytes=2097152)
+ck('original_budgets_caps',scope['budgets']==result['budgets']==budgets and console_value['total_budget_nanoseconds']==60000000000,[budgets])
+ck('exact_stream_byte_accounting',result['observed_stream_bytes']==dict(stdout=len(stdout),stderr=len(stderr)) and len(stdout)==2351 and stderr==b'',[of,errf])
+ck('complete_diagnostic_and_original_allpass',result['diagnostic_complete_case_catalogue_valid']is True and result['actual_case_catalogue_valid']is True and result['diagnostic_failure_count']==0 and result['acceptance_at_record_preparation']is True and console_value['acceptance_at_record_preparation']is True,[rf,console_value])
+ck('final_acceptance_has_saved_console_and_actual_parent_exit0',result['final_acceptance_requires_saved_console_and_parent_exit0']is True and console_value['accepted']is True and tool['Root_observed_tool_exit_code']==0,[rf,conf,tf])
+ck('scope007_consumed_once_no_replay',scope['maximum_suite_invocations']==claim['suite_invocations_maximum']==w['scope_invocations_consumed']==1 and w['claim_reuse_permitted']is False and w['no_rerun_performed']is True,[sf,claimf,wf])
+ck('SourceSet3_partition009_exact',scope['partition_id']=='I13_PARTITION_009' and scope['source_adoption']==adoptf and adopt['original_case_count']==936 and adopt['partition_count']==30,[sf,adoptf])
+partition=next(p for p in plan['partitions']if p['partition_id']==scope['partition_id'])
+names=partition['case_names']
+name_digest=hashlib.sha256(json.dumps(names,separators=(',',':'),ensure_ascii=True).encode()).hexdigest()
+ck('planned32_exact_name_digest',partition['case_count']==32 and len(names)==32 and len(set(names))==32 and name_digest==result['expected_case_names_sha256']=='71023ae9c4a41d4b0248e17480756e931fcbbb8304e59fa3e878078ef7c7d9db' and result['expected_case_count']==32,[partition['partition_id'],names,name_digest])
+ck('planned32_exact_LF_digest',hashlib.sha256(('\n'.join(names)+'\n').encode()).hexdigest()==partition['case_names_LF_sha256'],[partition['case_names_LF_sha256']])
+ck('partition_009_original_ordinals257_288',partition['first_ordinal']==257 and partition['last_ordinal']==288 and plan['original_case_names'][256:288]==names,[partition['first_ordinal'],partition['last_ordinal']])
+ck('only_nonempty_PEER_fixture_selected',len(partition['fixture_selections'])==1 and partition['fixture_selections'][0]['kind']=='PEER' and partition['fixture_selections'][0]['case_names']==names and partition['fixture_selections'][0]['Source']==scope['fixtures']['peer'],partition['fixture_selections'])
+childkeys={'schema_version','record_type','cases','passed','failed','failures','metadata_only','actual_family_publication','target_execution','operational_authority','scientific_authority','owned_pid','scope','created_utc'}
+ck('child_closed14_schema',set(child)==childkeys and child['schema_version']==1 and type(child['schema_version'])is int and child['record_type']=='I13_owned_synthetic_memory_case_results',cf)
+ck('cases_closed2_order_builtinbool',type(child['cases'])is list and all(type(c)is dict and set(c)=={'name','passed'}and type(c['name'])is str and type(c['passed'])is bool for c in child['cases'])and [c['name']for c in child['cases']]==names,child['cases'])
+passed=sum(c['passed']is True for c in child['cases']);failed=sum(c['passed']is False for c in child['cases'])
+ck('independent32PASS0FAIL',passed==32 and failed==0 and type(child['passed'])is type(child['failed'])is int and child['passed']==passed and child['failed']==failed and child['failures']==[],[dict(passed=passed,failed=failed),cf])
+ck('diagnostic_closed9_projection_honest',set({k:child[k]for k in ('cases','passed','failed','failures','metadata_only','actual_family_publication','target_execution','operational_authority','scientific_authority')})=={'cases','passed','failed','failures','metadata_only','actual_family_publication','target_execution','operational_authority','scientific_authority'} and child['metadata_only']is True and child['failures']==[],cf)
+events=[dec(line)for line in stdout.splitlines()if line]
+ck('entry_completion_exact32_32_0',len(events)==34 and events[0]==dict(event='SUITE_ENTRY',case_count=32,partition_id='I13_PARTITION_009')and events[-1]==dict(event='SUITE_COMPLETE',passed=32,failed=0),[events[0],events[-1]])
+for idx,(event,name)in enumerate(zip(events[1:-1],names),1):ck('event_'+str(idx)+'_exact_PASS',event==dict(event='CASE_PASS',name=name),event)
+ck('complete32event_order',[e['name']for e in events[1:-1]]==names,[names])
+ck('known_pass32_fail0_contiguous32',result['known_case_pass_events_from_complete_stdout']==32 and result['known_case_fail_events_from_complete_stdout']==0 and result['known_case_pass_prefix_from_complete_stdout']==32 and result['known_suite_entry_from_complete_stdout']is True and result['progress_unknown_without_complete_streams']is False,[rf])
+ck('all32_established_only_32_of936_by_this_attempt',w['completed_case_events']==32 and w['known_pass_events']==32 and w['known_fail_events']==0 and w['case_outcomes_not_established']==0 and plan['original_case_count']==936,[dict(this_partition_established=32,this_partition_unestablished=0,other_cases_not_measured_by_this_attempt=904,whole936_accepted=False)])
+ck('prelaunch_Sourcejoins',pre['source_adoption']==scope['source_adoption']and pre['source_scope']==scope['source_scope']and pre['partition_id']==scope['partition_id'],[pre_f,sf])
+for tag,obj in [('result',result),('child',child),('scope',scope),('witness',w),('actualtool',tool)]:ck(tag+'_authority_allfalse',all(obj.get(k)is False for k in ('actual_family_publication','target_execution','operational_authority','scientific_authority')) if tag!='actualtool' else all(obj.get(k)is False for k in ('target_execution','operational_authority','scientific_authority')),[tag])
+ck('physical_host_PID_absence_not_proved',result['physical_host_or_PID_absence_proved']is False and w['physical_host_or_PID_absence_proved']is False and pre['physical_handle_absence_claimed']is False and pre['whole_host_quiet_claimed']is False,[rf,wf,pre_f])
+ck('Root_author_reviewer_separate',w['author']=='/root'and adopt['author']=='/root'and '/root/i13_final_review'not in(w['author'],adopt['author']),[wf,adoptf])
+ck('review_no_rerun_or_whole_suite_acceptance',True,'Only saved bytes, strict JSON and existing Source pins were read. No target/fixture/kernel/helper export or supervisor was imported or invoked. Actual saved32case execution is distinct from reviewer tests_executed=False. No original family, Native8, Parser, runtime, science, physical host absence or automatic admission follows.')
+ck('prior_attempt006_failures_preserved_separate',True,'SourceSet3 attempt006 partition001 remains dated20PASS12FAIL. This attempt007 partition009 is disjoint and does not erase, reinterpret or replace those failures; no combined full-suite qualification is claimed.')
+ck('unique_closed3_checks',all(set(c)=={'name','passed','evidence'}and type(c['passed'])is bool for c in checks)and len({c['name']for c in checks})==len(checks),'closed unique names / builtin bool / evidence')
+assert all(c['passed']for c in checks),[c['name']for c in checks if not c['passed']]
+now=datetime.datetime.now(datetime.timezone.utc).isoformat()
+limit=('Genuine saved-result review only, no rerun. SourceSet3 consumed scope007 partition009 establishes its exact ordered32 peer cases:32PASS0FAIL, contiguous PASS prefix32, complete diagnostic/allpass acceptance, child PID302992 normalexit0 and actual Root parent tool6dd9ae exit0. Preparation2.265s and final2.281s are distinct saved samples; actual tool wall2.5657119s is separate. Owned process reaped, streams drained, both EOF and threads finished, all capture/custody errors null, no terminate/kill. Only this32-case partition is accepted; this attempt supplies no outcome for the other904 original cases and no whole936 qualification. Prior SourceSet3 attempt006 partition001 failures and all earlier histories remain preserved. Scope consumed once, no replay or new admission. No physical host/PID/handle absence, actual family publication, Native8, Parser, runtime, science, target/helper export or wider authority follows.')
+common=dict(schema_version=1,reviewer='/root/i13_final_review',created_utc=now,verdict='PASS_I13_ONCE007_SAVED_SOURCESET3_PARTITION009_32PASS_AND_OWNED_CLEANUP_ONLY',subjects=subjects,checks_passed=len(checks),checks_failed=0,claim_limit=limit,target_execution=False,tests_executed=False,native_Parser_executed=False,operational_authority=False,scientific_authority=False,actual_family_publication=False)
+full=dict(common,record_type='Independent_I13_once007_saved_partition_pass_full_proof',checks=checks,complete_stdout_events=events,recomputed_progress=dict(planned=32,completed=32,passed=32,failed=0,contiguous_pass_prefix=32,partition_case_outcomes_not_established=0,original_suite_cases=936,other_original_cases_not_measured_by_this_attempt=904,whole936_acceptance=False),saved_Root_parent_witness=w,saved_supervisor_result=result,saved_child_result=child,retained_actual_tool_return=tool,retained_parent_console_value=console_value,reviewer_tests_executed_field_meaning='False means this reviewer performed no rerun. Saved original I13 synthetic-memory kernel/fixture execution occurred under the consumed scope; literal saved flags are retained.',reviewer_metadata_correction='First own reader treated the historical Source review subjects mapping as a list and raised TypeError before any proof write. Corrected only reviewer projection to mapping values; exact saved subjects and all Source files unchanged, no target calls.')
+def write(p,v):
+    with p.open('xb')as f:f.write((json.dumps(v,sort_keys=True,ensure_ascii=False,indent=2,allow_nan=False)+'\n').encode('utf8'))
+fullp=O/'INDEPENDENT_I13_ONCE007_SAVED_PARTITION_PASS_FULL_PROOF_001.json';write(fullp,full)
+fullfact,_=fp(fullp)
+capp=O/'INDEPENDENT_I13_ONCE007_SAVED_PARTITION_PASS_CAPSULE_001.json';write(capp,dict(common,record_type='Independent_I13_once007_saved_partition_pass_capsule',full_proof=fullfact))
+for p in(fullp,capp):
+    f,_=fp(p);print(json.dumps(dict(f,checks_passed=len(checks),checks_failed=0)))

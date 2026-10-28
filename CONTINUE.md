@@ -1,3 +1,9 @@
+**Current documentation and handoff - October 28, 2026.** Read the [current checkpoint](docs/development/checkpoint-20261028/CURRENT_CHECKPOINT.md) before the complete dated history below. I11 has664 and I12 has1,089 accepted synthetic metadata cases; the I13 group has32 complete (20 PASS/12 E_NODE_BUDGET), with904 unestablished and11 compact-ABI blockers. Retention exporter/API/supervisor and capture protocol/request have Source/design acceptance only; capture remains held.
+
+Bootstrap004 is **FAILED_UNRELEASED_CONSUMED**. Its saved failure evidence is accepted; the operation and native preparation request are not. Source005 completion is peer-reported, not Root-qualified or launch-ready; Source015 was never adopted. Next: fresh Source-only review scope, reviewed metadata-reader correction, Source005 review and a process-custody/cleanup contract before any distinct successor or later exact admission. Never replay004. All capture, actual-family, Native8, Parser, runtime and science gates remain held. This documentation/Git publication does not create STEP081 or renew any expired scope. All complete earlier bytes follow unchanged.
+
+---
+
 **Documentation and handoff refresh completed - October 17, 2026.** The refresh was committed and pushed as `1785a06a3b1d136bcb66bb895d350ffab699b540`, with local/remote parity and exact committed-file verification. Preparatory wording below is retained dated history and is closed by this completed publication. I10 implementation remains `75acc51`; I9 remains `471105e`. Continue with I2 external canonical receipt ABI qualification and producer/caller integration; actual family publication, Native8, Parser, runtime and science remain held. Git history records subsequent documentation changes. All complete prior document bytes remain below.
 
 ---

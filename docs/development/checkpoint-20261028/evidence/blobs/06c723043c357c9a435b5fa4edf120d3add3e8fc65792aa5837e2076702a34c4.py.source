@@ -1,0 +1,70 @@
+"""Author exact consumed-run selection metadata helper, no selection or tests."""
+import ast,base64,datetime as dt,hashlib,json
+from pathlib import Path
+R=Path(__file__).parent
+def pin(p):
+ b=p.read_bytes();return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+source=R/'prepare_I13_owned_run_metadata_bundles_002.py';s=source.read_text(encoding='utf8');prefix=s[:s.index('def create(')]
+prefix=prefix.replace("OUT=ROOT/'owned_run_metadata_bundles_001'","OUT=ROOT")
+extra=r'''
+def select(ordinal):
+    need(type(ordinal)is str and re.fullmatch(r'\d{3}',ordinal),'exact new selection ordinal')
+    scope=fresh();scopes=sorted(SUBJECTS.glob('ROOT_I13_ONCE_SYNTHETIC_MEMORY_SCOPE_*.json'))
+    need(bool(scopes),'nonempty consumed-scope inventory');runs=[];missing=[];allowed={};names=('claim','child_entry','child_result','stdout','stderr','supervisor_result')
+    leaves=('SCOPE_CLAIM_001.json','CHILD_ENTRY_001.json','CHILD_RESULT_001.json','CHILD_STDOUT_001.txt','CHILD_STDERR_001.txt','SUPERVISOR_RESULT_001.json')
+    for path in scopes:
+        need(re.fullmatch(r'ROOT_I13_ONCE_SYNTHETIC_MEMORY_SCOPE_\d{3}\.json',path.name),'canonical scope ordinal')
+        number=int(path.stem.rsplit('_',1)[1]);raw=body(path);sc=decode(raw);sp=pin(path,raw)
+        need(sc['author']=='/root'and sc['record_type']=='Root_I13_once_owned_synthetic_memory_scope'and type(sc['maximum_suite_invocations'])is int and sc['maximum_suite_invocations']==1,'recorded one-use own synthetic scope')
+        need(all(sc[k]is False for k in('target_execution','operational_authority','scientific_authority','actual_family_publication')),'held recorded authorities')
+        owned=SUBJECTS/('owned_memory_runs/attempt%03d'%number);expected={key:str(owned/leaf)for key,leaf in zip(names,leaves)}
+        need(type(sc['outputs'])is dict and sc['outputs']==expected,'exact consumed ordinal and six output namespace')
+        cp=owned/leaves[0];cr=body(cp);claim=decode(cr);claim_pin=pin(cp,cr)
+        need(claim['record_type']=='I13_once_scope_claim'and claim['scope']==sp and claim['supervisor']==sc['supervisor']and type(claim['suite_invocations_maximum'])is int and claim['suite_invocations_maximum']==1 and type(claim['parent_pid'])is int and claim['parent_pid']>0,'exact claimed scope/supervisor identity')
+        rp=owned/leaves[-1];rr=body(rp);result=decode(rr);result_pin=pin(rp,rr)
+        need(result['scope']==sp and result['claim']==claim_pin and result['reaped']is True and result['streams_drained']is True and result['custody_error']is None,'same claimed result closed custody')
+        eof=result['actual_stream_EOF'];errors=result['stream_pump_errors']
+        need(type(eof)is dict and set(eof)=={'stdout','stderr'}and all(type(v)is bool and v is True for v in eof.values()),'both exact literal EOF truths')
+        need(type(errors)is dict and set(errors)=={'stdout','stderr'}and all(v is None for v in errors.values()),'both stream errors absent')
+        need(all(result[k]is False for k in('target_execution','operational_authority','scientific_authority','actual_family_publication')),'no result authority inference')
+        pre=SUBJECTS/('ROOT_I13_FRESH_ONCE_PRELAUNCH_METADATA_%03d.json'%number);pre_raw=body(pre);need(pin(pre,pre_raw)==sc['prelaunch'],'exact consumed prelaunch identity')
+        witness=SUBJECTS/('ROOT_I13_ONCE%03d_PARENT_TOOL_CONSOLE_AND_EXIT_WITNESS_001.json'%number);wraw=body(witness);w=decode(wraw)
+        need(w['scope']==sp and w['supervisor_result']==result_pin and w['supervisor']==sc['supervisor'],'exact retained parent witness joins')
+        expected_present=[path,pre,witness]
+        for key,text in expected.items():
+            p=Path(text)
+            if os.path.lexists(p):
+                body(p);expected_present.append(p)
+            else:
+                need(key=='child_result'and result['child_result_absent']is True,'only honestly absent child result remains missing')
+                missing.append(dict(scope=sp,not_created_output=key,path=text))
+        need(type(result['child_result_absent'])is bool and result['child_result_absent']is(not os.path.lexists(owned/'CHILD_RESULT_001.json')),'actual child-result presence agrees')
+        for leaf in('PARENT_TOOL_STDOUT_RETAINED_001.txt','ROOT_ACTUAL_PARENT_EXEC_TOOL_RETURN_001.json'):
+            p=owned/leaf
+            if os.path.lexists(p):body(p);expected_present.append(p)
+        need(any(p.name=='PARENT_TOOL_STDOUT_RETAINED_001.txt'for p in expected_present),'actual retained parent console')
+        for p in expected_present:
+            need(eligible(p),'fixed allowed metadata domain');key=str(p).casefold();need(key not in allowed,'each exact original once');allowed[key]=p
+        runs.append(dict(consumed_scope=sp,supervisor_result=result_pin,claim=claim_pin,recorded_refusal=result['refusal'],recorded_child_result_absent=result['child_result_absent'],root_result_qualification_inferred=False))
+    actual=[]
+    for p in SUBJECTS.rglob('*'):
+        if eligible(p)and os.path.lexists(p):body(p);actual.append(p)
+    need({str(p).casefold()for p in actual}==set(allowed),'all eligible physical files belong to exact consumed closures; no orphans')
+    members=[pin(allowed[key])for key in sorted(allowed)]
+    need(1<=len(members)<=512 and sum(p['bytes']for p in members)<=67108864,'unchanged original per-file/count/payload bounds')
+    value=dict(schema_version=1,record_type='Root_I13_exact_consumed_owned_run_metadata_bundle_selection',author='/root',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),Source_scope=scope,Source_scope_Root_adoption=SCOPE_ADOPTION,members=members,member_count=len(members),original_member_bytes=sum(p['bytes']for p in members),consumed_runs=runs,absent_outputs_remain_absent=missing,maximum_metadata_file_bytes=CAP,maximum_actual_copy_rows=512,maximum_actual_copy_payload_bytes=67108864,selection='Exact same-buffer consumed scope/claim/prelaunch/result/witness and original output closure; every eligible physical file must match a consumed ordinal. Missing child results stay absent. No case or physical-host acceptance.',encoding='Whole opaque canonical Base64 only after separate exact selection review/Root adoption and helper Source review/Root adoption; actual reconstruction/candidate/creation independently reviewed separately.',original_files_modified=False,target_execution=False,tests_executed=False,actual_family_publication=False,operational_authority=False,scientific_authority=False)
+    out=ROOT/('I13_EXACT_OWNED_RUN_METADATA_BUNDLE_PLAN_'+ordinal+'.json');result=save(out,wire(value));fresh()
+    print(json.dumps(dict(plan=result,members=len(members),consumed_scopes=len(scopes),bundles_created=False)))
+
+if __name__=='__main__':
+    need(len(sys.argv)==2,'one exact fresh selection ordinal');select(sys.argv[1])
+'''
+# The raw fragment contains Python regex literals and requires single backslashes.
+extra=extra.replace('\\\\','\\');b=(prefix+extra).encode();ast.parse(b)
+p=R/'prepare_I13_exact_owned_run_bundle_selection_002.py'
+with p.open('xb')as h:h.write(b)
+old=R/'prepare_I13_exact_owned_run_bundle_selection_001.py'
+v=dict(schema_version=1,record_type='Root_I13_run_selection_builder002_strict_custody_and_same_buffer_Source_successor',author='/root',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),before=pin(old),before_complete_base64=base64.b64encode(old.read_bytes()).decode(),after=pin(p),inherited_guards_Source=pin(source),target_execution=False,tests_executed=False,actual_family_publication=False,operational_authority=False,scientific_authority=False)
+rp=R/'ROOT_I13_RUN_SELECTION_BUILDER002_STRICT_CUSTODY_SOURCE_AUTHOR_RECEIPT_001.json'
+with rp.open('xb')as h:h.write((json.dumps(v,sort_keys=True,indent=2)+'\n').encode())
+print(json.dumps(dict(Source=pin(p),receipt=pin(rp),calls=0)))

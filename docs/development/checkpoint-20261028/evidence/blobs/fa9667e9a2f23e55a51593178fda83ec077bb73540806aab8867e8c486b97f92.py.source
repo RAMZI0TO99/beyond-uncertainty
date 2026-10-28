@@ -1,0 +1,58 @@
+"""Human-authorized finite peer scheduling metadata; launches no work."""
+import ctypes,datetime as dt,hashlib,json,shutil
+from pathlib import Path
+R=Path(__file__).parent.parent;P=Path(r'D:\Aenv\pro3');D=P/'runs/coordination/cho51_provenance_numerical_worker_20261025_v6'
+def pin(p):
+ b=p.read_bytes();return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def load(p,sha=None):
+ if sha is not None:assert pin(p)['sha256']==sha
+ return json.loads(p.read_bytes())
+pins=load(D/'pins.json','745015ad931bfc86f6708bc7e440215e8c41095b81adde167d276952b9eb9c33')
+review=load(D/'source-review.json','62117d5f4d8fd567013ecba59a184e6cec2b0e48eb53dc2abb622d0a62bbe3fd')
+request=load(D/'compute-request_integration_001.json')
+assert review['accepted'] is True and review['remaining_actionable_findings']==[] and review['source_only'] is True
+assert review['tests_executed'] is False and review['model_executed'] is False and review['execution_admission'] is False
+assert review['files']==pins['reviewed_files'] and len(review['files'])==13
+files=[]
+for name,sha in review['files'].items():
+ p=P/name;assert p.resolve().is_relative_to(P.resolve()) and pin(p)['sha256']==sha;files.append(pin(p))
+assert request['phase']=='integration' and request['scope']==pins['phase_scopes']['integration'] and request['fixed_output']=='i1'
+assert request['tests_current_job']==0 and request['prior_accepted_tests']==63
+budget=dict(source_updates=0,restore_count=1,support_updates=1,gradient_updates=1,target_inference_calls=1,query_count=2,model_constructions=1,measured_cells=0)
+assert request['expected_numerical_budget']==budget==pins['phase_budgets']['integration']
+assert all(type(v) is int for v in request['expected_numerical_budget'].values())
+proofs={}
+for kind,name,sha in (('closeout','closeout-tests-result.json','719192e959c6c3c8dfee73898202c313596b05b00a600340a4ffb51d4ec7d519'),('review','tests-final-review.json','29043f329891eee6f31d003ccae7d9a3f151cbc817fdea9c7b07953975fc019b'),('lease','lease-closeout_tests_001.json','b0aefa58840a7c40361968ca9cc8285cac8232ffb41d047b5127312a676fe902')):
+ proofs[kind]=pin(D/name);assert proofs[kind]['sha256']==sha
+ assert request['accepted_tests_'+('lease_closeout' if kind=='lease' else kind)+'_path']==str(D/name)
+ assert request['accepted_tests_'+('lease_closeout' if kind=='lease' else kind)+'_sha256']==sha
+unit=load(D/'tests-final-review.json');closed=load(D/'lease-closeout_tests_001.json');result=load(D/'closeout-tests-result.json')
+assert unit['passed'] is True and unit['remaining_actionable_findings']==[] and unit['independent_reviewer']=='/root/readiness'
+assert unit['tests']==63 and unit['tests_closeout_sha256']==proofs['closeout']['sha256'] and unit['lease_closeout_sha256']==proofs['lease']['sha256']
+assert unit['scientific_admission'] is False and unit['tests_custody_released'] is True
+assert closed['closed'] is True and closed['full_compute_custody_explicitly_released'] is True and closed['jobs_consumed']==1 and closed['outstanding_owned_children']==0
+assert closed['integration_admitted'] is False and closed['automatic_retry_permitted'] is False and closed['scientific_admission'] is False
+assert result['passed'] is True and result['backend_calls']==0 and all(type(v) is int and v==0 for v in result['current_counter_ledger'].values())
+assert request['maximum_jobs']==1 and request['max_job_seconds']==600 and request['process_mib']==4096 and request['job_mib']==5120
+assert request['startup_ram_gib']==request['active_ram_gib']==4 and request['disk_gib']==20 and request['threads']==1 and request['gpu_hidden'] is True
+assert request['requested_window_seconds']==1200 and request['automatic_retry_permitted'] is False and request['scientific_admission'] is False
+assert request['maximum_pro3_active_agents_including_root']==2 and request['prior_grants_003_through_009_consumed_closed'] is True
+amend=load(D/'owner-resource-amendment.json','23f30ff00a0c004eae38b886dbef477965ef0369d4d28d17146dbc2c820324b7')
+assert amend['owner_instruction_exact']==request['owner_instruction_exact']=='use the available ram now!' and amend['scientific_admission'] is False
+release=load(R/'coordination/ROOT_RETAINED_PRO3_009_TESTS_AND_FULL_CUSTODY_RELEASE_REPORT_001.json')
+assert release['reported_full_compute_custody_released'] is True and release['grant_consumed_closed'] is True and release['Root_acceptance']['peer_result_accepted'] is False
+old=load(R/'coordination/PRO2_PRO3_COMPUTE_RELEASE_20261025_009.json','85af17f754ceae3a2e4eeaaf496b683ad16da28afef4a3b525cf196bc8171f0e')
+pauses=[Path(p) for p in old['all_five_pause_paths']];assert len(pauses)==5 and not any(p.exists() for p in pauses)
+class Memory(ctypes.Structure):
+ _fields_=[('length',ctypes.c_ulong),('load',ctypes.c_ulong)]+[(x,ctypes.c_ulonglong) for x in ('total_phys','available_phys','total_page','available_page','total_virtual','available_virtual','available_extended')]
+m=Memory();m.length=ctypes.sizeof(m);assert ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m))
+now=dt.datetime.now(dt.timezone.utc);resource=dict(observed_utc=now.isoformat(timespec='microseconds'),available_RAM_bytes=m.available_phys,disk_free_bytes=shutil.disk_usage(P).free)
+assert resource['available_RAM_bytes']>=4*1024**3 and resource['disk_free_bytes']>=20*1024**3
+scope=load(R/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_001.json');assert (dt.datetime.fromisoformat(scope['interval_end'])-now).total_seconds()>1260
+old.update(issued_utc=now.isoformat(timespec='microseconds'),window_start_utc=now.strftime('%Y-%m-%dT%H:%M:%SZ'),window_end_utc=(now+dt.timedelta(seconds=1200)).strftime('%Y-%m-%dT%H:%M:%SZ'),scope=request['scope'],phase='integration',fixed_output='i1',request=pin(D/'compute-request_integration_001.json'),verified_13_reviewed_file_pins=files,expected_numerical_budget=budget,accepted_external_unit_proofs=proofs,last_resource_observation=resource,prior009_full_compute_custody_release_report=pin(R/'coordination/ROOT_RETAINED_PRO3_009_TESTS_AND_FULL_CUSTODY_RELEASE_REPORT_001.json'),prior_grants001_through009_consumed_closed_not_reused=True,
+ allowed_action='V6 ENGINEERING INTEGRATION ONLY: one exact fixedi1 episode and eight-counter vector from the exactrequest. Currenttests0/prioraccepted63. One600sJob, then separately reviewed stdlib external integration closeout<=300s and explicit fullcustodyrelease. No accuracy threshold, sourcefit, measuredcells, scientific admission, retry or secondJob. Unit evidence joins are scheduling prerequisites; Pro2 does not accept peer scientific/runtime results or physical/hostquiet claims.',
+ Root_peer_unit_metadata_join_accepted_for_distinct_scheduling_only=True,peer_results_accepted=False,physical_handle_absence_claimed=False,global_host_or_process_quiet_claimed=False,Pro2_will_not_launch_target_memory_test_until_peer_reported_full_custody_release=True)
+old['owner_message_evidence']['scope_interpretation']='Same directly authorized engineering integration and available-RAM reply. Distinct reviewedv6 oneepisode integration slot; no unit test replay, oldgrant reuse or science admission.'
+out=R/'coordination/PRO2_PRO3_COMPUTE_RELEASE_20261025_010.json';raw=(json.dumps(old,indent=2,sort_keys=True,allow_nan=False)+'\n').encode()
+with out.open('xb') as h:assert h.write(raw)==len(raw)
+print(json.dumps(dict(release=pin(out),window_end_utc=old['window_end_utc'],resource=resource,phase='v6_engineering_integration_only')))

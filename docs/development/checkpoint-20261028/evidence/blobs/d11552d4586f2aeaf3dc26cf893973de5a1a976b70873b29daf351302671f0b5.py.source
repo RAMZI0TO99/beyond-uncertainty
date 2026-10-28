@@ -1,0 +1,196 @@
+"""Own bounded stdlib Source authoring. Does not import or call any target."""
+from pathlib import Path
+import ast
+import base64
+import datetime
+import difflib
+import hashlib
+import json
+import os
+
+R=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003')
+C=R/'m3_peer_contracts_016'
+T=C/'i13'
+A=C/'m3_protocol_audit_001'
+CAP=2097152
+
+def wire(v):
+    return (json.dumps(v,sort_keys=True,ensure_ascii=True,indent=2,allow_nan=False)+'\n').encode('ascii')
+
+def sha(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+def pin(path,raw=None):
+    path=Path(path);raw=path.read_bytes() if raw is None else raw
+    return dict(path=str(path),bytes=len(raw),sha256=sha(raw))
+
+def decode(raw):
+    def pairs(rows):
+        d={}
+        for k,v in rows:
+            assert k not in d
+            d[k]=v
+        return d
+    def bad(v):
+        raise ValueError(v)
+    return json.loads(raw.decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+
+def fresh():
+    scope=decode((R/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_003.json').read_bytes())
+    assert pin(R/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_003.json')['sha256']=='726c201dd6349aca56122129acf71b259b821a667c0720a3a4838ffb8aefe1ad'
+    now=datetime.datetime.now(datetime.timezone.utc)
+    assert (datetime.datetime.fromisoformat('2026-10-25T18:03:03.861408+00:00')-now).total_seconds()>60
+    return now.isoformat(timespec='microseconds')
+
+def save(path,raw,cap=CAP):
+    path=Path(path)
+    assert path.is_relative_to(C) and type(raw)is bytes and 0<len(raw)<=cap
+    assert not os.path.lexists(path)
+    fresh()
+    with path.open('xb') as f:
+        assert f.write(raw)==len(raw)
+        f.flush();os.fsync(f.fileno())
+    assert path.read_bytes()==raw
+    return pin(path,raw)
+
+def dump(node):
+    return ast.dump(node,include_attributes=False)
+
+def ast_sha(raw):
+    return sha(dump(ast.parse(raw.decode('utf8'))).encode('utf8'))
+
+def regions(raw):
+    out={}
+    def walk(rows,prefix=''):
+        for row in rows:
+            if isinstance(row,(ast.ClassDef,ast.FunctionDef)):
+                out[prefix+row.name]=sha(dump(row).encode('utf8'))
+                if isinstance(row,ast.ClassDef):walk(row.body,prefix+row.name+'.')
+    walk(ast.parse(raw.decode('utf8')).body)
+    return out
+
+def literal(raw,name):
+    rows=[x.value for x in ast.parse(raw.decode('utf8')).body if isinstance(x,ast.Assign) and any(isinstance(t,ast.Name)and t.id==name for t in x.targets)]
+    assert len(rows)==1
+    return ast.literal_eval(rows[0])
+
+def assignment(text,name,value):
+    rows=[x for x in ast.parse(text).body if isinstance(x,ast.Assign)and any(isinstance(t,ast.Name)and t.id==name for t in x.targets)]
+    assert len(rows)==1
+    row=rows[0];lines=text.splitlines(keepends=True)
+    lines[row.lineno-1:row.end_lineno]=[name+'='+repr(value)+'\n']
+    return ''.join(lines)
+
+def once(text,before,after):
+    assert text.count(before)==1,(before,text.count(before))
+    return text.replace(before,after,1)
+
+def inverse(before,after):
+    old,new=before.splitlines(keepends=True),after.splitlines(keepends=True)
+    offsets=[0]
+    for line in new:offsets.append(offsets[-1]+len(line))
+    result=[]
+    for tag,a0,a1,b0,b1 in difflib.SequenceMatcher(None,new,old,autojunk=False).get_opcodes():
+        if tag!='equal':
+            fragment=b''.join(new[a0:a1])
+            result.append(dict(after_start=offsets[a0],after_end=offsets[a1],after_fragment_sha256=sha(fragment),predecessor_fragment_base64=base64.b64encode(b''.join(old[b0:b1])).decode('ascii')))
+    recovered=after
+    for row in reversed(result):
+        lo,hi=row['after_start'],row['after_end']
+        assert sha(recovered[lo:hi])==row['after_fragment_sha256']
+        recovered=recovered[:lo]+base64.b64decode(row['predecessor_fragment_base64'],validate=True)+recovered[hi:]
+    assert recovered==before
+    return result
+
+records=[]
+products={}
+baseline={}
+prior_freeze=T/'I13_COMPACT_DESCRIPTOR_SOURCESET4_FRAGMENT_INVERSES_AND_AUTHOR_FREEZE_001.json'
+old=decode(prior_freeze.read_bytes())
+for p in old['products'].values():
+    assert pin(p['path'])==p,p
+    baseline[p['path']]=p
+
+def record_product(before_path,after_path,raw,cap=CAP,allowed_regions=None):
+    before_path=Path(before_path);before=before_path.read_bytes()
+    data=dict(before=pin(before_path,before),after=pin(after_path,raw),exact_new_to_predecessor_fragment_inverse=inverse(before,raw))
+    if before_path.suffix=='.py':
+        compile(raw,str(after_path),'exec',dont_inherit=True)
+        b,a=regions(before),regions(raw)
+        changed=sorted(k for k in b.keys()|a.keys() if b.get(k)!=a.get(k))
+        if allowed_regions is not None:assert set(changed)==set(allowed_regions),(str(before_path),changed)
+        data.update(before_whole_UTF8_AST_sha256=ast_sha(before),after_whole_UTF8_AST_sha256=ast_sha(raw),changed_definition_regions=changed,all_other_function_class_AST_exact=True,before_definition_regions=b,after_definition_regions=a)
+    sp=save(after_path,raw,cap)
+    assert sp==data['after']
+    records.append(data)
+    return sp
+
+for kind,src_old,src_new,api_old,api_new in (
+    ('m3','validate_M3_guard_contract_metadata_010.py','validate_M3_guard_contract_metadata_011.py','CURRENT_OWNER_M3_GUARD_CONTRACT_METADATA_INERT_API_010.json','CURRENT_OWNER_M3_GUARD_CONTRACT_METADATA_INERT_API_011.json'),
+    ('peer','validate_selected_peer_author_packet_metadata_010.py','validate_selected_peer_author_packet_metadata_011.py','CURRENT_OWNER_SELECTED_PEER_CANONICAL_AUTHOR_METADATA_INERT_API_010.json','CURRENT_OWNER_SELECTED_PEER_CANONICAL_AUTHOR_METADATA_INERT_API_011.json'),
+    ('publisher','validate_selected_role_publisher_metadata_005.py','validate_selected_role_publisher_metadata_006.py','CURRENT_OWNER_SELECTED_ROLE_PUBLISHER_METADATA_INERT_API_005.json','CURRENT_OWNER_SELECTED_ROLE_PUBLISHER_METADATA_INERT_API_006.json')):
+    before=(T/src_old).read_bytes();text=before.decode('utf8')
+    v='v'if kind=='publisher'else'value'
+    needle='  elif type('+v+')is dict:\n   _need(not any(k.startswith(\'$I13_DESCRIPTOR\')for k in '+v+'),\'E_CATALOGUE_PIN\')'
+    addition="   if'builtin_type'in "+v+":_need(type("+v+"['builtin_type'])is str and "+v+"['builtin_type']in('dict','list','str','int','bool','NoneType'),'E_CATALOGUE_PIN')\n"
+    replacement='  elif type('+v+')is dict:\n'+addition+'   _need(not any(k.startswith(\'$I13_DESCRIPTOR\')for k in '+v+'),\'E_CATALOGUE_PIN\')'
+    text=once(text,needle,replacement)
+    if kind=='publisher':
+        fixed=literal(before,'FIXED_PORTS')
+        fixed['M3'].update(Source=products['m3_source'],API=products['m3_api'])
+        fixed['PEER'].update(Source=products['peer_source'],API=products['peer_api'])
+        text=assignment(text,'FIXED_PORTS',fixed)
+    products[kind+'_source']=record_product(T/src_old,T/src_new,text.encode('utf8'),65536,['_check_descriptor_encoding'])
+    api=decode((T/api_old).read_bytes());api['Source']=products[kind+'_source']
+    if kind=='publisher':api['fixed_ports']=fixed
+    products[kind+'_api']=record_product(T/api_old,T/api_new,wire(api))
+
+source_old=T/'exercise_M3_guard_and_publisher_metadata_memory_013.py'
+source_new=T/'exercise_M3_guard_and_publisher_metadata_memory_014.py'
+before=source_old.read_bytes();text=before.decode('utf8')
+old_marker="""        if required:
+            marker=o.add('dep_reference_group',dict(record_type='synthetic_prior_reference_complete_stage_group',target_execution=False,operational_authority=False,subjects=[self.deps[dep]for dep in sorted(required)]))
+            for dep in sorted(required):o.b['labels']['dep_reference_'+dep]=marker['path']
+"""
+new_marker="""        if stage=='capture':
+            marker=o.add('dep_reference_group',dict(record_type='synthetic_prior_reference_complete_capture_group',target_execution=False,operational_authority=False,subjects=[self.deps[dep]for dep in sorted(required)]))
+            for dep in sorted(required):o.b['labels']['dep_reference_'+dep]=marker['path']
+        else:
+            for dep in sorted(required):o.add('dep_reference_'+dep,dict(record_type='synthetic_prior_reference_'+dep,target_execution=False,operational_authority=False,subjects=[self.deps[dep]]))
+"""
+text=once(text,old_marker,new_marker);raw=text.encode('utf8')
+assert repr(literal(before,'CASE_CATALOGUE'))==repr(literal(raw,'CASE_CATALOGUE'))
+assert literal(before,'FIXED')==literal(raw,'FIXED')
+products['m3_fixture']=record_product(source_old,source_new,raw,CAP,['_M3Build','_M3Build.__init__'])
+products['peer_fixture']=old['products']['peer_fixture']
+products['catalogue']=old['products']['catalogue']
+products['helper']=old['products']['helper']
+
+for kind,old_name,new_name in (
+    ('m3','I13_M3_FIXTURE_LITERAL_CASE_CATALOGUE_013.json','I13_M3_FIXTURE_LITERAL_CASE_CATALOGUE_014.json'),
+    ('peer','I13_PEER_FIXTURE_LITERAL_CASE_CATALOGUE_011.json','I13_PEER_FIXTURE_LITERAL_CASE_CATALOGUE_012.json')):
+    previous=decode((T/old_name).read_bytes());d=dict(previous)
+    d.update(Source=products[kind+'_fixture'],previous_catalogue=pin(T/old_name),M3_Source=products['m3_source'],peer_Source=products['peer_source'],publisher_Source=products['publisher_source'],publisher_API=products['publisher_api'])
+    if kind=='m3':d['previous_Source']=pin(source_old)
+    d['shared_complete_prior_reference_marker']=kind=='m3'
+    d['shared_complete_prior_reference_marker_scope']='capture_only_full_five_canonical_subjects; other M3 stages per-role subjects=[canonical]'if kind=='m3'else'No shared prior-reference marker is constructed by this peer fixture; the capture-only construction belongs to the M3 fixture.'
+    assert d['joint_nine_binding_Source_event']is(kind=='m3')
+    products[kind+'_literal_catalogue']=record_product(T/old_name,T/new_name,wire(d))
+
+for path,p in baseline.items():assert pin(path)==p
+for p in products.values():assert pin(p['path'])==p
+case_rows=[]
+for kind in ('m3','peer'):
+    raw=Path(products[kind+'_fixture']['path']).read_bytes()
+    case_rows.extend(literal(raw,'CASE_CATALOGUE'))
+names=[row['name']for row in case_rows]
+assert len(names)==936 and len(set(names))==936 and all(n.isascii()for n in names)
+refusal_dir=R/'compact_descriptor_Source_successors_review_001'
+refusal_capsule=refusal_dir/'INDEPENDENT_I13_SOURCESET4_CONSOLIDATED_SOURCE_REFUSAL_CAPSULE_001.json'
+refusal_full=refusal_dir/'INDEPENDENT_I13_SOURCESET4_CONSOLIDATED_SOURCE_REFUSAL_FULL_PROOF_001.json'
+assert pin(refusal_capsule)['sha256']=='ab0782c0094b261d52d3a66df41184c034da357a9c9e34b2d15d9ee9657873e1'
+assert pin(refusal_full)['sha256']=='551eeaa202555f743accaab3f7c75e2b0bb3353a613418a5cc2ba7d60517b94b'
+receipt=dict(schema_version=2,record_type='I13_corrective_SourceSet5_three_finding_actual_Source_author_freeze',author='/root/project_architecture',created_utc=fresh(),author_Source=pin(Path(__file__)),previous_Source_freeze=pin(prior_freeze),different_Source_refusal_capsule=pin(refusal_capsule),different_Source_refusal_full=pin(refusal_full),products=products,changes=records,exact_reused_products=['catalogue','helper','peer_fixture'],all_SourceSet4_inputs_reread_exact=True,corrections=['Every encountered nonliteral schema descriptor dictionary with builtin_type requires exact builtin str and one of dict/list/str/int/bool/NoneType, otherwise E_CATALOGUE_PIN. Existing definition-root and reference/cycle/namespace/type guards remain.','Shared synthetic prior marker is capture-only, complete five canonical subjects and neutral complete_capture_group type; every other stage uses distinct per-role marker with subjects=[canonical].','Peer literal catalogue shared marker flag is False; its already-False joint-nine flag is unchanged.'],source_caps={k:p['bytes']for k,p in products.items()if k.endswith('_source')},metadata_node_budget=50000,counter_mode='CONSERVATIVE_SUM_PER_INVOCATION_CACHE',catalogue_nodes=5378,all65_schemas_and_compact_data_unchanged=True,all936_literal_case_rows_and_order_exact=True,literal_case_count=936,literal_case_names_LF_sha256=sha(('\n'.join(names)+'\n').encode('ascii')),strict_run_diagnostic_partition_runner_AST_exact=True,no_new_case_or_export_added=True,target_functions_called=False,fixture_builders_called=False,tests_executed=False,target_execution=False,operational_authority=False,scientific_authority=False,native_Parser_executed=False,full_original_I2_DAG_closed=False,fit_proved=False,runtime_proved=False,inverse_method='Verify after whole pin; apply descending newline-fragment replacements after checking each after-fragment SHA; verify recovered exact predecessor whole pin. Every predecessor file is retained direct. UTF8 AST only; no subject executed.')
+freeze=save(T/'I13_CORRECTIVE_SOURCESET5_FRAGMENT_INVERSES_AND_AUTHOR_FREEZE_001.json',wire(receipt))
+order=('m3_source','m3_api','peer_source','peer_api','publisher_source','publisher_api','catalogue','m3_fixture','peer_fixture','m3_literal_catalogue','peer_literal_catalogue')
+print(json.dumps(dict(products=[products[k]for k in order]+[freeze],receipt=freeze)))

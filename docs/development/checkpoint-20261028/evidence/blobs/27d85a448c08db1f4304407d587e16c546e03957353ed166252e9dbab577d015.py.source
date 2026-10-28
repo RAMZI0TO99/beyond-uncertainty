@@ -1,0 +1,82 @@
+"""Own stdlib Source authoring only; never invokes fixture/model/kernel functions."""
+from pathlib import Path
+import ast,datetime,hashlib,json,os
+R=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003');C=R/'m3_peer_contracts_016';T=C/'i13';A=C/'m3_protocol_audit_001'
+P=A/'input_node_readset_ledger_protocol_proposal_001'
+def sha(b):return hashlib.sha256(b).hexdigest()
+def pin(p,b=None):
+ p=Path(p);b=p.read_bytes()if b is None else b
+ return dict(path=str(p),bytes=len(b),sha256=sha(b))
+def wire(v):return(json.dumps(v,sort_keys=True,ensure_ascii=True,indent=2,allow_nan=False)+'\n').encode('ascii')
+def load(p):return json.loads(Path(p).read_bytes().decode('utf8'))
+def fresh():
+ n=datetime.datetime.now(datetime.timezone.utc)
+ assert(datetime.datetime.fromisoformat('2026-10-25T18:03:03.861408+00:00')-n).total_seconds()>60
+ return n.isoformat(timespec='microseconds')
+def save(p,b):
+ assert p.is_relative_to(C)and type(b)is bytes and 0<len(b)<=2097152 and not os.path.lexists(p)
+ fresh()
+ with p.open('xb')as f:f.write(b);f.flush();os.fsync(f.fileno())
+ assert p.read_bytes()==b
+ return pin(p,b)
+def literal(tr,name):return next(ast.literal_eval(n.value)for n in tr.body if isinstance(n,ast.Assign)and any(isinstance(x,ast.Name)and x.id==name for x in n.targets))
+def dump(n):return ast.dump(n,include_attributes=False)
+def defs(tr):
+ out={}
+ def visit(rows,pre=''):
+  for n in rows:
+   if isinstance(n,(ast.FunctionDef,ast.ClassDef)):
+    out[pre+n.name]=sha(dump(n).encode('utf8'))
+    if isinstance(n,ast.ClassDef):visit(n.body,pre+n.name+'.')
+ visit(tr.body);return out
+protocol=P/'I13_PROPOSED_FIXED_M3_INPUT_NODE_AND_SOURCE_READSET_LEDGER_PROTOCOL_002.json'
+assert pin(protocol)['sha256']=='3f5956127c9a6e56dfced9209fbf6f28c013526147a2191f4904429c85c2f898'
+adopt=R/'ROOT_I13_FIXED_INPUT_NODE_LEDGER_PROTOCOL002_DIFFERENT_SOURCE_REVIEW_ADOPTION_001.json'
+assert pin(adopt)['sha256']=='a2dbe90c868b55e8f0b647d3a6809c9ca39549bb402e2a7441e3f850b3088ff0'
+oldp=T/'exercise_M3_guard_and_publisher_metadata_memory_014.py';old=oldp.read_bytes();ot=ast.parse(old.decode('utf8'))
+assert len(old)==537177 and sha(old)=='0fc108b3c357d8d75b94c03948292e6cdc38711cbab253667448b859d58100aa'
+freezep=T/'I13_CORRECTIVE_SOURCESET5_FRAGMENT_INVERSES_AND_AUTHOR_FREEZE_001.json';products=load(freezep)['products']
+inputs=dict(fixture_basis=pin(oldp,old),m3_Source=products['m3_source'],m3_API=products['m3_api'],publisher_Source=products['publisher_source'],publisher_API=products['publisher_api'],peer_Source=products['peer_source'],peer_API=products['peer_api'],catalogue=products['catalogue'],protocol=pin(protocol))
+for p in inputs.values():assert pin(p['path'])==p
+proto=load(protocol);sites=proto['reference_Source_sites'];assert len(sites)==51
+roles={r['role']:r['stage']for r in proto['proposed_export']['fixed_roles']}
+assert list(roles)==['capture_template','metadata_manifest','plan','capture_bound','metadata_binding','phase_binding']
+m3tree=ast.parse(Path(inputs['m3_Source']['path']).read_bytes().decode('utf8'));pubtree=ast.parse(Path(inputs['publisher_Source']['path']).read_bytes().decode('utf8'))
+meta=literal(m3tree,'META_EDGES');lease=literal(m3tree,'LEASE_EDGES')
+assert meta==literal(pubtree,'META_EDGES')and lease==literal(pubtree,'LEASE_EDGES')
+proofedges=('different_review','full_proof','Root_adoption','current_owner_scope_Root_adoption','different_current_owner_scope_Source_review','different_lease_Source_review','candidate_Root_adoption','actual_canonical_delta_Source_review','canonical_delta_Root_adoption','reconciliation_review','reconciliation_Root_adoption','tool_review','tool_Root_adoption')
+models={'_Store.__init__':'_LDPlan.__init__','_Store.body':'_LDPlan.body','_Store.record':'_LDPlan.record','_Graph.__init__':'_LDPlan.initial','_Graph.prime':'_LDPlan.prime','_Graph.proof':'_LDPlan.proof','_Graph.adoption':'_LDPlan.adoption','_Graph.common':'_LDPlan.common','_Graph.code':'_LDPlan.code','_Graph.result':'_LDPlan.child','_m3':'_LDPlan.child','_prior':'_LDPlan.child','_body_joins':'_LDPlan.child','_lease_link':'_LDPlan.common','_observations':'_LDPlan.child','_prewrite':'_LDPlan.prewrite','_direct':'_LDPlan.prewrite','_child_inputs':'_LDPlan.child_inputs','_purpose':'_LDPlan.prewrite','_port':'_LDPlan.prewrite','_outer_result':'_LDPlan.publisher','_publisher_code':'_LDPlan.prewrite','_observe':'_LDPlan.publisher','validate_selected_role_canonical_dependency_metadata':'_LDPlan.publisher','validate_selected_role_prewrite_metadata':'_LDPlan.publisher'}
+source_functions={}
+for tr,prefix in((m3tree,'m3'),(pubtree,'publisher')):
+ def visit(rows,pre=''):
+  for n in rows:
+   if isinstance(n,(ast.FunctionDef,ast.ClassDef)):
+    source_functions[prefix+':'+pre+n.name]=n
+    if isinstance(n,ast.ClassDef):visit(n.body,pre+n.name+'.')
+ visit(tr.body)
+reconciliation=[]
+for site in sites:
+ key=site['id']
+ if key.startswith('fixture:'):
+  reconciliation.append(dict(Source_region=site,model='EXACT_014_BUILDER_PREFIX_REUSED_UNCHANGED',consuming_read_sites=[]));continue
+ n=source_functions[key];reads=[]
+ for call in ast.walk(n):
+  if isinstance(call,ast.Call)and isinstance(call.func,ast.Attribute)and call.func.attr in('record','body','prime'):
+   reads.append(dict(line=call.lineno,operation=call.func.attr,expression=ast.unparse(call)))
+ reconciliation.append(dict(Source_region=site,model=models[site['symbol']],consuming_read_sites=sorted(reads,key=lambda r:r['line']),branch_scope='Fixed six M3 roles, prewrite/canonical only; peer/guard target branches are excluded and refuse if requested.'))
+data=dict(schema_version=2,record_type='I13_exact_fixed_input_node_ledger_Source_model_data',author='/root/project_architecture',created_utc=fresh(),protocol=pin(protocol),Root_protocol_adoption=pin(adopt),Source_inputs=inputs,roles=roles,Source_regions=sites,Source_read_reconciliation=reconciliation,META_EDGES=sorted(meta),LEASE_EDGES=sorted(lease),parent_prime_proof_edges=list(proofedges),counter_semantics='Each cache8+11*N, each distinct parsed path full key/value tree once, child result tree in child and parent, conservative child-total addition once, final parent result once.',readset_is_actual_target_trace=False,new_current_metadata_graphs_changed=False,no_target_method_or_export_called=True,standalone_peer_or_guard_target_branches_supported=False,metadata_only=True,target_execution=False,operational_authority=False,scientific_authority=False,native_Parser_executed=False,actual_family_publication=False,full_original_I2_DAG_closed=False)
+dp=save(T/'I13_FIXTURE015_EXACT_INPUT_NODE_READSET_SOURCE_MODEL_DATA_001.json',wire(data))
+declarations='\n_LD_INPUTS='+repr(inputs)+'\n_LD_ROLES='+repr(roles)+'\n_LD_SITE_IDS=frozenset('+repr(sorted(s['id']for s in sites))+')\n_LD_META_EDGES=frozenset('+repr(sorted(meta))+')\n_LD_LEASE_EDGES=frozenset('+repr(sorted(lease))+')\n_LD_PROOF_EDGES=frozenset('+repr(proofedges)+')\n'
+fragmentp=T/'I13_INPUT_NODE_LEDGER_ADDITIVE_SOURCE_FRAGMENT_003.py.source';fragment=fragmentp.read_bytes();ft=ast.parse(fragment.decode('utf8'))
+raw=old+declarations.encode('utf8')+fragment;newp=T/'exercise_M3_guard_and_publisher_metadata_memory_015.py';nt=ast.parse(raw.decode('utf8'));compile(raw,str(newp),'exec',dont_inherit=True)
+assert [dump(n)for n in nt.body[:len(ot.body)]]==[dump(n)for n in ot.body]
+od,nd=defs(ot),defs(nt);assert all(nd[k]==v for k,v in od.items())
+assert repr(literal(ot,'CASE_CATALOGUE'))==repr(literal(nt,'CASE_CATALOGUE'))and literal(ot,'FIXED')==literal(nt,'FIXED')
+exports=[n for n in nt.body if isinstance(n,ast.FunctionDef)and n.name=='snapshot_I13_M3_input_node_ledger'];assert len(exports)==1
+assert [a.arg for a in exports[0].args.kwonlyargs]==['m3','publisher','peer','catalogue_bytes','roles']and not exports[0].args.args and not exports[0].args.vararg and not exports[0].args.kwarg
+assert all(v is None for v in exports[0].args.kw_defaults)
+sp=save(newp,raw)
+receipt=dict(schema_version=2,record_type='I13_fixture015_input_node_ledger_additive_Source_author_freeze',author='/root/project_architecture',created_utc=fresh(),author_Source=pin(Path(__file__)),protocol=pin(protocol),Root_protocol_adoption=pin(adopt),Source=sp,Source_model_data=dp,Source_inputs=inputs,fragment=pin(fragmentp),predecessor=pin(oldp,old),exact_prefix_inverse=dict(method='Verify whole015 bytes and suffix SHA; retain first predecessor.bytes bytes; resulting bytes equal complete014 current bytes and pin.',predecessor_bytes=len(old),appended_suffix_bytes=len(raw)-len(old),appended_suffix_sha256=sha(raw[len(old):])),all_predecessor_top_level_AST_nodes_exact=True,all_predecessor_definition_AST_exact=True,predecessor_definitions=od,after_definitions=nd,added_definition_names=sorted(set(nd)-set(od)),CASE_CATALOGUE_and_FIXED_exact=True,all936_original_cases_runners_and_seals_unchanged=True,Source_regions_reconciled=51,planned_read_sites=sum(len(x['consuming_read_sites'])for x in reconciliation),Source_inputs_closed9=True,Source_model_hypothetical_non_node_predicates_assumed_satisfied=True,actual_guard_provenance_identified=False,actual_graphs_or_counts_measured=False,builder_functions_called=False,kernel_functions_called=False,ledger_functions_called=False,tests_executed=False,target_execution=False,operational_authority=False,scientific_authority=False,native_Parser_executed=False,actual_family_publication=False,full_original_I2_DAG_closed=False,authentic_loader_qualified=False,pure_Source_size=len(raw),fixture_Source_cap=2097152,output_cap=2097152,strict_synthetic_budgets=dict(total=60,wait=50,cleanup=10,reap=5),retained_author_fragment001_SyntaxError=dict(Source=pin(T/'I13_INPUT_NODE_LEDGER_ADDITIVE_SOURCE_FRAGMENT_001.py.source'),line=253,reason='Own uninvoked additive fragment lacked whitespace in conditional-expression else40; AST parser refused, no fixture015 or export entered. Corrected fragment002/003 retained separately.'),retained_fragment002=pin(T/'I13_INPUT_NODE_LEDGER_ADDITIVE_SOURCE_FRAGMENT_002.py.source'),fragment003_convention='Only record_set hash wire changed to explicit ensure_ascii=False/UTF8 per Root agreed canonical fact3 list convention.')
+rp=save(T/'I13_FIXTURE015_INPUT_NODE_LEDGER_SOURCE_FREEZE_001.json',wire(receipt))
+assert oldp.read_bytes()==old
+print(json.dumps(dict(fixture=sp,model_data=dp,freeze=rp,added_definitions=len(nd)-len(od),old_functions_AST_exact=True,subject_functions_called=0)))

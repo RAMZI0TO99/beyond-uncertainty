@@ -1,0 +1,74 @@
+"""Fresh exact one-use partition metadata only; never launches or retries.
+
+CLI: fixed partition id and exact configuration path/hash. Configuration binds a
+reviewed Source adoption and the explicitly retained latest peer custody report.
+"""
+import ast, ctypes, datetime as dt, hashlib, json, os, shutil, sys
+from pathlib import Path
+R=Path(__file__).parent; C=R/'m3_peer_contracts_016'; Q=R/'coordination'; LIMIT=2097152
+def raw(p):
+ p=Path(p); a=p.stat(); assert p.is_file() and not p.is_symlink() and a.st_nlink==1 and a.st_size<=LIMIT
+ for d in (p,*p.parents): assert not getattr(d.lstat(),'st_file_attributes',0)&1024
+ b=p.read_bytes(); z=p.stat(); assert b==p.read_bytes() and len(b)==a.st_size==z.st_size and a.st_mtime_ns==z.st_mtime_ns
+ return b
+def pin(p):
+ p=Path(p); b=raw(p); return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def read(p): return json.loads(raw(p))
+def exact(p):
+ assert type(p) is dict and set(p)=={'path','bytes','sha256'} and pin(p['path'])==p
+ return read(p['path'])
+def occurs(v,p):
+ if type(v) is dict: return v==p or any(occurs(x,p) for x in v.values())
+ return type(v) is list and any(occurs(x,p) for x in v)
+def save(p,v):
+ assert not os.path.lexists(p)
+ b=(json.dumps(v,sort_keys=True,indent=2,allow_nan=False)+'\n').encode(); assert len(b)<=LIMIT
+ with p.open('xb') as h: assert h.write(b)==len(b); h.flush(); os.fsync(h.fileno())
+ assert raw(p)==b; return pin(p)
+assert len(sys.argv)==4
+partition_id,config_path,config_sha=sys.argv[1:]; cp=Path(config_path)
+assert cp.is_absolute() and cp.parent==C and cp.suffix=='.json' and pin(cp)['sha256']==config_sha
+cfg=read(cp); assert set(cfg)=={'supervisor','Source_adoption','previous_consumed_adoption','peer_release_report'}
+sup=Path(cfg['supervisor']['path']); assert sup.parent==C and pin(sup)==cfg['supervisor']
+tree=ast.parse(raw(sup)); constants={}
+for n in tree.body:
+ if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id in ('SOURCES','APIS','FIXTURES','CATALOGUE','PARTITION_PLAN','SCOPE_KEYS'): constants[n.targets[0].id]=ast.literal_eval(n.value)
+assert len(constants)==6
+plan=exact(constants['PARTITION_PLAN']); rows=[r for r in plan['partitions'] if r['partition_id']==partition_id]
+assert len(rows)==1 and type(partition_id) is str and rows[0]['case_count'] in range(1,33)
+adopt=exact(cfg['Source_adoption']); previous=exact(cfg['previous_consumed_adoption'])
+assert adopt['author']=='/root' and adopt['verdict'].startswith('ACCEPT_EXACT_I13_')
+assert all(adopt[k] is False for k in ('target_execution','operational_authority','scientific_authority','tests_executed','actual_family_publication'))
+assert previous['author']=='/root' and previous['claim_reuse_or_replay_authorized'] is False and occurs(adopt,cfg['previous_consumed_adoption'])
+subjects=[*constants['SOURCES'].values(),*constants['APIS'].values(),*constants['FIXTURES'].values(),constants['CATALOGUE'],constants['PARTITION_PLAN'],cfg['supervisor'],pin(Path(__file__))]
+for p in subjects: assert pin(p['path'])==p and occurs(adopt,p)
+assert all(p['bytes']<=65536 for p in constants['SOURCES'].values())
+scopep=R/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_002.json'; source_scope=read(scopep)
+assert source_scope['target_execution'] is source_scope['operational_authority'] is False
+protocolp=R/'ROOT_I13_FINAL_PROTOCOL007_RECORDED_CONTEXT_DIFFERENT_REVIEW_ADOPTION_004.json'; assert occurs(adopt,pin(protocolp))
+reported=exact(cfg['peer_release_report']); grant=int(reported['grant'])
+assert reported['reported_full_compute_custody_released'] is reported['grant_consumed_closed'] is True and reported['Root_acceptance']['peer_result_accepted'] is False
+grantfiles=sorted(Q.glob('PRO2_PRO3_COMPUTE_RELEASE_20261025_*.json')); assert max(int(p.stem.rsplit('_',1)[1]) for p in grantfiles)==grant
+assert not any((Path(r'D:\Aenv\pro2\WORK')/('resume-'+day+'-001/coordination/PRO2_REQUEST_PRO3_PAUSE.json')).exists() for day in ('20261007','20261012','20261013','20261015','20261025'))
+prior_scopes=sorted(C.glob('ROOT_I13_ONCE_SYNTHETIC_MEMORY_SCOPE_*.json'))
+for p in prior_scopes:
+ v=read(p); assert not (v.get('source_adoption')==cfg['Source_adoption'] and v.get('partition_id')==partition_id), 'fixed Source partition already allocated; no automatic retry'
+ if Path(v['outputs']['claim']).exists():
+  s=read(v['outputs']['supervisor_result']); assert s['reaped'] is s['streams_drained'] is True and all(s['actual_stream_EOF'].values()) and s['custody_error'] is None
+ else: raise ValueError('allocated prior scope unconsumed or unreconciled; no next admission')
+number=max(int(p.stem.rsplit('_',1)[1]) for p in prior_scopes)+1
+class Memory(ctypes.Structure):
+ _fields_=[('length',ctypes.c_ulong),('load',ctypes.c_ulong)]+[(n,ctypes.c_ulonglong) for n in ('total_phys','available_phys','total_page','available_page','total_virtual','available_virtual','available_extended')]
+m=Memory(); m.length=ctypes.sizeof(m); assert ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m))
+now=dt.datetime.now(dt.timezone.utc); end=now+dt.timedelta(minutes=10); disk=shutil.disk_usage(R).free
+assert dt.datetime.fromisoformat(source_scope['interval_start'])<=now and (dt.datetime.fromisoformat(source_scope['interval_end'])-end).total_seconds()>60
+assert m.available_phys>=1073741824 and disk>=10737418240
+owned=C/('owned_memory_runs/attempt%03d'%number); assert not os.path.lexists(owned); owned.mkdir(parents=True)
+prelaunch=save(C/('ROOT_I13_FRESH_ONCE_PRELAUNCH_METADATA_%03d.json'%number),dict(schema_version=1,record_type='Root_I13_fresh_once_synthetic_prelaunch_metadata',author='/root',observed_utc=now.isoformat(timespec='microseconds'),source_scope=pin(scopep),source_adoption=cfg['Source_adoption'],partition_id=partition_id,peer_reported_full_custody_release=True,new_peer_grant_after_release=False,peer_custody_release_report=cfg['peer_release_report'],last_peer_grant_inventory=[pin(p) for p in grantfiles],available_RAM_bytes=m.available_phys,disk_free_bytes=disk,target_execution=False,operational_authority=False,scientific_authority=False,whole_host_quiet_claimed=False,physical_handle_absence_claimed=False))
+runtime=Path(r'C:\Users\aladdin-alyanai\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe'); rp=pin(runtime)
+assert rp['bytes']==107312 and rp['sha256']=='7a4102b91959bb234507850ea584e1d31d300a6831b171e4aadc59ff592f0234'
+budgets=dict(total_seconds=60,wait_seconds=50,cleanup_seconds=10,reap_seconds=5,stdout_maximum_bytes=2097152,stderr_maximum_bytes=2097152)
+v=dict(schema_version=1,record_type='Root_I13_once_owned_synthetic_memory_scope',author='/root',created_utc=now.isoformat(timespec='microseconds'),interval_start=now.isoformat(timespec='microseconds'),interval_end=end.isoformat(timespec='microseconds'),operation='NEW_I13_SYNTHETIC_MEMORY_TEST_ONLY',maximum_suite_invocations=1,source_scope=pin(scopep),protocol_adoption=pin(protocolp),source_adoption=cfg['Source_adoption'],modules=constants['SOURCES'],APIs=constants['APIS'],catalogue=constants['CATALOGUE'],fixtures=constants['FIXTURES'],supervisor=cfg['supervisor'],runtime=rp,prelaunch=prelaunch,outputs={k:str(owned/n) for k,n in (('claim','SCOPE_CLAIM_001.json'),('child_entry','CHILD_ENTRY_001.json'),('child_result','CHILD_RESULT_001.json'),('stdout','CHILD_STDOUT_001.txt'),('stderr','CHILD_STDERR_001.txt'),('supervisor_result','SUPERVISOR_RESULT_001.json'))},budgets=budgets,target_execution=False,operational_authority=False,scientific_authority=False,actual_family_publication=False,partition_plan=constants['PARTITION_PLAN'],partition_id=partition_id)
+assert set(v)==set(constants['SCOPE_KEYS']) and (dt.datetime.now(dt.timezone.utc)-now).total_seconds()<30
+out=save(C/('ROOT_I13_ONCE_SYNTHETIC_MEMORY_SCOPE_%03d.json'%number),v)
+print(json.dumps(dict(once_scope=out,prelaunch=prelaunch,partition_id=partition_id,case_count=rows[0]['case_count'],suite_invoked=False,owned_outputs=str(owned))))

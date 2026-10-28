@@ -1,0 +1,44 @@
+"""Own additive strict-interface Source author, AST/compile metadata only."""
+import ast
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+ROOT=Path(__file__).parent
+BASE=ROOT/'receipt_caller_integration_015'
+OUT=BASE/'i12'
+def pin(path,raw=None):
+    raw=path.read_bytes() if raw is None else raw
+    return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+def save(path,v):
+    raw=(json.dumps(v,sort_keys=True,indent=2)+'\n').encode();assert len(raw)<=2097152
+    with path.open('xb') as f:f.write(raw)
+    return pin(path,raw)
+source_stems=dict(formats='receipt_contract_formats',single='validate_generic_single_receipt_metadata',peer='validate_selected_peer_receipt_metadata')
+api_stems=dict(formats='CURRENT_OWNER_OUTSIDE8_RECEIPT_FORMAT_CONSTRUCTOR_INERT_API',single='CURRENT_OWNER_SINGLE_RECEIPT_METADATA_GRAPH_INERT_API',peer='CURRENT_OWNER_SELECTED_PEER_RECEIPT_METADATA_GRAPH_INERT_API',emitter='CURRENT_OWNER_GENERIC_SINGLE_EMITTER_DECLARATION_INERT_API')
+sources={};prior={};regions=[]
+for kind,stem in source_stems.items():
+    path=OUT/(stem+'_002.py');raw=path.read_bytes();prior[kind]=pin(path,raw)
+    old="type(value) is dict and set(value) == set(keys)"
+    assert raw.decode().count(old)==1
+    fresh=raw.decode().replace(old,"type(value) is dict and all(type(key) is str for key in value) and set(value) == set(keys)").encode()
+    assert len(fresh)<=65536
+    target=OUT/(stem+'_003.py');tree=ast.parse(fresh);compile(fresh,str(target),'exec',dont_inherit=True)
+    with target.open('xb') as f:f.write(fresh)
+    sources[kind]=pin(target,fresh);lines=fresh.splitlines(keepends=True)
+    for node in tree.body:
+        if isinstance(node,(ast.FunctionDef,ast.ClassDef)):
+            part=b''.join(lines[node.lineno-1:node.end_lineno]);regions.append(dict(Source=sources[kind],name=node.name,first_line=node.lineno,last_line=node.end_lineno,bytes=len(part),sha256=hashlib.sha256(part).hexdigest()))
+sources['emitter']=pin(OUT/'declare_generic_single_emitter_source_only_001.py')
+apis={};prior_apis={}
+for kind,stem in api_stems.items():
+    oldpath=OUT/(stem+'_002.json');raw=oldpath.read_bytes();prior_apis[kind]=pin(oldpath,raw)
+    value=json.loads(raw.decode());value['Source']=sources[kind]
+    apis[kind]=save(OUT/(stem+'_003.json'),value)
+inventory=json.loads((OUT/'I12_FROZEN_KERNEL_SOURCE_REGIONS_AND_GENESIS_INVENTORY_002.json').read_text(encoding='utf8'))
+inventory.update(record_type='I12_frozen_successor003_kernel_Source_regions_and_complete002_preservation_inventory',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),sources=sources,APIs=apis,regions=regions,prior_frozen_Source002=prior,prior_frozen_APIs002=prior_apis,prior_inventory=pin(OUT/'I12_FROZEN_KERNEL_SOURCE_REGIONS_AND_GENESIS_INVENTORY_002.json'),complete_predecessor_inverses='Complete002 and001 sibling Sources/APIs remain present and exactly chained.003 changes only exact builtin-str key guard before _closed set/index operations. No target imports/calls/tests occurred.')
+ip=save(OUT/'I12_FROZEN_KERNEL_SOURCE_REGIONS_AND_GENESIS_INVENTORY_003.json',inventory)
+receipt=json.loads((OUT/'I12_ACTUAL_STATIC_KERNEL_SOURCE_AUTHOR_RECEIPT_002.json').read_text(encoding='utf8'))
+receipt.update(record_type='I12_actual_static_successor003_kernel_Source_and_API_author_receipt',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),sources=sources,APIs=apis,inventory=ip,prior_author_receipt=pin(OUT/'I12_ACTUAL_STATIC_KERNEL_SOURCE_AUTHOR_RECEIPT_002.json'),strict_key_boundary_repair='_closed requires exact builtin dict and every key exact builtin str BEFORE set/index operations; record2/pin3 str-subclass keys cannot normalize through _wire. Two targeted supplied-record/pin key-subclass fixture controls required.',author_tool=pin(Path(__file__)))
+rp=save(OUT/'I12_ACTUAL_STATIC_KERNEL_SOURCE_AUTHOR_RECEIPT_003.json',receipt)
+print(json.dumps(dict(sources=sources,APIs=apis,inventory=ip,author_receipt=rp),sort_keys=True))

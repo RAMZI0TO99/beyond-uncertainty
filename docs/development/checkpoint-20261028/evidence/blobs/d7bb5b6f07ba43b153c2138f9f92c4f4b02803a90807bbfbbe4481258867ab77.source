@@ -1,0 +1,299 @@
+
+# Additive diagnostic only. Old fixture builders/runners above are unchanged.
+class I13InputLedgerError(ValueError):
+    def __init__(self,code):
+        self.code=code
+        super().__init__(code)
+
+def _ld_need(ok,code='E_LEDGER_UNMODELED_ABI'):
+    if not ok:raise I13InputLedgerError(code)
+
+def _ld_fact(value):
+    _ld_need(type(value)is dict and all(type(k)is str for k in value)and set(value)=={'path','bytes','sha256'},'E_LEDGER_RECORD')
+    _ld_need(type(value['path'])is str and type(value['bytes'])is int and 0<value['bytes']<=2097152 and type(value['sha256'])is str and len(value['sha256'])==64 and all(c in'0123456789abcdef'for c in value['sha256']),'E_LEDGER_RECORD')
+    return value
+
+def _ld_decode(raw):
+    _ld_need(type(raw)is bytes and 0<len(raw)<=2097152 and not raw.startswith(b'\xef\xbb\xbf'),'E_LEDGER_JSON')
+    def pairs(rows):
+        out={}
+        for key,value in rows:
+            _ld_need(key not in out,'E_LEDGER_JSON')
+            out[key]=value
+        return out
+    def number(value):raise I13InputLedgerError('E_LEDGER_JSON')
+    try:return json.loads(raw.decode('utf8'),object_pairs_hook=pairs,parse_float=number,parse_constant=number)
+    except(UnicodeError,ValueError,RecursionError,OverflowError):raise I13InputLedgerError('E_LEDGER_JSON')from None
+
+def _ld_tree(value):
+    count=0;maximum=0;todo=[(value,0)]
+    while todo:
+        item,depth=todo.pop();count+=1;maximum=max(maximum,depth)
+        _ld_need(item is None or type(item)in(bool,int,str,list,dict),'E_LEDGER_JSON')
+        if type(item)is str:_ld_need(not any(55296<=ord(c)<=57343 for c in item),'E_LEDGER_JSON')
+        elif type(item)is dict:
+            _ld_need(all(type(k)is str for k in item),'E_LEDGER_JSON')
+            for key,child in item.items():todo.extend(((key,depth+1),(child,depth+1)))
+        elif type(item)is list:
+            for child in item:todo.append((child,depth+1))
+    return count,maximum
+
+def _ld_inventory(records):
+    _ld_need(type(records)is list and 0<len(records)<=256,'E_LEDGER_RECORD')
+    out={};total=0;fold=set()
+    for ordinal,row in enumerate(records,1):
+        _ld_need(type(row)is dict and set(row)=={'pin','body'},'E_LEDGER_RECORD');p=_ld_fact(row['pin']);raw=row['body']
+        _ld_need(type(raw)is bytes and len(raw)==p['bytes']and hashlib.sha256(raw).hexdigest()==p['sha256']and p['path'].casefold()not in fold,'E_LEDGER_RECORD')
+        fold.add(p['path'].casefold());total+=len(raw)
+        _ld_need(total<=33554432,'E_LEDGER_RECORD')
+        info=dict(status='NON_JSON',nodes=None,maximum_depth=None,root_type=None,error_code='E_LEDGER_JSON');value=None
+        try:
+            value=_ld_decode(raw);n,d=_ld_tree(value)
+            info=dict(status='VALID',nodes=n,maximum_depth=d,root_type=type(value).__name__,error_code=None)
+        except I13InputLedgerError:pass
+        out[p['path']]=dict(pin=copy.deepcopy(p),raw=raw,value=value,info=info,ordinal=ordinal)
+    return out,total
+
+def _ld_carrier(module,kind):
+    _ld_need(type(module)is types.ModuleType,'E_LEDGER_SOURCE_BINDING');attrs=module.__dict__;fixed=_LD_INPUTS
+    projection=types.ModuleType('_i13_ledger_data_'+kind)
+    for label,prefix in(('Source','__source'),('API','__API')):
+        expected=fixed[kind+'_'+label];raw=attrs.get(prefix+'_bytes__');given=attrs.get(prefix+'_pin__')
+        _ld_fact(given)
+        _ld_need(given==expected and type(raw)is bytes and len(raw)==expected['bytes']and hashlib.sha256(raw).hexdigest()==expected['sha256'],'E_LEDGER_SOURCE_BINDING')
+        projection.__dict__[prefix+'_pin__']=copy.deepcopy(given);projection.__dict__[prefix+'_bytes__']=raw
+    if kind=='m3':
+        projection.CATALOGUE_PIN=copy.deepcopy(fixed['catalogue']);projection.I2_SOURCE=copy.deepcopy(FIXED['I2_Source']['pin'])
+    return projection
+
+def _ld_use():
+    return dict(designation='SUPPLIED_ONLY',first_parse_ordinal=None,Source_site_ids=[],body_call_count=0,parse_call_count=0)
+
+class _LDPlan:
+    def __init__(self,entries,catalogue,cache,events,parent=None):
+        self.entries=entries;self.c=catalogue;self.cache_name=cache;self.events=events;self.parent=parent
+        self.cache={};self.primed=set();self.used={};self.uses={k:_ld_use()for k in entries};self.local=0;self.added=0;self.phase='initial';self.first=None;self.rows={}
+        self.charge(1+11*len(entries),'EAGER_SNAPSHOT',None,'_Store.__init__')
+        self.charge(7,'CONTEXT',None,'_Graph.__init__')
+    def site(self,symbol):
+        key=('m3:'if self.cache_name=='CHILD'else'publisher:')+symbol
+        _ld_need(key in _LD_SITE_IDS)
+        return key
+    def charge(self,amount,operation,subject,symbol):
+        _ld_need(type(amount)is int and amount>=0)
+        before=self.local+self.added;self.local+=amount
+        combined=self.local+self.added
+        if self.parent is not None:combined=self.parent.local+self.parent.added+self.local
+        self.events.append(dict(phase=self.phase,cache=self.cache_name,operation=operation,subject=copy.deepcopy(subject),Source_site_id=self.site(symbol),charge_nodes=amount,local_cumulative_nodes=self.local,conservative_cumulative_nodes=combined))
+        after=self.local+self.added
+        if self.first is None and before<=50000<after:self.first=dict(phase=self.phase,cache=self.cache_name,Source_site_id=self.site(symbol),before=before,charge=amount,after=after)
+    def body(self,pin,symbol):
+        p=_ld_fact(pin);path=p['path'];_ld_need(path in self.entries and self.entries[path]['pin']==p,'E_LEDGER_RECORD')
+        u=self.uses[path];u['body_call_count']+=1
+        if u['designation']=='SUPPLIED_ONLY':u['designation']='RAW_BODY'
+        site=self.site(symbol)
+        if site not in u['Source_site_ids']:u['Source_site_ids'].append(site)
+        self.used[path]=p
+        return self.entries[path]['raw']
+    def record(self,pin,symbol):
+        self.body(pin,symbol);path=pin['path'];u=self.uses[path];u['parse_call_count']+=1;u['designation']='JSON_PARSE'
+        internal=self.site('_Store.record')
+        if internal not in u['Source_site_ids']:u['Source_site_ids'].append(internal)
+        if path not in self.cache:
+            item=self.entries[path];_ld_need(item['info']['status']=='VALID','E_LEDGER_JSON')
+            _ld_need(item['info']['maximum_depth']<=48,'E_LEDGER_UNMODELED_ABI')
+            self.cache[path]=item['value'];u['first_parse_ordinal']=len(self.cache)
+            self.charge(item['info']['nodes'],'JSON_PARSE',pin,symbol)
+        return self.cache[path]
+    def initial(self,packet):
+        self.phase='graph_initial'
+        self.body(_LD_INPUTS['catalogue'],'_Graph.__init__');self.record(_LD_INPUTS['catalogue'],'_Graph.__init__');self.base=self.record(self.c['peer_base_catalogue'],'_Graph.__init__')
+        self.packet_pin=packet;self.p=self.record(packet,'_Graph.__init__')
+    def prime(self,value,edge=None):
+        if type(value)is dict:
+            if set(value)=={'path','bytes','sha256'}:
+                if edge not in _LD_META_EDGES|_LD_LEASE_EDGES:return
+                self.body(value,'_Graph.prime')
+                if edge not in('source','canonical','subject')and value['path']not in self.primed and value!=_LD_INPUTS['catalogue']and value!=self.c['peer_base_catalogue']:
+                    self.primed.add(value['path']);raw=self.record(value,'_Graph.prime')
+                    if self.cache_name=='PARENT'and edge in _LD_PROOF_EDGES:
+                        _ld_need(type(raw)is dict and type(raw.get('subjects'))is list and raw['subjects'])
+                        for p in raw['subjects']:self.body(p,'_Graph.prime')
+                    if edge!='API':self.prime(raw)
+                return
+            if set(value)=={'canonical','separate_Root_decision','different_review','Root_adoption','original_publication'}:self.prime(value['canonical'],'lease_record')
+            for key,child in value.items():self.prime(child,key)
+        elif type(value)is list:
+            for child in value:self.prime(child,edge)
+    def proof(self,pin,subjects):
+        v=self.record(pin,'_Graph.proof');full_pin=v['full_proof'];full=self.record(full_pin,'_Graph.proof')
+        for p in subjects:self.body(p,'_Graph.proof')
+        return v,full,full_pin
+    def adoption(self,pin):return self.record(pin,'_Graph.adoption')
+    def code(self,support):
+        self.body(support['Source'],'_Graph.code');self.record(support['API'],'_Graph.code')
+        self.proof(support['different_review'],[support['Source'],support['API']]);self.adoption(support['Root_adoption'])
+    def common(self,owner,lease,selection):
+        own=self.record(owner['current_owner_scope'],'_Graph.common')
+        for key in('owner_instruction_record','owner_policy_record'):self.body(own[key],'_Graph.common')
+        self.proof(owner['different_current_owner_scope_Source_review'],[owner['current_owner_scope']]);self.adoption(owner['current_owner_scope_Root_adoption'])
+        self.record(lease['canonical'],'_Graph.common');self.record(lease['separate_Root_decision'],'_Graph.common')
+        publication=self.record(lease['original_publication'],'_lease_link')
+        candidate=publication['candidate'];self.body(candidate,'_lease_link');self.body(lease['canonical'],'_lease_link')
+        receipt=publication['candidate_author_receipt'];self.record(receipt,'_lease_link')
+        self.proof(publication['different_lease_Source_review'],[candidate,receipt]);self.adoption(publication['candidate_Root_adoption'])
+        self.proof(lease['different_review'],[lease['canonical'],lease['original_publication']]);self.adoption(lease['Root_adoption'])
+        selected=self.record(selection['selection'],'_Graph.common')
+        for row in selected['rows']:
+            if row['role']=='composer':self.record(selected['current_selection'],'_Graph.common')
+        self.proof(selection['different_review'],[selection['selection']]);self.adoption(selection['Root_adoption'])
+        self.rows={row['role']:row for row in selected['rows']}
+    def result_shape(self):
+        return {k:copy.deepcopy(rule['literal'])if type(rule)is dict and'literal'in rule else None for k,v in self.c['schemas']['result54']['fields'].items()for rule in[_ow_descriptor(self.c,v)]}
+    def child(self):
+        self.phase='child_early_original_JSON';p=self.p
+        for a in p['artifacts']:
+            if a['role']in('metadata_manifest','plan','metadata_binding','phase_binding'):self.record(a['draft'],'_m3')
+        self.phase='child_prime';self.prime(p)
+        owner,lease,selection=p['current_owner_support'],p['new_lease_support'],p['Root_future_path_selection_support']
+        self.phase='child_common_and_code';self.common(owner,lease,selection);self.code(p['producer_support'])
+        self.phase='child_stage_and_priors';self.record(p['stage_return'],'_m3');facts=self.record(p['stage_support']['facts'],'_m3');self.record(self.base['M3_inventory17_pin'],'_m3')
+        for d in p['prior_dependencies']:
+            dep=d['dependency'];self.body(dep['canonical'],'_prior')
+            for key,pin in dep.items():
+                if key!='role':self.body(pin,'_prior')
+            packet=self.record(d['publication_packet'],'_prior')
+            if d['author_kind']=='finite8_raw_reference_v2':
+                for key in('request','publication','reconciliation'):self.record(packet[key],'_prior')
+                for key in('execution_witness','exact_Source_review','Root_Source_adoption'):self.body(packet[key],'_prior')
+            else:
+                before=self.record(packet['prewrite_packet'],'_prior');self.record(before['request'],'_prior')
+                self.record(packet['publication'],'_prior');self.record(packet['reconciliation'],'_prior')
+        purpose_support=p['generation_purpose_support'];purpose=self.record(purpose_support['subject'],'_m3')
+        self.phase='child_artifacts_and_body_joins'
+        for a in p['artifacts']:
+            self.body(a['draft'],'_m3');self.body(a['predecessor'],'_m3');receipt=self.record(a['author_receipt'],'_m3');self.body(a['diff'],'_m3')
+            for observation in receipt['finite_actual_Source_observations']:self.body({k:observation[k]for k in('path','bytes','sha256')},'_observations')
+            role=a['role']
+            if role in('metadata_manifest','plan','metadata_binding','phase_binding'):
+                body=self.record(a['draft'],'_m3');self.record(a['predecessor'],'_m3')
+                if role=='metadata_manifest':
+                    for i,row in enumerate(body['payloads']):
+                        if i not in(0,2,3,4,5):self.body(dict(path=self.rows[role]['canonical_path'].rsplit('\\',1)[0]+'\\'+row['path'],bytes=row['bytes'],sha256=row['sha256']),'_body_joins')
+                elif role in('plan','metadata_binding'):
+                    for support in facts['binding_supports'].values():
+                        self.body(support['source'],'_body_joins');self.proof(support['different_review'],[support['source']]);self.adoption(support['Root_adoption'])
+                    if role=='plan':self.record(lease['canonical'],'_body_joins')
+        self.phase='child_generation_and_stage_proofs'
+        for pin in purpose['inputs']:self.body(pin,'_m3')
+        subjects=[p['stage_support']['facts']]+purpose['inputs']
+        self.proof(purpose_support['different_review'],subjects);self.adoption(purpose_support['Root_adoption'])
+        self.proof(p['stage_support']['different_review'],subjects);self.adoption(p['stage_support']['Root_adoption'])
+        self.phase='child_result';out=self.result_shape()
+        out.update(validator='M3_complete_stage_output',author_kind='M3_stage_receipt22_v2',role=p['role'],packet=self.packet_pin,author_packet=self.packet_pin,stage=p['stage'],validated_stage_roles=[a['role']for a in p['artifacts']],current_owner_scope=owner['current_owner_scope'],canonical_lease=lease['canonical'],selection=selection['selection'],producer_Source=p['producer_support']['Source'],producer_API=p['producer_support']['API'],validated_now_utc=_ow_time(24),record_count=len(self.entries),total_record_bytes=sum(x['pin']['bytes']for x in self.entries.values()),charged_metadata_nodes=0)
+        count=_ld_tree(out)[0];self.charge(count,'FINAL_RESULT',None,'_Graph.result');out['charged_metadata_nodes']=self.local
+        return out,count
+    def child_inputs(self,author):
+        selected=self.record(author['Root_future_path_selection_support']['selection'],'_child_inputs');rows={r['role']:r for r in selected['rows']}
+        for a in author['artifacts']:
+            role=a['role'];receipt=self.record(a['author_receipt'],'_child_inputs')
+            for observation in receipt['finite_actual_Source_observations']:self.body({k:observation[k]for k in('path','bytes','sha256')},'_child_inputs')
+            if role in('metadata_manifest','plan','metadata_binding','phase_binding'):
+                for key in('draft','predecessor'):self.record(a[key],'_child_inputs')
+                if role=='metadata_manifest':
+                    body=self.record(a['draft'],'_child_inputs')
+                    for i,row in enumerate(body['payloads']):
+                        if i not in(0,2,3,4,5):self.body(dict(path=rows[role]['canonical_path'].rsplit('\\',1)[0]+'\\'+row['path'],bytes=row['bytes'],sha256=row['sha256']),'_child_inputs')
+        for d in author['prior_dependencies']:
+            packet=self.record(d['publication_packet'],'_child_inputs')
+            for pin in _ow_pins(packet):self.body(pin,'_child_inputs')
+        purpose=self.record(author['generation_purpose_support']['subject'],'_child_inputs')
+        for pin in _ow_pins(purpose):self.body(pin,'_child_inputs')
+    def prewrite(self,p):
+        self.phase='parent_prewrite_prime';req=self.record(p['request'],'_prewrite');self.prime(p);self.prime(req)
+        author=self.record(p['author_packet'],'_prewrite');self.prime(author);self.child_inputs(author)
+        self.phase='parent_prewrite_common_ports';self.common(p['current_owner_support'],p['new_lease_support'],p['Root_future_path_selection_support'])
+        self.code(p['publisher_support']);self.record(p['publisher_support']['API'],'_publisher_code')
+        for key in('M3','PEER'):
+            support=p['validator_supports'][key];self.code(support);self.body(support['Source'],'_port');self.body(support['API'],'_port');self.record(support['API'],'_port')
+        self.body(req['draft'],'_prewrite');self.body(req['predecessor'],'_prewrite')
+        self.phase='parent_child_invocation';self.body(p['author_packet'],'_prewrite')
+        child=_LDPlan(self.entries,self.c,'CHILD',self.events,parent=self);child.initial(p['author_packet']);view,child_result_nodes=child.child()
+        self.phase='parent_child_result_decode';self.charge(child_result_nodes,'CHILD_RESULT_DECODE',None,'_direct')
+        self.phase='parent_conservative_child_addition';before=self.local+self.added;self.added+=child.local
+        self.events.append(dict(phase=self.phase,cache='CONSERVATIVE_SUM',operation='CHILD_TOTAL_ADDITION',subject=None,Source_site_id=self.site('_direct'),charge_nodes=child.local,local_cumulative_nodes=self.local,conservative_cumulative_nodes=self.local+self.added))
+        if self.first is None and before<=50000<self.local+self.added:self.first=dict(phase=self.phase,cache='CONSERVATIVE_SUM',Source_site_id=self.site('_direct'),before=before,charge=child.local,after=self.local+self.added)
+        self.phase='parent_author_and_draft_proofs';a=next(a for a in author['artifacts']if a['role']==req['role'])
+        roster=[a['draft'],a['author_receipt'],a['diff'],author['stage_support']['facts'],req['producer_support']['Source'],req['producer_support']['API']]
+        for support,subjects in((req['author_packet_support'],[p['author_packet']]),(req['draft_support'],roster)):
+            self.proof(support['different_review'],subjects);self.adoption(support['Root_adoption'])
+        self.phase='parent_inputs_and_purpose';self.record(author['stage_support']['facts'],'_prewrite');self.record(author['generation_purpose_support']['subject'],'_prewrite')
+        aux=p['publisher_purpose_support'];self.record(aux['different_review'],'_prewrite')
+        for pin in p['expected_inputs']:self.body(pin,'_prewrite')
+        purpose=self.record(aux['subject'],'_prewrite');self.record(aux['subject'],'_purpose');caps=self.record(aux['different_review'],'_purpose');self.record(caps['full_proof'],'_purpose');self.record(aux['Root_adoption'],'_purpose')
+        return req,view,aux['subject'],child,child_result_nodes
+    def publisher(self,route):
+        p=self.p
+        if route=='canonical':
+            self.phase='parent_canonical_prime'
+            for support in(p['canonical_delta_support'],p['reconciliation_support']):self.record(support['different_review'],'validate_selected_role_canonical_dependency_metadata')
+            self.prime(p);before=self.record(p['prewrite_packet'],'validate_selected_role_canonical_dependency_metadata')
+        else:before=p
+        req,view,purpose,child,child_result_nodes=self.prewrite(before)
+        if route=='canonical':
+            self.phase='parent_canonical_postbirth';publication=self.record(p['publication'],'validate_selected_role_canonical_dependency_metadata')
+            pair=publication['actual_publication_metadata_APIs']
+            for key in('canonical','staging'):self.body({k:pair[key][k]for k in('path','bytes','sha256')},'_observe')
+            self.body(p['canonical'],'validate_selected_role_canonical_dependency_metadata');self.body(req['draft'],'validate_selected_role_canonical_dependency_metadata')
+            self.body({k:pair['staging'][k]for k in('path','bytes','sha256')},'validate_selected_role_canonical_dependency_metadata')
+            for observation in publication['complete_input_postreads']:self.body({k:observation[k]for k in('path','bytes','sha256')},'_observe')
+            self.record(p['execution_witness'],'validate_selected_role_canonical_dependency_metadata')
+            delta=p['canonical_delta_support'];dr=self.proof(delta['different_review'],[p['canonical'],req['draft'],p['publication'],p['execution_witness']]);self.adoption(delta['Root_adoption'])
+            self.record(p['reconciliation'],'validate_selected_role_canonical_dependency_metadata')
+            support=p['reconciliation_support'];self.proof(support['different_review'],[p['reconciliation'],delta['different_review'],dr[2],delta['Root_adoption']]);self.adoption(support['Root_adoption'])
+        self.phase='parent_final_result';out=self.result_shape()
+        out.update(validator='selected_role_prewrite'if route=='prewrite'else'selected_role_canonical_dependency',author_kind=req['author_kind'],role=req['role'],packet=self.packet_pin,author_packet=req['author_packet'],author_receipt=req['author_receipt'],draft=req['draft'],predecessor=req['predecessor'],request=before['request'],publisher_purpose=purpose,producer_Source=req['producer_support']['Source'],producer_API=req['producer_support']['API'],publisher_Source=req['publisher_support']['Source'],publisher_API=req['publisher_support']['API'],current_owner_scope=req['current_owner_support']['current_owner_scope'],canonical_lease=req['new_lease_support']['canonical'],selection=req['Root_future_path_selection_support']['selection'],stage=view['stage'],validated_stage_roles=view['validated_stage_roles'],canonical=p['canonical']if route=='canonical'else None,publication=p['publication']if route=='canonical'else None,reconciliation=p['reconciliation']if route=='canonical'else None,validated_now_utc=_ow_time(24 if route=='prewrite'else 40),record_count=len(self.entries),total_record_bytes=sum(x['pin']['bytes']for x in self.entries.values()),charged_metadata_nodes=0)
+        result_nodes=_ld_tree(out)[0];self.charge(result_nodes,'FINAL_RESULT',None,'_outer_result')
+        crossings=[x for x in(self.first,child.first)if x is not None]
+        first=None
+        if crossings:
+            for event in self.events:
+                for x in crossings:
+                    if event['phase']==x['phase']and event['Source_site_id']==x['Source_site_id']and(event['cache']==x['cache']or x['cache']=='CONSERVATIVE_SUM'):
+                        first=x;break
+                if first is not None:break
+        return child,child_result_nodes,result_nodes,first
+
+def snapshot_I13_M3_input_node_ledger(*,m3,publisher,peer,catalogue_bytes,roles):
+    _ld_need(type(roles)in(tuple,list)and 1<=len(roles)<=2 and all(type(r)is str and r in _LD_ROLES for r in roles)and len(set(roles))==len(roles)and list(roles)==[r for r in _LD_ROLES if r in roles],'E_LEDGER_SELECTION')
+    _ld_need(type(catalogue_bytes)is bytes and len(catalogue_bytes)==_LD_INPUTS['catalogue']['bytes']and hashlib.sha256(catalogue_bytes).hexdigest()==_LD_INPUTS['catalogue']['sha256'],'E_LEDGER_SOURCE_BINDING')
+    modules={name:_ld_carrier(value,name)for name,value in(('m3',m3),('publisher',publisher),('peer',peer))};cat=_ld_decode(catalogue_bytes)
+    seal=_fp((FIXED,CASE_CATALOGUE,_LD_INPUTS,_LD_ROLES,_LD_SITE_IDS,_LD_META_EDGES,_LD_LEASE_EDGES,_LD_PROOF_EDGES));graphs=[]
+    try:
+        for role in roles:
+            spec=dict(stage=_LD_ROLES[role],selected_role=role,route='canonical')
+            bundle=_fixture_make(spec,modules['m3'],modules['publisher'],modules['peer'],catalogue_bytes)
+            entries,total=_ld_inventory(bundle['records']);labels=bundle['labels'];packets={key:entries[labels[label]]['pin']for key,label in(('author','wrapper'),('prewrite','outer_prewrite'),('canonical','outer_packet'))}
+            planned={};route_rows=[]
+            for route in('prewrite','canonical'):
+                events=[];parent=_LDPlan(entries,cat,'PARENT',events);parent.initial(packets[route]);child,child_result,final_result,first=parent.publisher(route)
+                _ld_need(len(events)<=1024)
+                planned[route]=(parent,child)
+                parent_json=sum(entries[k]['info']['nodes']for k in parent.cache);child_json=sum(entries[k]['info']['nodes']for k in child.cache)
+                base=1+11*len(entries)
+                _ld_need(parent.local==base+7+parent_json+child_result+final_result and child.local==base+7+child_json+child_result and parent.added==child.local)
+                route_rows.append(dict(route=route,packet=copy.deepcopy(packets[route]),context_nodes=7,parent_store_snapshot_nodes=base,child_store_snapshot_nodes=base,parent_unique_JSON_nodes=parent_json,child_unique_JSON_nodes=child_json,child_result_nodes=child_result,parent_child_result_decode_nodes=child_result,parent_final_result_nodes=final_result,phase_rows=events,planned_parent_local_total=parent.local,planned_child_local_total=child.local,planned_conservative_total=parent.local+child.local,first_planned_50000_crossing=first,unmodeled_Source_sites=[],all_non_node_predicates_assumed_satisfied=True))
+            _ld_need(planned['prewrite'][1].uses==planned['canonical'][1].uses)
+            rows=[]
+            for path,item in entries.items():
+                names=sorted(k for k,v in labels.items()if v==path)
+                rows.append(dict(ordinal=item['ordinal'],pin=copy.deepcopy(item['pin']),labels=names,strict_JSON=copy.deepcopy(item['info']),parent_prewrite_use=planned['prewrite'][0].uses[path],parent_canonical_use=planned['canonical'][0].uses[path],child_use=planned['prewrite'][1].uses[path]))
+            record_wire=(json.dumps([x['pin']for x in bundle['records']],sort_keys=True,separators=(',',':'),ensure_ascii=True)+'\n').encode('ascii')
+            _ld_need(_fp((FIXED,CASE_CATALOGUE,_LD_INPUTS,_LD_ROLES,_LD_SITE_IDS,_LD_META_EDGES,_LD_LEASE_EDGES,_LD_PROOF_EDGES))==seal,'E_LEDGER_GLOBAL_SEAL')
+            graphs.append(dict(role=role,stage=_LD_ROLES[role],record_count=len(entries),total_record_bytes=total,record_set_LF_fact3_sha256=hashlib.sha256(record_wire).hexdigest(),packet_pins=packets,record_ledger=rows,route_ledgers=route_rows,global_seals_unchanged=True))
+    except(KeyError,IndexError,StopIteration,TypeError,RecursionError,OverflowError):
+        raise I13InputLedgerError('E_LEDGER_UNMODELED_ABI')from None
+    finally:
+        _ld_need(_fp((FIXED,CASE_CATALOGUE,_LD_INPUTS,_LD_ROLES,_LD_SITE_IDS,_LD_META_EDGES,_LD_LEASE_EDGES,_LD_PROOF_EDGES))==seal,'E_LEDGER_GLOBAL_SEAL')
+    result=dict(schema_version=2,record_type='I13_fixture_input_node_and_Source_planned_readset_ledger',metadata_only=True,counting_semantics='FULL_KEYS_VALUES_LOCAL_CACHE_THEN_CONSERVATIVE_SUM',roles=list(roles),graphs=graphs,Source_inputs=copy.deepcopy(_LD_INPUTS),limits=dict(record_count=256,rawbytes=33554432,perrecord=2097152,output=2097152,source_node_guard=50000,depth=48),plan_is_actual_target_trace=False,validator_exports_called=0,target_execution=False,operational_authority=False,scientific_authority=False,native_Parser_executed=False,actual_family_publication=False,full_original_I2_DAG_closed=False,authentic_loader_qualified=False)
+    raw=_ow_wire(result);_ld_need(len(raw)<=2097152,'E_LEDGER_OUTPUT_CAP');return raw

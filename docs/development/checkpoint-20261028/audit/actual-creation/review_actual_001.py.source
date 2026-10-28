@@ -1,0 +1,99 @@
+"""Independent ordinary content verification of actual documentation publication."""
+from pathlib import Path
+import datetime as dt
+import hashlib
+import json
+import os
+
+OUT=Path('D:/Aenv/pro2/WORK/docs-publication-20261028-001')
+REPO=Path('D:/Aenv/pro2/github-portable-20261012-001')
+BASE='docs/development/checkpoint-20261028'
+CHECKS=[];PINS={}
+def read(path):
+    b=Path(path).read_bytes();assert len(b)<=2097152
+    PINS[str(path)]={'path':str(path),'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()}
+    return b
+def pin(b):return {'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()}
+def doc(p):return json.loads(read(p))
+def eq(b,r):return pin(b)=={k:r[k] for k in ('bytes','sha256')}
+def ck(n,v):CHECKS.append({'name':n,'passed':bool(v)})
+
+manifest=doc(OUT/'CANDIDATE_FINAL.json')
+receipt=doc(OUT/'ACTUAL_DOCUMENTATION_PUBLICATION.json')
+adoption=doc(OUT/'REVIEW_ADOPTION.json')
+scope=doc(OUT/'PUBLICATION_SCOPE.json')
+before=doc(OUT/'BEFORE.json')
+ck('both actual receipts exact',read(OUT/'ACTUAL_DOCUMENTATION_PUBLICATION.json')==read(REPO/BASE/'ACTUAL_DOCUMENTATION_PUBLICATION.json'))
+ck('actual manifest pin',receipt['candidate_manifest']==pin(read(OUT/'CANDIDATE_FINAL.json'))==adoption['candidate_manifest'])
+ck('Root adoption exact embedded',receipt['saved_reviews_adopted_for_documentation_only']==adoption)
+expected=manifest['files']+[{k:r[k] for k in ('path','bytes','sha256')} for r in adoption['additional_metadata']]
+ck('actual exact1573plus14 roster',receipt['files']==expected and len(manifest['files'])==1573 and len(adoption['additional_metadata'])==14 and len(expected)==1587)
+ck('actual filenames unique',len({r['path'].casefold() for r in expected})==len(expected))
+for i,row in enumerate(expected):ck('published_pin_'+str(i),eq(read(REPO/row['path']),row))
+for i,row in enumerate(adoption['additional_metadata']):
+    ck('extra_source_copy_'+str(i),read(REPO/row['path'])==read(row['source_path']) and eq(read(row['source_path']),row))
+    ck('extra_inert_extension_'+str(i),Path(row['path']).suffix in ('.json','.source'))
+
+ck('two genuinely distinct final reviewers',len(adoption['review_capsules'])==2 and {r['reviewer'] for r in adoption['review_capsules']}=={'/root/docs_publication_map','/root/current_evidence_inventory'})
+for i,row in enumerate(adoption['review_capsules']):
+    b=read(row['path']);c=json.loads(b)
+    ck('finalreview_pin_'+str(i),eq(b,row))
+    ck('finalreview_PASS_'+str(i),c['verdict']=='PASS' and c['checks_failed']==0 and c['checks_passed']==row['checks_passed'])
+    ck('finalreview_candidate_'+str(i),manifest is not None and receipt['candidate_manifest']['sha256'] in json.dumps(c))
+ck('Root adoption docs only',adoption['accepted_for_documentation_publication_only'] is True and adoption['project_subject_test_native_capture_science_execution'] is False and adoption['Source005_qualified'] is False and adoption['Source015_adopted'] is False and adoption['bootstrap004_accepted'] is False)
+
+pres=doc(REPO/BASE/'document-preservation.json')
+ck('eight preserved docs',len(pres['files'])==8)
+for i,row in enumerate(pres['files']):
+    b=read(REPO/row['path'])
+    ck('whole_doc_pin_'+str(i),eq(b,row['after']))
+    ck('complete_prior_suffix_'+str(i),eq(b[row['prefix_bytes']:],row['before']))
+canonical=doc(REPO/'continuation/canonical-source.json')
+overlay=doc(REPO/'continuation/canonical-source-overlays.json')['overlays'][0]
+ck('canonical740 exact declared',len(canonical['files'])==receipt['canonical_files_verified']==740)
+for i,row in enumerate(canonical['files']):
+    b=read(REPO/row['path'])
+    if row['path']==overlay['path']:
+        ck('overlay current whole file',pin(b)=={'bytes':overlay['current_bytes'],'sha256':overlay['current_sha256']})
+        b=b[overlay['prefix_bytes']:]
+    ck('canonical_original_pin_'+str(i),eq(b,row))
+for i,row in enumerate(before['existing_changes']):
+    if row['path']=='continuation/canonical-source-overlays.json':continue
+    ck('prior_workspace_change_'+str(i),eq(read(REPO/row['path']),row))
+stage=read(OUT/'stage-paths.nul').split(b'\0')
+ck('stage file ends NUL',stage[-1]==b'')
+stage=[x.decode() for x in stage if x]
+expectedpaths={r['path'] for r in expected}|{r['path'] for r in before['existing_changes']}|{BASE+'/ACTUAL_DOCUMENTATION_PUBLICATION.json'}
+ck('exact1996 requested stagepaths',len(stage)==len(set(stage))==1996 and set(stage)==expectedpaths)
+
+refusal=doc(OUT/'ROOT_REVIEW_ADOPTER_PATH_NORMALIZATION_REFUSAL_001.json')
+old=read(OUT/'adopt_documentation_reviews001_refused.py.source').decode()
+new=read(OUT/'adopt_documentation_reviews.py').decode()
+expectedold=old.replace('names.append(str(found[0].relative_to(O)))','names.append(found[0].relative_to(O).as_posix())').replace("('CANDIDATE_FINAL.json','adopt_documentation_reviews.py')", "('CANDIDATE_FINAL.json','adopt_documentation_reviews.py','adopt_documentation_reviews001_refused.py.source','ROOT_REVIEW_ADOPTER_PATH_NORMALIZATION_REFUSAL_001.json')")
+ck('own adopter exactly limited correction',new==expectedold)
+ck('own refusal saved unchanged and no priorwrite claimed',refusal['exit_code']==1 and refusal['tool_chunk']=='9178fe' and refusal['review_adoption_written'] is False and refusal['repository_modified'] is False and refusal['subject_execution'] is False)
+ck('old refusal before unique write site',old.index("assert len({x['reviewer'] for x in caps})==2")<old.index("write(O/'REVIEW_ADOPTION.json'"))
+ck('ordinary Windows relative normalization only','this does not modify the Source015 metadata guard' in refusal['correction'])
+ck('normalized helper retains distinctreviewer guard',"assert len({x['reviewer'] for x in caps})==2" in new)
+ck('final reviews qualify actual finalmanifest',all(json.loads(read(r['path']))['checks_failed']==0 for r in adoption['review_capsules']))
+ck('actual created within scope strict60',dt.datetime.fromisoformat(receipt['created_utc'])+dt.timedelta(seconds=60)<dt.datetime.fromisoformat(scope['end_utc']))
+ck('metadata actual flags held',receipt['subject_or_test_or_native_or_capture_execution'] is False and receipt['Source005_qualified'] is False and receipt['Source015_adopted'] is False and receipt['bootstrap004_accepted'] is False)
+ck('no commit push inferred from docs receipt',receipt['Git_commit_and_push_not_yet_performed'] is True)
+
+failed=[c for c in CHECKS if not c['passed']]
+result={'record_type':'independent_actual_documentation_creation_review','author':'/root/docs_publication_map','created_utc':dt.datetime.now(dt.timezone.utc).isoformat(),
+'actual_receipt':PINS[str(OUT/'ACTUAL_DOCUMENTATION_PUBLICATION.json')],'candidate_manifest':PINS[str(OUT/'CANDIDATE_FINAL.json')],
+'Root_review_adoption':PINS[str(OUT/'REVIEW_ADOPTION.json')],
+'checks_passed':len(CHECKS)-len(failed),'checks_failed':len(failed),'checks':CHECKS,'reviewed_inputs':list(PINS.values()),
+'actual_file_count':1587,'candidate_files':1573,'additional_exact_metadata_files':14,'canonical_files':740,'whole_prior_doc_suffixes':8,'staging_roster_paths':1996,
+'own_adopter_refusal_and_correction_reviewed':True,'source015_guard_unchanged':True,
+'scope':'Saved actual content/pins/metadata creation only. No project target imports or executions, tests, native queries, custody/host quiet, runtime or science acceptance.',
+'repository_or_candidate_mutated_by_reviewer':False,'Git_commit_or_push_verified':False,'verdict':'PASS' if not failed else 'FAIL'}
+data=(json.dumps(result,indent=2,sort_keys=True)+'\n').encode();assert len(data)<=2097152
+target=OUT/'review-actual/INDEPENDENT_ACTUAL_DOCUMENTATION_CREATION_FULL_PROOF_001.json'
+with target.open('xb') as f:f.write(data);f.flush();os.fsync(f.fileno())
+cap={k:v for k,v in result.items() if k not in ('checks','reviewed_inputs')}
+cap['full_proof']={'path':str(target),**pin(data)};cap['failed_checks']=failed
+data=(json.dumps(cap,indent=2,sort_keys=True)+'\n').encode();target=OUT/'review-actual/INDEPENDENT_ACTUAL_DOCUMENTATION_CREATION_CAPSULE_001.json'
+with target.open('xb') as f:f.write(data);f.flush();os.fsync(f.fileno())
+print(json.dumps({'path':str(target),**pin(data),'checks_passed':cap['checks_passed'],'checks_failed':cap['checks_failed'],'failed':failed}))

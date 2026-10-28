@@ -1,0 +1,157 @@
+"""Preserve unrun prototype and refine exact typed readback/failure custody before freeze."""
+import base64,datetime as dt,hashlib,json,os
+from pathlib import Path
+R=Path(__file__).parent
+p=R/'ROOT_I13_HELD_RAW_RETENTION_SUPERVISOR_001.py.template'
+b=p.read_bytes();text=b.decode('utf8')
+assert len(b)<=65536
+same='''def _same(actual, expected):
+    if type(actual) is not type(expected):
+        return False
+    if type(expected) is dict:
+        return _closed(actual, expected) and all(_same(actual[k],v) for k,v in expected.items())
+    if type(expected) is list:
+        return len(actual) == len(expected) and all(_same(a,b) for a,b in zip(actual,expected))
+    return actual == expected
+
+
+'''
+text=text.replace('def _fact(value, allow_empty=False):',same+'def _fact(value, allow_empty=False):')
+text=text.replace("type(value[k]) is type(expected) and value[k] == expected", "_same(value[k], expected)")
+text=text.replace("type(api[k]) is type(v) and api[k] == v", "_same(api[k], v)")
+text=text.replace("type(admission[k]) is type(value) and admission[k] == value", "_same(admission[k], value)")
+old="""    _need(protocol.get('author') == '/root' and
+          protocol.get('operation') == 'DATA_ONLY_RAW_RECORD_RETENTION_V1' and
+          protocol.get('capture_protocol_adopted') is True, 'E_RETENTION_AUTHORITY')"""
+new=old+"""
+    for record in (adopt, protocol):
+        for key in ('contract','schema','selection_plan'):
+            _need(_same(record.get(key),FIXED[key]),'E_RETENTION_AUTHORITY')
+    _need(adopt.get('Source_scope') == admission['Source_scope'] and
+          type(adopt.get('qualified_subjects')) is list and
+          all(any(_same(v,p) for v in adopt['qualified_subjects']) for p in
+              (FIXED['exporter_Source'],FIXED['exporter_API'],admission['supervisor_Source'])),
+          'E_RETENTION_AUTHORITY')"""
+assert text.count(old)==1;text=text.replace(old,new)
+oldchild=text[text.index('def _owned_child('):text.index('def _failure(')]
+newchild='''def _owned_child(runtime, entry_path, input_path, input_pin, deadline):
+    _activation_required()
+    _fact(input_pin)
+    command = [runtime['path'], '-I', '-S', '-B', str(entry_path), str(input_path), input_pin['sha256']]
+    proc = None
+    streams = {'stdout':bytearray(), 'stderr':bytearray()}
+    state = {'stdout_eof':False,'stderr_eof':False,'error':False,'cap':False}
+    readers = []
+    errors = []
+    def drain(name, pipe):
+        _activation_required()
+        try:
+            while True:
+                chunk = pipe.read(65536)
+                if not chunk:
+                    state[name+'_eof'] = True
+                    break
+                remain = MAX_BYTES-len(streams[name])
+                streams[name].extend(chunk[:max(remain,0)])
+                if len(chunk)>remain:
+                    state['cap'] = True
+                    # Drain to EOF during owned cleanup, retaining only the cap.
+        except BaseException:
+            state['error'] = True
+        finally:
+            pipe.close()
+    launch = dt.datetime.now(dt.timezone.utc).isoformat()
+    start = time.monotonic()
+    timed_out = False
+    killed = False
+    try:
+        proc = subprocess.Popen(command,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,shell=False,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+        for name,pipe in (('stdout',proc.stdout),('stderr',proc.stderr)):
+            t=threading.Thread(target=drain,args=(name,pipe),daemon=True)
+            readers.append(t);t.start()
+        # <=50 original wait cap; reserve10cleanup plus5evidence within60total.
+        wait_end=min(start+45,deadline-15)
+        while proc.poll() is None and time.monotonic()<wait_end:
+            if state['cap'] or state['error']:
+                break
+            time.sleep(min(0.02,max(0,wait_end-time.monotonic())))
+        timed_out=proc.poll() is None and not state['cap'] and not state['error']
+    except BaseException as exc:
+        errors.append(type(exc).__name__[:128])
+    finally:
+        cleanup_end=min(start+55,deadline-5)
+        if proc is not None:
+            try:
+                if proc.poll() is None:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=min(5,max(0.001,cleanup_end-time.monotonic())))
+                    except subprocess.TimeoutExpired:
+                        proc.kill();killed=True
+                if proc.poll() is None:
+                    proc.wait(timeout=min(5,max(0.001,cleanup_end-time.monotonic())))
+            except BaseException as exc:
+                errors.append(type(exc).__name__[:128])
+            for t in readers:
+                t.join(timeout=max(0,cleanup_end-time.monotonic()))
+    reaped=proc is not None and proc.poll() is not None
+    complete=(reaped and all(not t.is_alive() for t in readers) and
+        state['stdout_eof'] and state['stderr_eof'] and not state['cap'] and
+        not state['error'] and not timed_out and not errors and time.monotonic()<=deadline)
+    custody=dict(owned_pid=proc.pid if proc is not None else None,command=command,
+        launch_utc=launch,end_utc=dt.datetime.now(dt.timezone.utc).isoformat(),
+        returncode=proc.returncode if proc is not None else None,reaped=reaped,
+        stdout_eof=state['stdout_eof'],stderr_eof=state['stderr_eof'],
+        cap_violation=state['cap'],drain_error=state['error'],timed_out=timed_out,
+        cleanup_errors=errors,kill_used=killed,reader_threads_closed=all(not t.is_alive() for t in readers),
+        custody_complete=complete,elapsed_seconds_text=format(time.monotonic()-start,'.9f'),
+        budgets=BUDGETS,whole_host_quiet_claimed=False,physical_handle_absence_claimed=False,
+        original_target_or_kernel_called=False)
+    # Return retained bounded streams and all failed custody facts too; never
+    # discard them behind a passing/error Boolean or retry the consumed claim.
+    return bytes(streams['stdout']),bytes(streams['stderr']),custody
+
+
+'''
+text=text.replace(oldchild,newchild)
+text=text.replace('    transport_created = False\n    evidence = {}', '    transport_created = False\n    evidence = {}\n    custody = None')
+text=text.replace("_owned_child(admission['runtime_interpreter'],paths['child_entry'],paths['child_input'],deadline)","_owned_child(admission['runtime_interpreter'],paths['child_entry'],paths['child_input'],evidence['child_input'],deadline)")
+text=text.replace("_need(custody['returncode'] == 0 and stderr == b'', 'E_RETENTION_CUSTODY')","_need(custody['custody_complete'] is True and custody['returncode'] == 0 and stderr == b'', 'E_RETENTION_CUSTODY')")
+needle="""        try:
+            _write_owned(paths['failure'],_failure(admission,graph['graph_id'],step,code,
+                         type(exc).__name__,transport_created),scope['interval_end'],admission['interval_end'],deadline)
+        except BaseException:
+            pass
+        raise"""
+replace="""        for key,body in (
+            ('failure',_failure(admission,graph['graph_id'],step,code,type(exc).__name__[:128],transport_created)),
+            ('parent_witness',_wire(dict(schema_version=1,
+                record_type='Root_I13_raw_retention_owned_parent_failure_witness',
+                status='FAILED_PENDING_DIFFERENT_REVIEW_AND_ROOT_ADOPTION',
+                capture_id=admission['capture_id'],partition_id=admission['partition_id'],
+                graph_id=graph['graph_id'],claim=claim_pin,evidence=evidence,custody=custody,
+                step=step,error_code=code,supervisor_Source=admission['supervisor_Source'],
+                exporter_Source=FIXED['exporter_Source'],exporter_API=FIXED['exporter_API'],
+                contract=FIXED['contract'],schema=FIXED['schema'],selection_plan=FIXED['selection_plan'],
+                Source_scope=admission['Source_scope'],Source_adoption=admission['Source_adoption'],
+                protocol_adoption=admission['protocol_adoption'],prelaunch=admission['prelaunch'],
+                target_execution=False,operational_authority=False,scientific_authority=False,
+                automatic_retry_permitted=False,complete_graph_or_global_acceptance=False)))):
+            try:
+                _write_owned(paths[key],body,scope['interval_end'],admission['interval_end'],deadline)
+            except BaseException:
+                pass
+        raise"""
+assert text.count(needle)==1;text=text.replace(needle,replace)
+newb=text.encode('utf8')
+out=R/'ROOT_I13_HELD_RAW_RETENTION_SUPERVISOR_002.py.template'
+assert len(newb)<=65536 and (dt.datetime.fromisoformat('2026-10-27T15:10:56.767745+00:00')-dt.datetime.now(dt.timezone.utc)).total_seconds()>60
+with out.open('xb') as h:h.write(newb);h.flush();os.fsync(h.fileno())
+pin=lambda p,b:dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+inverse=dict(schema_version=1,record_type='Root_held_supervisor_template002_complete_unrun001_inverse',author='/root',complete_predecessor=pin(p,b),complete_predecessor_base64=base64.b64encode(b).decode(),successor=pin(out,newb),prototype_invoked=False,source_inspection_corrections=['Recursive exact builtin equality rejects bool ordinal aliases.','Require exact protocol/Sourceadoption subject joins.','Return/save failed custody+boundedstreams instead of losing observation at raise.','45wait+10cleanup+5evidence stays insideoriginal50wait/60total; max5reap preserved.','Bind childinput wholeSHA in actual childcommand.'],all_execution_gates_held=True)
+ip=R/'ROOT_HELD_SUPERVISOR_TEMPLATE002_COMPLETE001_INVERSE_001.json'
+ib=(json.dumps(inverse,sort_keys=True,indent=2)+'\n').encode()
+with ip.open('xb') as h:h.write(ib);h.flush();os.fsync(h.fileno())
+assert p.read_bytes()==b and out.read_bytes()==newb and ip.read_bytes()==ib
+print(json.dumps(dict(template=pin(out,newb),inverse=pin(ip,ib))))

@@ -1,0 +1,175 @@
+"""Independent ordinary saved-content/docs review; no subject import or execution."""
+from pathlib import Path, PurePosixPath
+import ast
+import datetime as dt
+import hashlib
+import json
+import os
+import re
+
+ROOT = Path('D:/Aenv/pro2')
+REPO = ROOT/'github-portable-20261012-001'
+OUT = ROOT/'WORK/docs-publication-20261028-001'
+CAND = OUT/'candidate'
+REVIEW = OUT/'review-docs'
+BASE = 'docs/development/checkpoint-20261028'
+checks = []
+inputs = {}
+
+def read(path):
+    path = Path(path)
+    data = path.read_bytes()
+    if len(data) > 2*1024*1024:
+        raise ValueError('bounded review input exceeded')
+    inputs[str(path)] = {'path':str(path),'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()}
+    return data
+
+def pairs(rows):
+    result = {}
+    for k,v in rows:
+        if k in result: raise ValueError('duplicate key')
+        result[k] = v
+    return result
+
+def doc(path):
+    return json.loads(read(path), object_pairs_hook=pairs)
+
+def pin(data):
+    return {'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()}
+
+def check(name, value):
+    checks.append({'name':name,'passed':bool(value)})
+
+def matches(data, row):
+    return pin(data) == {k:row[k] for k in ('bytes','sha256')}
+
+def safe(name):
+    p = PurePosixPath(name)
+    return not p.is_absolute() and '..' not in p.parts and '\\' not in name and ':' not in name
+
+manifest = doc(OUT/'CANDIDATE.json')
+scope = doc(OUT/'PUBLICATION_SCOPE.json')
+before = doc(OUT/'BEFORE.json')
+helper = read(OUT/'prepare_checkpoint.py')
+tree = ast.parse(helper)
+imports = [n for n in ast.walk(tree) if isinstance(n,(ast.Import,ast.ImportFrom))]
+modules = {n.module if isinstance(n,ast.ImportFrom) else a.name for n in imports for a in (n.names if isinstance(n,ast.Import) else [None])}
+check('helper only ordinary stdlib imports', modules <= {'pathlib','datetime','hashlib','json','os','stat','subprocess'})
+check('helper subject programs never imported through dynamic imports', b'__import__' not in helper and b'importlib' not in helper)
+check('helper subprocess is Git read helper only', helper.count(b'subprocess.check_output') == 1 and b"['git', '-C', str(REPO), *args]" in helper)
+check('helper CreateNew plus fsync and content readback', b"p.open('xb')" in helper and b'os.fsync' in helper and b'assert p.read_bytes() == b' in helper)
+check('current user documentation publication request literal', scope['user_request'] == 'push to the repo after you update the docs and the handoff')
+check('strict reserve and shared concurrency retained', scope['reserve_seconds']==60 and scope['Root_max_agents']==3 and scope['peer_reserved']==2 and scope['shared_max']==5)
+check('no old window renewal or operational grant', scope['old_Source_windows_extended'] is False and scope['Source015_adopted'] is False and scope['subject_execution_or_test_or_capture_or_native_or_science_authorized'] is False)
+check('review performed within publication reserve', dt.datetime.now(dt.timezone.utc) < dt.datetime.fromisoformat(scope['end_utc'])-dt.timedelta(seconds=60))
+expected = {r['path']:r for r in manifest['files']}
+actual = {p.relative_to(CAND).as_posix() for p in CAND.rglob('*') if p.is_file()}
+check('candidate exact named file set', set(expected)==actual and len(expected)==len(manifest['files']))
+check('candidate casefold paths unique', len({p.casefold() for p in expected})==len(expected))
+for name,row in expected.items():
+    check('safe candidate path '+name, safe(name))
+    check('candidate pin '+name, matches(read(CAND/name),row))
+    if name.startswith(BASE+'/evidence/blobs/'):
+        check('inert archived program extension '+name, Path(name).suffix in {'.json','.txt','.md','.source','.log','.patch','.diff'})
+
+index = doc(CAND/BASE/'evidence-index.json')
+rows=[]
+for i,part in enumerate(index['parts'],1):
+    data=read(CAND/part['path']); d=json.loads(data)
+    check('part pin '+str(i),matches(data,part))
+    check('part independently bounded '+str(i), len(d['files'])<=384 and len(d['files'])<=512 and sum(r['bytes'] for r in d['files'])<=64*1024*1024)
+    check('part no execution '+str(i),d['execution_authority'] is False)
+    check('part header counts '+str(i),part['file_count']==len(d['files']) and part['logical_bytes']==sum(r['bytes'] for r in d['files']))
+    rows.extend(d['files'])
+check('index totals',len(rows)==index['source_file_count']==manifest['source_evidence_records'] and sum(r['bytes'] for r in rows)==index['source_logical_bytes']==manifest['source_logical_bytes'])
+check('logical source paths unique',len({r['original_path'].casefold() for r in rows})==len(rows))
+check('index explicitly limited closure', 'not a complete transitive dependency closure' in index['scope'] and index['Source005_packet_included_or_Root_qualified'] is False)
+for r in rows:
+    data=read(CAND/r['archive_path'])
+    check('archive name bound '+r['original_path'],Path(r['archive_path']).name.startswith(r['sha256']+'.'))
+    check('archive equals original '+r['original_path'], data==read(r['original_path']) and matches(data,r))
+
+pres=doc(CAND/BASE/'document-preservation.json')
+check('eight additive documents',len(pres['files'])==8)
+new_texts=[]
+for r in pres['files']:
+    old=read(REPO/r['path']); new=read(CAND/r['path']); prefix=new[:r['prefix_bytes']]
+    check('complete prior doc suffix '+r['path'],new[r['prefix_bytes']:]==old and matches(old,r['before']) and matches(new,r['after']))
+    new_texts.append((r['path'],prefix.decode('utf-8')))
+    check('prefix execution hold '+r['path'],'All capture, actual-family, Native8, Parser, runtime and science gates remain held' in prefix.decode())
+overlay=doc(CAND/'continuation/canonical-source-overlays.json')['overlays'][0]
+oldoverlay=doc(REPO/'continuation/canonical-source-overlays.json')['overlays'][0]
+check('frozen overlay pins unchanged', all(overlay[k]==oldoverlay[k] for k in ('path','frozen_bytes','frozen_sha256')))
+state=read(CAND/'PROJECT_STATE.md')
+check('new overlay exact current whole pin',matches(state,{'bytes':overlay['current_bytes'],'sha256':overlay['current_sha256']}))
+check('new overlay exact old frozen suffix',matches(state[overlay['prefix_bytes']:],{'bytes':overlay['frozen_bytes'],'sha256':overlay['frozen_sha256']}))
+report=read(CAND/BASE/'CURRENT_CHECKPOINT.md').decode()
+new_texts.append((BASE+'/CURRENT_CHECKPOINT.md',report))
+for name,text in new_texts:
+    for link in re.findall(r'\]\(([^)]+)\)',text):
+        if link.startswith(('http:','https:','#')): continue
+        target=link.split('#')[0]
+        path=(CAND/name).parent/target
+        repo_path=(REPO/name).parent/target
+        check('new local link '+name+' -> '+link,path.is_file() or repo_path.is_file())
+
+aliases={
+'i11-managed-creation-adoption.json':'resume-20261025-001/ROOT_MANAGED146_ACTUAL_CREATION_DIFFERENT_REVIEW_FINAL_ADOPTION_001.json',
+'i12-managed-creation-adoption.json':'resume-20261025-002/ROOT_I12_MANAGED260_ACTUAL_CREATION_DIFFERENT_REVIEW_FINAL_ADOPTION_001.json',
+'i13-progress-ledger002.json':'resume-20261025-003/ROOT_I13_CURRENT_RECEIPT_CONTRACT_PROGRESS_LEDGER_002.json',
+'i13-handoff003.json':'resume-20261025-003/ROOT_I13_CURRENT_CAUSAL_RECEIPT_DESIGN_AND_EVIDENCE_HANDOFF_003.json',
+'retention-handoff005.json':'resume-20261027-002/ROOT_I13_CURRENT_RETENTION_EXPORTER_API_SUPERVISOR_SOURCE_QUALIFICATION_HANDOFF_005.json',
+'capture-handoff006.json':'resume-20261027-003/ROOT_I13_CURRENT_CAPTURE_PROTOCOL_AND_EXACT_REQUEST_HANDOFF_006.json',
+'capture-handoff006-creation-adoption.json':'resume-20261027-003/ROOT_I13_HANDOFF006_DIFFERENT_CREATION_REVIEW_ADOPTION_001.json',
+'bootstrap004-failure-adoption.json':'resume-20261028-001/ROOT_BOOTSTRAP004_ACTUAL_FAILURE_REVIEW_ADOPTION_AND_NATIVE_REQUEST_HOLD_001.json',
+'bootstrap004-failure-handoff.json':'resume-20261028-001/ROOT_CURRENT_BOOTSTRAP004_FAILURE_AND_NATIVE_REQUEST_HELD_HANDOFF_001.json',
+'source015-unadopted-disposition.json':'resume-20261028-001/Source015_coexistence_001/ROOT_SOURCE015_PROPOSAL_UNADOPTED_AND_PHASE_COMPLETED_DISPOSITION_001.json'}
+records={}
+for alias, original in aliases.items():
+    b=read(CAND/BASE/'records'/alias)
+    check('alias exact saved bytes '+alias,b==read(ROOT/'WORK'/original))
+    records[alias]=json.loads(b)
+check('I11 exact saved synthetic count',records['i11-managed-creation-adoption.json']['accepted_I11_synthetic_cases']=={'expected_refusals':642,'failed':0,'passed':664,'positive':22})
+check('I12 exact saved synthetic count',records['i12-managed-creation-adoption.json']['accepted_I12_pure_metadata_cases']=={'expected_refusals':912,'failed':0,'passed':1089,'positive':177})
+diag=records['i13-progress-ledger002.json']['current_saved_diagnostic']
+check('I13 exact current partial diagnostics',diag['complete_cases']==32 and diag['passed']==20 and diag['failed']==12 and diag['other_current_case_outcomes_unestablished']==904 and diag['all_failed_codes']=='E_NODE_BUDGET' and diag['whole936_pass'] is False)
+h6=records['capture-handoff006.json']
+check('capture Source and request only',h6['checks_passed']==130 and h6['checks_failed']==0 and h6['exact_admission_issued'] is False and h6['request_payload']['bytes']==407 and h6['summary']['future_admission_keys']==33 and h6['summary']['payload_keys']==3)
+check('capture creation pending externally closed',h6['creation_review_pending'] is True and records['capture-handoff006-creation-adoption.json']['creation_review_adopted'] is True and records['capture-handoff006-creation-adoption.json']['checks_passed']==635)
+failure=records['bootstrap004-failure-handoff.json']
+check('bootstrap failed consumed unaccepted',failure['actual_disposition']=='FAILED_UNRELEASED_CONSUMED' and failure['bootstrap004_identity_consumed'] is True and failure['actual_bootstrap_accepted'] is False and failure['native_preparation_request_prepared'] is False and failure['actual_mode_exit_vector']==[0,1,0,0])
+s15=records['source015-unadopted-disposition.json']
+check('Source015 unadopted and Source005 not qualified',s15['Source015_adopted'] is False and s15['Source005_qualified_by_Root'] is False and s15['Source005_launch_ready'] is False and s15['custody_resolution_contract_accepted'] is False)
+check('Source005 completion clearly peer report',s15['peer_stop_report']['not_independently_reobserved_by_Root'] is True and 'peer-reported' in new_texts[0][1])
+contract=doc(ROOT/'WORK/resume-20261027-001/ROOT_I13_RAW_INPUT_RETENTION_CONTRACT_DIFFERENT_REVIEW_ADOPTION_001.json')
+qual=doc(ROOT/'WORK/resume-20261027-002/ROOT_I13_RETENTION_EXPORTER_API_SUPERVISOR_STATIC_SOURCE_QUALIFICATION_ADOPTION_001.json')
+check('contract175 and qualification255 counts',contract['checks_passed']==175 and qual['checks_passed']==255 and contract['checks_failed']==qual['checks_failed']==0)
+h4=doc(ROOT/'WORK/resume-20261027-001/ROOT_I13_CURRENT_RAW_INPUT_RETENTION_CONTRACT_AND_EVIDENCE_HANDOFF_004.json')
+check('logical raw-byte planning measurement',h4['retention_design_summary']['logical_raw_bytes']==17399459 and h6['summary']['planned_graphs']==6 and h6['summary']['planned_logical_records']==973 and h6['summary']['planned_partitions']==23)
+check('report differentiates review from execution', 'Source/design qualification only' in report and 'These counts describe separate layers and must not be summed into coverage' in report and 'No test or project subject is rerun' in report)
+check('report exact next-step gates',all(x in report for x in ['Source005 itself is not packaged or qualified by Root','a reviewed launch-ready successor is required','Accepted actual bootstrap evidence is required before preparing the native request','Never replay004']))
+nav=doc(CAND/'CONTINUE_CURRENT_20261028.json')
+check('navigator target and gates',nav['current_report']==BASE+'/CURRENT_CHECKPOINT.md' and nav['Source005_Root_qualified'] is False and nav['Source015_adopted'] is False and nav['capture_and_project_execution_gates_held'] is True)
+for row in before['existing_changes']:
+    check('preexisting change preserved '+row['path'],matches(read(REPO/row['path']),row))
+
+findings=[
+ {'id':'D01','severity':'publication_precondition','text':'Scope declares strict60-second reserve; preparation helper does not itself enforce a wallclock cutoff. Root final publisher must recheck the finite scope/reserve before mutation and commit/push.'},
+ {'id':'D02','severity':'clarification_requested','text':'Aggregate is1516 records/92732786 logical bytes. Each independently bounded part is384 or fewer rows and below64MiB. Describe parts as separately bounded metadata documentation packages under the current explicit docs publication authority; do not imply relaxation of original512-row/64MiB I13 operational or export caps.'}
+]
+failed=[c for c in checks if not c['passed']]
+result={'record_type':'independent_documentation_candidate_saved_byte_review','author':'/root/docs_publication_map','created_utc':dt.datetime.now(dt.timezone.utc).isoformat(),
+'candidate':inputs[str(OUT/'CANDIDATE.json')],'helper':inputs[str(OUT/'prepare_checkpoint.py')], 'checks_passed':len(checks)-len(failed),'checks_failed':len(failed),'checks':checks,
+'findings':findings,'candidate_and_repository_mutated':False,'subject_execution_or_test_or_native_or_query':False,
+'meaning':'Ordinary saved content, exact copy/pin, source-text and documentation review only; no native stability, custody, host quiet, runtime or scientific acceptance.',
+'reviewed_inputs':list(inputs.values()),'verdict':'PASS_CONTENT_AND_DOCUMENTATION_PENDING_NOTED_PUBLICATION_PRECONDITIONS' if not failed else 'FAIL'}
+payload=(json.dumps(result,indent=2,sort_keys=True)+'\n').encode()
+target=REVIEW/'INDEPENDENT_DOCUMENTATION_CANDIDATE_FULL_PROOF_002.json'
+with target.open('xb') as f: f.write(payload);f.flush();os.fsync(f.fileno())
+summary={k:result[k] for k in ('record_type','author','created_utc','candidate','helper','checks_passed','checks_failed','findings','candidate_and_repository_mutated','subject_execution_or_test_or_native_or_query','meaning','verdict')}
+summary['full_proof']={'path':str(target),**pin(payload)}
+summary['failed_checks']=failed
+data=(json.dumps(summary,indent=2,sort_keys=True)+'\n').encode()
+target2=REVIEW/'INDEPENDENT_DOCUMENTATION_CANDIDATE_CAPSULE_002.json'
+with target2.open('xb') as f:f.write(data);f.flush();os.fsync(f.fileno())
+print(json.dumps({'capsule':str(target2),**pin(data),'checks_passed':summary['checks_passed'],'checks_failed':summary['checks_failed'],'failed':failed}))

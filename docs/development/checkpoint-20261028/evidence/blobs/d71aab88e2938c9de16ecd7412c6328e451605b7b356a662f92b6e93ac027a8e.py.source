@@ -1,0 +1,235 @@
+"""Genuine independent Root002 metadata review; no reviewed Source execution."""
+import ast
+import base64
+import datetime as dt
+import hashlib
+import json
+import os
+import stat
+from pathlib import Path
+
+OUT = Path(__file__).parent
+R = OUT.parent
+S = R.parent / 'pro3_bootstrap002_source_review_001'
+WHO = '/root/i13_final_review'
+checks, buffers, shapes = [], {}, {}
+
+def need(ok, why):
+    if not ok:
+        raise ValueError(why)
+
+def ck(name, passed, evidence=None):
+    need(type(passed) is bool, 'builtin Boolean check')
+    checks.append(dict(name=name, passed=passed, evidence=evidence))
+
+def raw(p):
+    p = Path(p)
+    for q in (p, *p.parents):
+        st = q.lstat()
+        need(not q.is_symlink() and not getattr(st, 'st_file_attributes', 0) & 1024, 'direct nonreparse lineage')
+    a = p.stat()
+    need(stat.S_ISREG(a.st_mode) and a.st_nlink == 1 and 0 <= a.st_size <= 2097152, 'bounded regular singlelink metadata')
+    with p.open('rb') as h:
+        b = os.fstat(h.fileno())
+        data = h.read(2097153)
+        c = os.fstat(h.fileno())
+    d = p.stat()
+    key = lambda x: (x.st_dev, x.st_ino, x.st_mode, x.st_nlink, x.st_size, x.st_mtime_ns)
+    need(key(a) == key(b) == key(c) == key(d) and len(data) == a.st_size, 'stable samebuffer metadata')
+    return data
+
+def fact(p, b):
+    return dict(path=str(p), bytes=len(b), sha256=hashlib.sha256(b).hexdigest())
+
+def get(p, size=None, sha=None):
+    p = Path(p)
+    b = raw(p)
+    fp = fact(p, b)
+    need(size is None or fp['bytes'] == size, 'announced bytes')
+    need(sha is None or fp['sha256'] == sha, 'announced SHA')
+    buffers[str(p)] = b
+    return b, fp
+
+def pairs(items):
+    d = {}
+    for k, v in items:
+        need(k not in d, 'duplicate JSON key')
+        d[k] = v
+    return d
+
+def bad(x):
+    raise ValueError('noninteger or nonfinite JSON number')
+
+def shape(v):
+    pending = [(v, 0)]
+    count = depth = 0
+    while pending:
+        x, d = pending.pop()
+        count += 1
+        depth = max(depth, d)
+        need(count <= 50000 and d <= 48, 'fullkey nodes/depth')
+        need(x is None or type(x) in (dict, list, str, int, bool), 'builtin JSON only')
+        if type(x) is str:
+            need(not any(0xD800 <= ord(c) <= 0xDFFF for c in x), 'surrogate refusal')
+        elif type(x) is list:
+            pending.extend((e, d + 1) for e in x)
+        elif type(x) is dict:
+            for k, e in x.items():
+                need(type(k) is str, 'string key')
+                pending.extend(((k, d + 1), (e, d + 1)))
+    return dict(fullkey_nodes=count, maximum_depth=depth)
+
+def doc(p, size=None, sha=None):
+    b, fp = get(p, size, sha)
+    v = json.loads(b.decode('utf-8'), object_pairs_hook=pairs, parse_float=bad, parse_constant=bad)
+    shapes[str(p)] = shape(v)
+    return v, fp
+
+def pd(fp):
+    return doc(fp['path'], fp['bytes'], fp['sha256'])
+
+scope, sp = doc(S / 'ROOT_PRO3_NEW_FINITE_SOURCE_ONLY_COEXISTENCE_SCOPE_011_001.json', 9049, 'c52dbbfc4a5202bc5476e6b41071d72a1163b339e8bcaad29acf2a6dae70a540')
+adoption, ap = doc(S / 'ROOT_PRO3_SOURCE_ONLY_COEXISTENCE011_DIFFERENT_REVIEW_ADOPTION_001.json', 4571, '6994cedd8c25318563d4aa398d6681c00e61e91f61bccd8d5ca67c75b554e378')
+
+def fresh():
+    now = dt.datetime.now(dt.timezone.utc)
+    need(dt.datetime.fromisoformat(scope['interval_start']) <= now and (dt.datetime.fromisoformat(scope['interval_end']) - now).total_seconds() > 60, 'actual Source011 effective strict60 reserve')
+    return now.isoformat()
+
+observed = fresh()
+ck('current actual Source011 is adopted and effective', adoption['Source_only_coexistence_adopted'] is True and adoption['Source_only_scope'] == sp, dict(scope=sp, adoption=ap, checked_utc=observed))
+ck('Source011 alone grants no operation and keeps3plus2shared5strict60', scope['operational_authority'] is adoption['operational_authority'] is False and (scope['Pro2_max_including_Root'],scope['Pro3_max_including_Root_and_reviewer'],scope['shared_max_including_both_roots_and_overlap'],scope['publication_reserve_seconds']) == (3,2,5,60))
+candidate, cp = doc(R / 'ROOT_PRO3_BOOTSTRAP_REQUEST004_ONCE_PEER_DECISION_CANDIDATE_002.json', 18829, '673bef97af164145c452e544cacbce8027fc0db01fb5539f8535462aeacee91a')
+wb, wp = get(R / 'prepare_or_adopt_bootstrap004_once_peer_decision_002.py', 23118, '561b04d5ba5593409da85a6376a4a0db9b7d1e88b7e872445f7347afa1d9c3a3')
+inverse, ip = doc(R / 'ROOT_PRO3_BOOTSTRAP004_COMPLETE_REFUSED_CANDIDATE_WRITER001_INVERSE_001.json', 51787, 'ddef71b50d6811839858a48e856e9fdbdea4241a8a0eb43e5911793b24cd6ff9')
+receipt, rep = doc(R / 'ROOT_PRO3_BOOTSTRAP004_METADATA_WRITER002_AUTHOR_RECEIPT_001.json', 6477, '809e3c0ac2c34e9a8f6c513339d9a2c60339c8d039efcf1fde996daf93ca0963')
+authorb, authorp = get(R / 'prepare_Root_candidate002_metadata_successor_001.py', 8719, '143dd1b994c1874bb167a2bd040e2f2e68d8048548ba46866dc9b42d47ee3f82')
+audit, acp = doc(R / 'ROOT_PRO3_BOOTSTRAP004_EXACT_REQUEST_METADATA_CAPSULE_001.json', 6047, '96b8fe72e8def739496cd88fa7b1d9e592d344319f0768cafa06b4fef9007d38')
+af, afp = pd(audit['full_proof'])
+ab, asp = get(audit['own_metadata_audit_Source']['path'], 16746, '5ab2f827b40ab93ae017084994f8b0e7926e7e6f8062b12c516abbea8f568cd3')
+prior, prp = pd(candidate['genuine_candidate001_refusal'])
+priorf, prfp = pd(prior['full_proof'])
+old, oldp = pd(candidate['refused_candidate001'])
+oldwb, oldwp = get(candidate['refused_metadata_writer001']['path'], 20406, '5b06aff4bb9fe08b0f78fab22b2a48433699cf0e72024b378899ee2147c9b189')
+arts = [cp,wp,ip,rep,authorp,acp,afp,asp,prp,prfp,oldp,oldwp]
+ck('all new Root critical artifacts retained as exact samebuffer pins', len(arts) == 12 and all(Path(x['path']).is_relative_to(R) for x in arts), arts)
+ck('complete001 inverse binds actual scope author refusal and exactly two predecessors', inverse['scope'] == sp and inverse['author_Source'] == authorp and inverse['refusal'] == prp and inverse['own_metadata_only'] is True and inverse['subject_execution'] is False and len(inverse['complete_predecessors']) == 2)
+for i, row in enumerate(inverse['complete_predecessors']):
+    decoded = base64.b64decode(row['base64'], validate=True)
+    oldbytes, actual = get(row['path'], row['bytes'], row['sha256'])
+    ck('complete canonical Base64 whole predecessor inverse ' + str(i+1), decoded == oldbytes and base64.b64encode(decoded).decode('ascii') == row['base64'] and actual in [oldwp,oldp], actual)
+ck('new candidate exact predecessor and refusal links', candidate['complete_candidate_writer001_inverse'] == ip and candidate['refused_candidate001'] == oldp and candidate['refused_metadata_writer001'] == oldwp and candidate['genuine_candidate001_refusal'] == prp)
+ck('genuine102positive1blocking refusal preserved without rewriting', prior['reviewer'] == priorf['reviewer'] == WHO and prior['checks_passed'] == priorf['checks_passed'] == 102 and prior['checks_failed'] == priorf['checks_failed'] == 1 and len(priorf['checks']) == 103 and prior['remaining_actionable_findings'][0]['id'] == 'D004_CANDIDATE_OPERATIVE_COMPATIBILITY')
+ck('prior actual human corroboration remains exact trusted evidence', prior['trusted_human_evidence'] == priorf['trusted_human_evidence'] and prior['trusted_human_evidence']['independently_read_in_this_review'] is True and prior['trusted_human_evidence']['reply_item_type'] == 'userMessage', 'The same genuinely different reviewer performed the actual app read in the preceding review; no peer report substitutes for that human message.')
+
+wt, oldwt, authort = wb.decode('utf-8'), oldwb.decode('utf-8'), authorb.decode('utf-8')
+wa, oldwa, au = ast.parse(wt), ast.parse(oldwt), ast.parse(authort)
+ck('author receipt exact Source writer inverse and genuine refusal joins', receipt['author_Source'] == authorp and receipt['new_metadata_writer_Source'] == wp and receipt['complete001_inverse'] == ip and receipt['genuine001_refusal'] == prp and receipt['subject_PS_or_runtime_operation'] is False)
+forward = oldwt
+for n, edit in enumerate(receipt['exact_edits'],1):
+    ck('unique forward metadata Source fragment ' + str(n), forward.count(edit['before']) == 1)
+    forward = forward.replace(edit['before'],edit['after'],1)
+ck('exact eight edits reconstruct entire new writer002 bytes', len(receipt['exact_edits']) == 8 and forward.encode('utf-8') == wb)
+back = wt
+for edit in reversed(receipt['exact_edits']):
+    need(back.count(edit['after']) == 1, 'unique exact inverse fragment')
+    back = back.replace(edit['after'],edit['before'],1)
+ck('exact inverse fragments reconstruct entire old writer001 bytes', back.encode('utf-8') == oldwb)
+oldfunc = {n.name:ast.dump(n,include_attributes=False) for n in oldwa.body if isinstance(n,ast.FunctionDef)}
+newfunc = {n.name:ast.dump(n,include_attributes=False) for n in wa.body if isinstance(n,ast.FunctionDef)}
+ck('every bounded read strictJSON liveclock and write function AST unchanged', newfunc == oldfunc, sorted(newfunc))
+ck('author is metadata-only own AST parser not a subject compiler', {a.name for n in ast.walk(au) if isinstance(n,ast.Import) for a in n.names} <= {'ast','base64','datetime','hashlib','json','os','stat'} and 'ast.parse(source' in authort and 'whole ownwriter001 inverse' in authort)
+ck('author dated not-yet-prepared marker is honest pre-prepare history', receipt['candidate002_not_yet_prepared'] is True and receipt['actual_peer_decision_not_issued'] is True and dt.datetime.fromisoformat(receipt['created_utc']) <= dt.datetime.fromisoformat(candidate['observed_utc']))
+
+prospective = dict(schema='pro2_pro3_bootstrap_observation_decision_v1',decision='CONDITIONALLY_ACCEPT_ONE_PRO3_BOOTSTRAP004_ONLY',accepted=True,released=True,helper_invocations_granted=1,controller_mode_invocations_granted=4,Pro3_bootstrap004_only_conditionally_admitted=True,bounded_cleanup_after_pause_admitted=True)
+ck('candidate has distinct nonoperative schema and status', candidate['schema'] == 'Root_proposed_bootstrap_peer_decision_candidate_v1' and candidate['decision'] == 'CANDIDATE_NOT_AN_OPERATIVE_PEER_DECISION' and candidate['record_is_candidate'] is True)
+ck('candidate actual permission flags strictly False', all(candidate[k] is False for k in ['accepted','released','bounded_cleanup_after_pause_admitted','Pro3_bootstrap004_only_conditionally_admitted']))
+ck('candidate actual controller and helper grants are builtin integer0', all(type(candidate[k]) is int and candidate[k] == 0 for k in ['controller_mode_invocations_granted','helper_invocations_granted']))
+ck('proposed one-operation flags are isolated under exact eight-field prospective object', candidate['prospective_permission'] == prospective and set(candidate['prospective_permission']) == set(prospective) and all(type(candidate['prospective_permission'][k]) is type(v) for k,v in prospective.items()))
+expected_changes = {'schema','decision','accepted','released','helper_invocations_granted','controller_mode_invocations_granted','Pro3_bootstrap004_only_conditionally_admitted','bounded_cleanup_after_pause_admitted','observed_utc','metadata_author_adopter_Source'}
+expected_new = {'prospective_permission','complete_candidate_writer001_inverse','refused_candidate001','refused_metadata_writer001','genuine_candidate001_refusal'}
+ck('candidate decoded delta exactly ten replacements and five lineage prospective additions', set(candidate)-set(old) == expected_new and not (set(old)-set(candidate)) and {k for k in old if candidate[k] != old[k]} == expected_changes)
+ck('unchanged candidate complement exact whole values including caps human routes and all deny flags', all(candidate[k] == old[k] for k in old if k not in expected_changes))
+ck('new candidate actual Source selfpin and observed chronology truthful', candidate['metadata_author_adopter_Source'] == wp and dt.datetime.fromisoformat(old['observed_utc']) < dt.datetime.fromisoformat(candidate['observed_utc']))
+
+peer = candidate['reviewed_peer_packet']
+for i, fp in enumerate(peer):
+    _, actual = get(fp['path'],fp['bytes'],fp['sha256'])
+    ck('unchanged frozen peer whole pin ' + str(i+1), actual == fp, fp)
+supervisor_text = buffers[peer[1]['path']].decode('utf-8')
+ck('candidate002 mechanically fails actual consumer schema and released and cleanup gates', candidate['schema'] != 'pro2_pro3_bootstrap_observation_decision_v1' and candidate['released'] is False and candidate['bounded_cleanup_after_pause_admitted'] is False and "$peer.schema -ceq 'pro2_pro3_bootstrap_observation_decision_v1'" in supervisor_text and '$peer.released' in supervisor_text, dict(Source=peer[1],lines=[251,265],observation='Read-only text. No PowerShell parse or dispatch. Separate Root admission and all actual guards would also be required; this proves no observed bypass.'))
+ck('no nested prospective object consumed by peer Source', 'prospective_permission' not in supervisor_text)
+ck('original D004 creation blocker repaired by nonoperative data not a prose-only marker', prior['remaining_actionable_findings'][0]['id'] == 'D004_CANDIDATE_OPERATIVE_COMPATIBILITY' and candidate['schema'] != old['schema'] and candidate['released'] is False and old['released'] is True)
+
+ck('Root audit Source capsule fullproof immutable exact original joins', audit['own_metadata_audit_Source'] == asp and audit['full_proof'] == afp and candidate['Root_exact_request_audit'] == acp and candidate['Root_exact_request_full_proof'] == afp and candidate['Root_exact_request_audit_Source'] == asp)
+ck('Root audit76 unique explicit positive checks remain dated metadata only', audit['checks_passed'] == af['checks_passed'] == 76 and audit['checks_failed'] == af['checks_failed'] == 0 and len(af['checks']) == len({x['name'] for x in af['checks']}) == 76 and all(x['passed'] is True for x in af['checks']) and audit['remaining_actionable_findings'] == af['remaining_actionable_findings'] == [], 'Its dated conservative cleanup/grant interpretation is preserved, not treated as an independent fresh-human-authority proof.')
+ck('Root audit capsule fullproof strict complements and current scope join', {k:v for k,v in audit.items() if k != 'full_proof'} == {k:v for k,v in af.items() if k != 'checks'} and audit['scope'] == af['scope'] == sp and audit['scope_adoption'] == af['scope_adoption'] == ap)
+request, rp = pd(audit['request'])
+ck('exact request004 unchanged and still joined', rp == peer[5] and candidate['request_path'] == rp['path'] and candidate['request_sha256'] == rp['sha256'] and candidate['request_created_utc'] == request['created_utc'])
+ck('actual scope paths and immutable request window retained', candidate['Source_only_scope'] == sp and candidate['Source_only_scope_adoption'] == ap and candidate['window_start_utc'] == request['window_start_utc'] and candidate['window_end_utc'] == request['window_end_utc'] == '2026-10-27T17:45:00+00:00')
+ck('all strict integer caps copied exact without resource or time weakening', all(type(candidate[k]) is int and candidate[k] == request[k] for k in ['maximum_seconds','publication_reserve_seconds','helper_work_seconds','helper_effect_seconds','outer_start_before_seconds','outer_work_stop_seconds','outer_cleanup_end_seconds','outer_effect_end_seconds','maximum_controller_mode_invocations','maximum_helper_invocations','maximum_files','maximum_code_bytes','maximum_enumerated_entries','maximum_directory_depth','maximum_manifest_bytes','maximum_stdout_bytes','maximum_stderr_bytes','process_table_maximum_rows','startup_ram_gib','active_ram_gib','disk_gib','outer_child_processes','helper_child_processes','python_invocations','jobs']))
+ck('eight numerical budget slots remain exact integer zero', len(candidate['expected_numerical_budget']) == 8 and candidate['expected_numerical_budget'] == request['expected_numerical_budget'] and all(type(x) is int and x == 0 for x in candidate['expected_numerical_budget'].values()))
+for idx, spec in enumerate(candidate['genuine_whole_Source_reviews']):
+    rc, rcp = pd(spec['capsule'])
+    rf, rfp = pd(spec['full_proof'])
+    arts.extend([rcp,rfp])
+    expected = [58,67][idx]
+    ck('genuine independent unchanged whole Source proof ' + str(idx+1), rc['reviewer'] == rf['reviewer'] == [WHO,'/root/project_architecture'][idx] and rc['checks_passed'] == rf['checks_passed'] == expected and rc['checks_failed'] == rf['checks_failed'] == 0 and len(rf['checks']) == len({x['name'] for x in rf['checks']}) == expected and all(x['passed'] is True for x in rf['checks']) and rc['scope'] == rf['scope'] == sp and rc['scope_adoption'] == rf['scope_adoption'] == ap and rc['remaining_actionable_findings'] == rf['remaining_actionable_findings'] == [] and rc['subject_execution_performed'] is rf['subject_execution_performed'] is False)
+ck('Source58plus67 and request76 counts preserve their separate meanings', candidate['Source_checks_passed'] == 125 and candidate['Source_checks_failed'] == 0 and candidate['exact_request_checks_passed'] == 76 and candidate['exact_request_checks_failed'] == 0)
+ck('same trusted contextual human authority fully retained without broadening', candidate['fresh_direct_human_clarification'] == old['fresh_direct_human_clarification'] and candidate['fresh_direct_human_clarification']['question'] == prior['trusted_human_evidence']['question'] and candidate['fresh_direct_human_clarification']['answer_exact'] == prior['trusted_human_evidence']['answer_exact'] and 'No blanket capture/training/numerical/science or guard waiver' in candidate['fresh_direct_human_clarification']['interpretation'])
+ck('earlier Pro2 instruction not recast as an explicit Pro3 blanket ban', 'does not expressly name or revoke Pro3 human validation' in candidate['prior_human_hold']['distinction'])
+
+def func(name):
+    return ast.get_source_segment(wt,next(n for n in wa.body if isinstance(n,ast.FunctionDef) and n.name == name))
+
+ck('whole new writer prepare and adopt manually inspected including every original guard', len(wt.splitlines()) == 181 and newfunc == oldfunc and len(receipt['exact_edits']) == 8, dict(lines=[1,181],basis='Whole text read, independent exact fragment forward/inverse and function AST comparison; never executed writer.'))
+ck('writer imports stdlib only and cannot launch parse or load subject PowerShell', {a.name for n in ast.walk(wa) if isinstance(n,ast.Import) for a in n.names} <= {'datetime','hashlib','json','os','stat','sys','base64'} and not [n for n in ast.walk(wa) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id in {'eval','exec','compile','__import__'}])
+ck('writer samebuffer full pin strictduplicate nonfinite fullkey guard preserved', all(x in func('raw') for x in ['st_file_attributes','st_nlink == 1','2097152','os.fstat','st_mtime_ns']) and all(x in func('doc') for x in ['object_pairs_hook=pairs','parse_float=bad','parse_constant=bad']) and 'pending.extend(((k, d + 1), (x, d + 1)))' in func('shape'))
+ck('writer exclusive fsync readback and actual Source time check per metadata output', all(x in func('save') for x in ["open('xb')",'2097152','fresh(True)','os.fsync','raw(target) == data']))
+ck('writer exact prior pin and whole inverse lineage authenticated on both modes', all(x in wt for x in ["for lineage_fact in [old_writer_pin, old_candidate_pin, inverse_pin, refusal_pin]", "pin(lineage_fact['path']) == lineage_fact", "base64.b64decode(item['base64'], validate=True) == raw(item['path'])"]))
+ck('writer prospective permission is a fixed closed literal not caller data', "prospective = dict(schema='pro2_pro3_bootstrap_observation_decision_v1'" in wt and 'prospective_permission=prospective' in wt and "v['prospective_permission'] == prospective" in wt)
+ck('writer refuses candidate flag or schema or lineage tampering before transition', all(x in wt for x in ["v['schema'] == 'Root_proposed_bootstrap_peer_decision_candidate_v1'", "v['accepted'] is v['released'] is v['bounded_cleanup_after_pause_admitted'] is False", "v['Pro3_bootstrap004_only_conditionally_admitted'] is False", "v['complete_candidate_writer001_inverse'] == inverse_pin", "v['genuine_candidate001_refusal'] == refusal_pin"]))
+ck('only adopt branch promotes fixed prospective values to actual peer flags', 'v = dict(v, **prospective, record_is_candidate=False' in wt and wt.index('v = dict(v, **prospective, record_is_candidate=False') > wt.index("genuine different final decision metadata allclear") and wt.index('v = dict(v, **prospective, record_is_candidate=False') > wt.index('candidate mechanically ineligible; exact prospective once-permission'))
+ck('adopt authenticates current reviewer capsule SHA fullproof nonempty unique allpass counts', all(x in wt for x in ["cpin['sha256'] == sys.argv[3]", "doc(c['full_proof']['path'], c['full_proof'])", "c['reviewer'] == f['reviewer'] == '/root/i13_final_review'",'len(xs) > 0',"all(x['passed'] is True for x in xs)","c['scope'] == f['scope'] == sp"]))
+ck('adopt requires exact mandatory candidate writer auditSource auditCapsule auditProof review roster', all(x in wt for x in ["by.get(selfpin['path']) == selfpin", "by.get(vp['path']) == vp", "by.get(audit_pin['path']) == audit_pin", "by.get(afp['path']) == afp", "by.get(audit['own_metadata_audit_Source']['path']) == audit['own_metadata_audit_Source']"]))
+ck('adopt authenticates candidate and human and complete genuine Source proof joins', all(x in wt for x in ["c['candidate'] == f['candidate'] == vp", "v['fresh_direct_human_clarification'] == human", "v['genuine_whole_Source_reviews'] == source_reviews", "v['reviewed_peer_packet'] == peer + [clarp]"]))
+ck('adopt every review artifact must be unique Root-owned actual unchanged file', all(x in wt for x in ["cp.is_relative_to(R / 'decision004_creation_different_review_002')", "len({x['path'].casefold() for x in arts}) == len(arts)", "Path(fact['path']).is_relative_to(R) and pin(fact['path']) == fact"]))
+ck('adopt retains denied gates and emits actual peer decision only not own admission or dispatch', "type(v[k]) is type(value) and v[k] == value" in wt and "save('ROOT_PRO3_BOOTSTRAP_REQUEST004_EXPLICIT_ONCE_PEER_DECISION_001.json', v)" in wt and 'Pro3_Root_admission_issued_by_this_record=False' in wt and 'no_subject_dispatched=True' in wt)
+ck('actual adopted peer release would remain disposition not physical custody evidence', candidate['physical_custody_release_claimed'] is False and 'NOT physical custody release' in candidate['permission_semantics'])
+ck('separate future Pro3 Root admission and all live guards still mandatory', 'Fresh separate exact Pro3 Root accepted admission' in candidate['prerequisites_before_any_Pro3_dispatch'][1] and 'all five pause paths with fail-closed Present' in candidate['prerequisites_before_any_Pro3_dispatch'][3] and 'Unknown Start/custody may never release' in candidate['prerequisites_before_any_Pro3_dispatch'][5])
+ck('D01 stays deferred before full actual observational and nativeprep acceptance', candidate['D01_deferred_not_a_current_Source_blocker'] is True and candidate['observational_manifest_accepted'] is False and 'D01 complete actual manifest/helper-attempt schema' in candidate['prerequisites_before_any_Pro3_dispatch'][6])
+ck('no Root capture nativeprep tests Jobs closeout numerical science or Git granted', all(candidate[k] is False for k in ['Pro2_subject_execution_admitted','Pro2_capture_activation_admitted','raw_capture_admitted','retention_execution_admitted','native_pin_preparation_admitted','native8_admitted','Parser_admitted','Pro3_Python_tests_or_Job_admitted','external_closeout_admitted','training_admitted','numerical_execution_admitted','scientific_authority','runtime_qualified','actual6','actual_family_publication','Git_commit_or_push_admitted','peer_result_accepted']))
+ck('no live resource pause physical quiet or extra slot authority inferred', candidate['resource_availability_measured_by_Pro2'] is candidate['live_pause_paths_observed_by_Pro2'] is candidate['whole_host_quiet_claimed'] is candidate['Root_current_compute_reservation_issued'] is False and candidate['additional_slots_granted'] == 0)
+ck('original Root floors shared allocation and source dates unchanged', candidate['original_Root_resource_floors_unchanged'] == scope['inherited_Root_budgets'] and candidate['inherited_allocation'] == old['inherited_allocation'] and candidate['previous_Source_periods_or_grants_extended'] is False)
+ck('adopt future90wholeplusstrict60 feasibility checked at each actual output', 'total_seconds() > 150' in func('fresh') and 'fresh(True)' in func('save') and 'observed_utc=fresh(True)' in wt and dt.datetime.fromisoformat(request['window_end_utc']) < dt.datetime.fromisoformat(scope['interval_end']), 'Fixed request17:45 precedes Source01118:30, so request remaining>150 also implies Source remaining>150. No empirical whole-operation fit proved.')
+ck('whole external caller postRelease actual90 and cleanup45plus guards remain explicit', 'post-Release upper bound strictly<90' in candidate['prerequisites_before_any_Pro3_dispatch'][4] and candidate['bounded_cleanup_scope'] == request['bounded_cleanup_scope'] and candidate['maximum_seconds'] == 90 and candidate['outer_effect_end_seconds'] == 85 and candidate['outer_cleanup_end_seconds'] == 80)
+ck('actual candidate chronology current window feasible without extension', dt.datetime.fromisoformat(request['created_utc']) <= dt.datetime.fromisoformat(candidate['observed_utc']) <= dt.datetime.fromisoformat(fresh()) and (dt.datetime.fromisoformat(request['window_end_utc']) - dt.datetime.now(dt.timezone.utc)).total_seconds() > 150)
+for fp in audit['preserved_actual_refusals']:
+    v, actual = pd(fp)
+    ck('preserved prior operational refusal ' + Path(fp['path']).name, v['accepted'] is v['released'] is False, actual)
+ck('all retained JSON data satisfy fullkey50k depth48 and2MiB limits', all(x['fullkey_nodes'] <= 50000 and x['maximum_depth'] <= 48 for x in shapes.values()), shapes)
+for p,b in list(buffers.items()):
+    need(raw(p) == b, 'retained input changed before seal')
+ck('all new and unchanged basis buffers freshly reread exact before sealing', True, dict(retained_file_count=len(buffers)))
+need(len(checks) > 0 and len(checks) == len({x['name'] for x in checks}) and all(x['passed'] is True for x in checks), 'no artificial PASS or duplicate checks')
+need(len(arts) == len({x['path'].casefold() for x in arts}) and all(Path(x['path']).is_relative_to(R) for x in arts), 'exact unique Root artifact roster')
+
+def save(name,v):
+    shape(v)
+    data=(json.dumps(v,sort_keys=True,indent=2,ensure_ascii=False,allow_nan=False)+'\n').encode('utf-8')
+    need(len(data)<=2097152,'own proof cap')
+    fresh()
+    target=OUT/name
+    with target.open('xb') as h:
+        need(h.write(data)==len(data),'whole CreateNew proof write')
+        h.flush()
+        os.fsync(h.fileno())
+    need(raw(target)==data,'own proof actual readback')
+    return fact(target,data)
+
+v=dict(record_type='genuine_independent_Root_candidate002_writer002_metadata_creation_Source_review',reviewer=WHO,verdict='PASS_ROOT_BOOTSTRAP004_CANDIDATE002_NONOPERATIVE_CREATION_AND_WRITER002_SOURCE_ONLY',observed_utc=fresh(),checks_passed=len(checks),checks_failed=0,checks=checks,remaining_actionable_findings=[],scope=sp,scope_adoption=ap,candidate=cp,reviewed_artifacts=arts,prior_refusal=prp,prior_full_proof=prfp,whole_001_inverse=ip,basis_peer_packet=peer,trusted_human_evidence=prior['trusted_human_evidence'],source_only=True,subject_execution_performed=False,subject_PS_parsed_loaded_compiled_or_executed=False,native_runtime_resource_pause_or_process_queries_performed=False,operative_peer_decision_issued_by_reviewer=False,Pro3_admission_or_dispatch_performed_by_reviewer=False,peer_result_accepted=False,scientific_admission=False,Root_capture_training_numerical_science_gates_held=True,review_boundary='Root002 metadata creation/Source integrity only. Candidate is mechanically ineligible for operative peer gates. Only a separately invoked Root adopt may issue one exact peer disposition within current feasible window; Pro3 still requires its separate fresh unused admission and every actual live caller90/custody/EOF/identity/resource/pause/cap guard. No nativeprep/tests/Jobs/closeout or Pro2 capture authority; no measured operation or full observational acceptance. D01 remains deferred.',own_review_Source=fact(Path(__file__),raw(Path(__file__))))
+fp=save('INDEPENDENT_ROOT_BOOTSTRAP004_CANDIDATE002_WRITER002_METADATA_FULL_PROOF_001.json',v)
+c={k:x for k,x in v.items() if k!='checks'}
+c['full_proof']=fp
+cap=save('INDEPENDENT_ROOT_BOOTSTRAP004_CANDIDATE002_WRITER002_METADATA_CAPSULE_001.json',c)
+print(json.dumps(dict(capsule=cap,full_proof=fp,checks_passed=len(checks),checks_failed=0,remaining_actionable_findings=[],operative_decision_admission_or_dispatch_performed=False)))

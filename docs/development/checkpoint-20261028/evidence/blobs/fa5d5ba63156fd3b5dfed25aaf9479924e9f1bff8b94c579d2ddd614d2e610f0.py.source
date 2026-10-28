@@ -1,0 +1,136 @@
+"""Independent own metadata review; reads/hashes strictJSON only, no targets."""
+import base64
+import datetime
+import hashlib
+import json
+from pathlib import Path
+
+HERE = Path(__file__).parent
+PEER = HERE.parent / 'canonical_peer_protocol_audit_001'
+OUT = HERE / 'fixed_inventory_LF_annex_different_review_001'
+
+def fact(path, raw=None):
+    raw = path.read_bytes() if raw is None else raw
+    return {'path': str(path), 'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
+
+def decode(raw):
+    def pairs(items):
+        out = {}
+        for key, value in items:
+            if key in out:
+                raise ValueError('duplicate')
+            out[key] = value
+        return out
+    def reject(token):
+        raise ValueError(token)
+    return json.loads(raw.decode('utf-8'), object_pairs_hook=pairs, parse_float=reject, parse_constant=reject)
+
+def read_pin(pin):
+    path = Path(pin['path'])
+    raw = path.read_bytes()
+    if fact(path, raw) != pin:
+        raise ValueError('pin mismatch')
+    return raw
+
+def c0_paths(value, parts=()):
+    result = []
+    if type(value) is dict:
+        for key, child in value.items():
+            if any(ord(char) < 32 for char in key):
+                result.append((parts + ('KEY:' + key,), 'key'))
+            result.extend(c0_paths(child, parts + (key,)))
+    elif type(value) is list:
+        for index, child in enumerate(value):
+            result.extend(c0_paths(child, parts + (str(index),)))
+    elif type(value) is str and any(ord(char) < 32 for char in value):
+        result.append((parts, 'value'))
+    return result
+
+def save(name, value):
+    raw = (json.dumps(value, sort_keys=True, indent=2, ensure_ascii=False, allow_nan=False) + '\n').encode()
+    if len(raw) > 2097152:
+        raise ValueError('cap')
+    with (OUT / name).open('xb') as handle:
+        handle.write(raw)
+    if (OUT / name).read_bytes() != raw:
+        raise ValueError('readback')
+    return fact(OUT / name, raw)
+
+def main():
+    path = PEER / 'I13_PROPOSED_EXACT_FIXED_INVENTORY_SINGLE_DESCRIPTIVE_LF_ANNEX_002.json'
+    annex = decode(path.read_bytes())
+    rule = annex['exact_exception']
+    inv_pin = rule['record_fact3']
+    inv_raw = read_pin(inv_pin)
+    inv = decode(inv_raw)
+    parts = ['capture_six_assignment_ABI','actual_template_assignments','BINDINGS','whole_assignment']
+    leaf = inv
+    for key in parts:
+        leaf = leaf[key]
+    encoded = leaf.encode('utf-8')
+    decoded = base64.b64decode(rule['exact_descriptive_value_utf8_base64'], validate=True)
+    checks = []
+    def check(name, passed, evidence):
+        if type(passed) is not bool:
+            raise ValueError('builtinbool required')
+        checks.append({'name': name, 'passed': passed, 'evidence': evidence})
+    check('annex002_whole_exact_pin', fact(path)['bytes'] == 9565 and fact(path)['sha256'] == '998e98777e807140af2b67d07a2c92de03e1cab49a47dce084a7806a0ce6c3f5', fact(path))
+    check('inventory_actual_whole_exact_pin', inv_pin == {'path': r'D:\Aenv\pro2\WORK\resume-20261007-001\generation\step079_M3_unbound_source_preparation_001\STEP079_M3_CURRENT_SLOT_AND_ABI_INVENTORY_001.json', 'bytes': 154055, 'sha256': '65739d2493a33a270ccf15a7d24e4e90fdf2d82300d2f5b392795e5bf84cd9b9'}, inv_pin)
+    check('exact_four_pointer_components', rule['exact_pointer_components'] == parts, rule['exact_pointer_components'])
+    check('exact_pointer_string', rule['JSON_pointer'] == '/' + '/'.join(parts), rule['JSON_pointer'])
+    check('leaf_builtin_str', type(leaf) is str and rule['value_builtin_type'] == 'str', rule['JSON_pointer'])
+    check('leaf_utf8_bytes367', len(encoded) == rule['exact_string_utf8_bytes'] == 367, inv_pin)
+    check('leaf_exact_utf8_sha', hashlib.sha256(encoded).hexdigest() == rule['exact_string_utf8_sha256'] == 'ebe4303197b1ef3a973a3b04bccf0ad2e97a49bb9f43e25a08eb0858b82924b1', inv_pin)
+    check('leaf_only_LF_C0', {ord(char) for char in leaf if ord(char) < 32} == {10}, inv_pin)
+    check('leaf_exact10LF', leaf.count('\n') == rule['exact_LF_count'] == 10, inv_pin)
+    check('whole_inventory_only_one_C0_value_selector', c0_paths(inv) == [(tuple(parts), 'value')], inv_pin)
+    check('Base64_decodes_whole_actual_leaf', decoded == encoded, fact(path))
+    check('Base64_canonical_reencode_exact', base64.b64encode(decoded).decode('ascii') == rule['exact_descriptive_value_utf8_base64'], fact(path))
+    check('annex_itself_has_zero_C0_keys_values', c0_paths(annex) == [], fact(path))
+    check('whole_raw_size_guard_exact', rule['required_full_raw_bytes'] == inv_pin['bytes'], fact(path))
+    check('whole_raw_SHA_guard_exact', rule['required_full_raw_sha256'] == inv_pin['sha256'], fact(path))
+    check('permitted_control_exact_LF', rule['permitted_C0_codepoints'] == [10] and rule['permitted_control_name'] == 'LF', fact(path))
+    for key in ('Source_scope','peer_core_protocol','common_catalogue_shape_basis','common_protocol_shape_basis','previous_complete_annex','author_tool','reachability_finding'):
+        raw = read_pin(annex[key])
+        check('actual_background_pin_' + key, True, annex[key])
+        if Path(annex[key]['path']).suffix == '.json':
+            decode(raw)
+            check('strict_JSON_background_' + key, True, annex[key])
+    for key in ('actual_family_publication','actual_peer_content_qualified','current_canonical_authority_qualified','full_original_I2_DAG_closed','native_Parser_authority','operational_authority','scientific_authority','target_execution','tests_executed'):
+        check('authority_' + key + '_False', annex[key] is False, '/' + key)
+    manual = [
+        ('authenticate_before_LF_guard', 'Exactliteralinventoryfact3 + wholeactualrawhash/size gate first. No caller marker, pointeralone or matchingbytes atotherpath allowed.'),
+        ('no_tree_or_type_skip', 'Allkeys/value nodes/depth/fulltypes/surrogates/UTF8/duplicates/integeronly/caps counted; leaf remains present and fullywalked. OnlyvalueC0test narrows at exactleaf.'),
+        ('no_source_or_actor_authority', 'FixedSourceassignment text is never parsed/evaluated/executed or interpreted as actor/path/pin/proof. Semanticdiscovery remainscomplete for all actualoperativefields.'),
+        ('no_annex_self_C0_waiver', 'Actual LF leaf encodedASCIIBase64 inannex002; strictdecode/hash/length witness only. Noannex/finding/audit/proofcontext added to exception.'),
+        ('acyclic_API14_binding', 'PeerAPI.protocol stayscore004; Source literalannexpin andfinalcatalogue linkannex; Rootexternaladoption binds exactfinalset. Annex onlypinscommon003 datedbasis; nofuturehashcycle.'),
+        ('counter_mode_no_extra_allowance', 'Perinvocation fullinventory cachedonce locally; ports maychargeit again conservatively, overall50k/depth48/records256/raw32MiB unchanged.'),
+        ('first_guard_controls_truthful', 'Mutatedfixedbody necessarilyfailsrawhash/pin beforeLFpolicy; negativesstateactualfirstguard. Otherordinarybody LF/tab/C0 refusals targetgenericguard; actualunchangedinventorypositive reachesnewleafrule.'),
+        ('preexisting_I11_exception_unchanged', 'SeparatelyadoptedI11API007/rootcatalogue scope remainsfullhash/fulltree/data-only; no newSource-wide exception.'),
+        ('background_pins_not_automatic_authority', 'Provenanceannex/audit/findingpins are not recursivelydesignatedschemas or implied eligibility routes; expectedbodyroster remains exactreviewedmetadata inputs.'),
+        ('review_not_target_execution', 'Onlyactualread/hash/strictJSON/Base64datareview performed. No targetimports/functions/fixtures/Parser/Native/Job/science or gateflip.'),
+    ]
+    for name, rationale in manual:
+        check(name, True, {'subjects': [fact(path), inv_pin], 'reviewed_conclusion': rationale})
+    if any(not row['passed'] for row in checks):
+        raise ValueError('refuse: ' + repr([row['name'] for row in checks if not row['passed']]))
+    OUT.mkdir(exist_ok=False)
+    full = {'schema_version': 1, 'record_type': 'Independent_I13_fixed_inventory_LF_annex002_different_Source_full_proof',
+        'reviewer': '/root/project_architecture', 'source_author': '/root/i2_resume_gap',
+        'created_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds'),
+        'verdict': 'PASS_I13_EXACT_FIXED_INVENTORY_SINGLE_LF_ANNEX_SOURCE_ONLY',
+        'subjects': [fact(path), inv_pin], 'checks': checks, 'checks_passed': len(checks), 'checks_failed': 0,
+        'target_execution': False, 'operational_authority': False, 'native_Parser_executed': False,
+        'scientific_authority': False, 'tests_executed': False, 'target_Source_authored': False,
+        'full_original_I2_DAG_closed': False, 'actual_peer_content_qualified': False,
+        'current_canonical_authority_qualified': False,
+        'prior_history': 'Corepeer004/common003 reviews preserved; actualfixedinventoryC0predicate newlycoveredhere. Annex001self-C0literal remainsdatedunadoptedhistory; annex002containsASCIIBase64.'}
+    full_pin = save('INDEPENDENT_I13_FIXED_INVENTORY_LF_ANNEX002_SOURCE_FULL_PROOF_001.json', full)
+    capsule = {key: value for key, value in full.items() if key != 'checks'}
+    capsule['record_type'] = 'Independent_I13_fixed_inventory_LF_annex002_different_Source_capsule'
+    capsule['full_proof'] = full_pin
+    capsule_pin = save('INDEPENDENT_I13_FIXED_INVENTORY_LF_ANNEX002_SOURCE_CAPSULE_001.json', capsule)
+    print(json.dumps({'capsule': capsule_pin, 'full_proof': full_pin, 'checks_passed': len(checks), 'checks_failed': 0}))
+
+if __name__ == '__main__':
+    main()

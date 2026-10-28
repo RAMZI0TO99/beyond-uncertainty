@@ -1,0 +1,65 @@
+"""Own additive Source repair/AST metadata author only; no target execution."""
+import ast
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+ROOT=Path(__file__).parent
+BASE=ROOT/'receipt_caller_integration_015'
+OUT=BASE/'i12'
+CAP=2097152
+def pin(path,raw=None):
+    raw=path.read_bytes() if raw is None else raw
+    return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+def save(path,v):
+    raw=(json.dumps(v,sort_keys=True,indent=2)+'\n').encode();assert len(raw)<=CAP
+    with path.open('xb') as f:f.write(raw)
+    return pin(path,raw)
+def replace(text,old,new):
+    assert text.count(old)==1,old[:100]
+    return text.replace(old,new,1)
+within='''    if name in ('phase_content_decision15_v2','generic_peer_content_decision13_v2'):
+        _need(value['author']==value['reviewer'] and _same(value['actual_current_Source_inputs'],value['actual_support_fact3s']), 'E_RECORD_JOIN')
+    if name in ('constructor_API13','held_generic_emitter_API14','single_graph_API13','peer_graph_API13'):
+        _need(value['actual_Source_editor']==value['author'], 'E_RECORD_JOIN')
+    if name=='peer_inverse12_v2':
+        rebuilt=base64.b64decode(value['complete_predecessor_bytes_base64'],validate=True)
+        _need(len(rebuilt)==value['predecessor']['bytes'] and hashlib.sha256(rebuilt).hexdigest()==value['inverse_sha256']==value['predecessor']['sha256'], 'E_INVERSE')
+'''
+prior={};sources={};regions=[]
+for kind,stem in (('formats','receipt_contract_formats'),('single','validate_generic_single_receipt_metadata'),('peer','validate_selected_peer_receipt_metadata')):
+    path=OUT/(stem+'_001.py');old=path.read_bytes();prior[kind]=pin(path,old)
+    text=old.decode('utf8')
+    text=replace(text,"    if name in ('recorded_observation12','fixed_spent_observation10'):",within+"    if name in ('recorded_observation12','fixed_spent_observation10'):")
+    if kind!='formats':
+        text=replace(text,"def _noauth(value):\n    for key", "def _noauth(value):\n    _need(value.get('target_execution') is False and value.get('operational_authority') is False, 'E_AUTHORITY')\n    for key")
+        text=replace(text,"        seen=set()\n        for pin in pending:","        def author_slots(value):\n            if type(value) is dict:\n                for key,child in value.items():\n                    if key in author_keys:self.excluded.add(_actor(child).casefold())\n                    else:author_slots(child)\n            elif type(value) is list:\n                for child in value:author_slots(child)\n        seen=set()\n        for pin in pending:")
+        text=replace(text,"            for k in author_keys:\n                if k in v:self.excluded.add(_actor(v[k]).casefold())", "            author_slots(v)")
+        text=replace(text,"                for k in author_keys:\n                    if k in full:self.excluded.add(_actor(full[k]).casefold())", "                author_slots(full)")
+        text=replace(text,"        _need(len(names)==len(set(names)), 'E_REVIEW')", "        _need(len(names)==len(set(names)) and type(capsule.get('checks_passed')) is int and type(full.get('checks_passed')) is int and capsule['checks_passed']==full['checks_passed']==len(checks)>0, 'E_REVIEW')")
+        text=replace(text,"                rolecap=next((cap for p,cap in required if p['path']==path),v['cap'])", "                caps=[cap for p,cap in required if p['path']==path]\n                for role,row in self.rows.items():\n                    if path in (row['canonical_path'],row['draft_path'],row['predecessor']['path']):caps.append(65536 if role=='composer' else self.c['ROLE_SOURCE_CAPS'][role])\n                rolecap=min(caps) if caps else v['cap']")
+    if kind=='peer':
+        text=replace(text,"                for field in ('Source','API','different_review','Root_adoption'):self.s.raw(support[field],65536 if field=='Source' else CAP)", "                self.source_pins([support['Source']])\n                for field in ('API','different_review','Root_adoption'):self.s.raw(support[field])")
+    raw=text.encode();assert len(raw)<=65536
+    target=OUT/(stem+'_002.py');tree=ast.parse(raw);compile(raw,str(target),'exec',dont_inherit=True)
+    with target.open('xb') as f:f.write(raw)
+    sources[kind]=pin(target,raw)
+    lines=raw.splitlines(keepends=True)
+    for node in tree.body:
+        if isinstance(node,(ast.FunctionDef,ast.ClassDef)):
+            part=b''.join(lines[node.lineno-1:node.end_lineno])
+            regions.append(dict(Source=sources[kind],name=node.name,first_line=node.lineno,last_line=node.end_lineno,bytes=len(part),sha256=hashlib.sha256(part).hexdigest()))
+sources['emitter']=pin(OUT/'declare_generic_single_emitter_source_only_001.py')
+api_stems=dict(formats='CURRENT_OWNER_OUTSIDE8_RECEIPT_FORMAT_CONSTRUCTOR_INERT_API',single='CURRENT_OWNER_SINGLE_RECEIPT_METADATA_GRAPH_INERT_API',peer='CURRENT_OWNER_SELECTED_PEER_RECEIPT_METADATA_GRAPH_INERT_API',emitter='CURRENT_OWNER_GENERIC_SINGLE_EMITTER_DECLARATION_INERT_API')
+apis={};prior_apis={}
+for kind,stem in api_stems.items():
+    oldpath=OUT/(stem+'_001.json');raw=oldpath.read_bytes();prior_apis[kind]=pin(oldpath,raw)
+    value=json.loads(raw.decode());value['Source']=sources[kind]
+    apis[kind]=save(OUT/(stem+'_002.json'),value)
+old_inventory=json.loads((OUT/'I12_FROZEN_KERNEL_SOURCE_REGIONS_AND_GENESIS_INVENTORY_001.json').read_text(encoding='utf8'))
+inventory=dict(old_inventory,record_type='I12_frozen_successor002_kernel_Source_regions_and_complete001_preservation_inventory',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),sources=sources,APIs=apis,regions=regions,prior_frozen_Source001=prior,prior_frozen_APIs001=prior_apis,prior_inventory=pin(OUT/'I12_FROZEN_KERNEL_SOURCE_REGIONS_AND_GENESIS_INVENTORY_001.json'),complete_predecessor_inverses='Frozen001 complete physical sibling bytes stay present and exactly pinned above; all new002 files are additive. Emitter Source001 unchanged. No old I0-I11 Source/API replaced.',Source_AST_audit='All successor Sources ast.parse+compile metadata only, imports unchanged stdlib, no target imports/calls/tests.')
+ip=save(OUT/'I12_FROZEN_KERNEL_SOURCE_REGIONS_AND_GENESIS_INVENTORY_002.json',inventory)
+receipt=json.loads((OUT/'I12_ACTUAL_STATIC_KERNEL_SOURCE_AUTHOR_RECEIPT_001.json').read_text(encoding='utf8'))
+receipt.update(record_type='I12_actual_static_successor002_kernel_Source_and_API_author_receipt',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),sources=sources,APIs=apis,inventory=ip,prior_author_receipt=pin(OUT/'I12_ACTUAL_STATIC_KERNEL_SOURCE_AUTHOR_RECEIPT_001.json'),semantic_repairs=['format constructors enforce content decision author==reviewer and actual input/support-list equality','format inverse canonical Base64 length/SHA matches own predecessor fact before whole-store graph check','closed API actual_Source_editor==author','capsule/full/adoption require target_execution and operational_authority builtinFalse','capsule/full positive builtin checks_passed==len(full.checks)','all45 canonical/draft/predecessor observation role caps before body read','phase context referenced code Source data retains ordinary2MiB or authenticated stricter role cap, independent of new pure-module65536 bound','recursive explicit Source/content/editor author slot derivation inside designated proofs/full; reviewer and author-in-reviewer-role never independently excluded'],review_status='FROZEN_FOR_GENUINE_DIFFERENT_SOURCE_REVIEW; fixture later exact independent Source acceptance and Root scope required.',author_tool=pin(Path(__file__)))
+rp=save(OUT/'I12_ACTUAL_STATIC_KERNEL_SOURCE_AUTHOR_RECEIPT_002.json',receipt)
+print(json.dumps(dict(sources=sources,APIs=apis,inventory=ip,author_receipt=rp),sort_keys=True))

@@ -1,0 +1,328 @@
+"""Author a fresh inert fixture Source/catalogue; never imports or runs fixture."""
+import ast
+import base64
+import hashlib
+import json
+from pathlib import Path
+ROOT=Path(__file__).parent;COMP=ROOT/'m3_peer_contracts_016';OUT=COMP/'i13'
+OLD=ROOT.parent/'resume-20261025-002'/'receipt_caller_integration_015'
+BASECAT=OLD/'I12_EXACT_RECEIPT_FORMAT_SCHEMA_AND_FIXED_DATA_CATALOGUE_002.json'
+base=json.loads(BASECAT.read_bytes());spent={x['path'].casefold()for x in base['spent_pin75']}
+def pin(path,raw=None):
+    raw=Path(path).read_bytes()if raw is None else raw
+    return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+def capture(path):
+    assert str(path).casefold()not in spent
+    raw=Path(path).read_bytes();assert 0<len(raw)<=2097152
+    return dict(pin=pin(path,raw),base64=base64.b64encode(raw).decode())
+peerproto=COMP/'canonical_peer_protocol_audit_001'/'I13_PROPOSED_CANONICAL_PEER_AUTHOR_WRAPPER_AND_PUBLICATION_JOIN_PROTOCOL_004.json'
+audit=json.loads((COMP/'canonical_peer_protocol_audit_001'/'I13_CANONICAL_PEER_ACTUAL_HISTORY_AND_OWNER_V2_GAP_AUDIT_001.json').read_bytes())
+rolepath=COMP/'canonical_peer_protocol_audit_001'/'I13_PROPOSED_SELECTED_PEER_ROLE_INPUT_AND_ORIGINAL_OUTPUT_CONTRACT_DATA_001.json'
+roledata=json.loads(rolepath.read_bytes())
+inventorypath=Path(base['M3_inventory17_pin']['path']);inventory=json.loads(inventorypath.read_bytes())
+historicalpath=Path(base['current_historical_selection_pin']['path'])
+oldsource=ast.parse((OLD/'i12'/'validate_selected_peer_receipt_metadata_004.py').read_bytes())
+full45=ast.literal_eval(next(n.value for n in oldsource.body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='HISTORICAL_SELECTION45_PIN'for t in n.targets)))
+fixed={'base_catalogue':capture(BASECAT),'role_data':capture(rolepath),'M3_inventory17':capture(inventorypath),'historical45':capture(historicalpath),'full_historical45':capture(Path(full45['path']))}
+basis={r['role']:r['available_basis']for r in inventory['roles']}
+for r in audit['actual_selected_peer_subset']:
+    role=r['row']['role'];p=basis.get(role,r.get('canonical',r['predecessor'])['pin'])
+    fixed['predecessor_'+role]=capture(Path(p['path']))
+constructor_api=OLD/'i12'/'CURRENT_OWNER_OUTSIDE8_RECEIPT_FORMAT_CONSTRUCTOR_INERT_API_003.json'
+fixed['constructor_API']=capture(constructor_api)
+constructor=json.loads(constructor_api.read_bytes())
+fixed['constructor_Source']=capture(Path(constructor['Source']['path']))
+cases=[]
+def add(name,role='metadata_peer',handler='positive',expected=None,**kw):
+    cases.append(dict(name='peer_'+name,role=role,handler=handler,expected_error=expected,**kw))
+for kind in ('positive','negative','sibling'):add('isolation_'+kind,handler='isolation',isolation_kind=kind)
+for role in roledata['peer_roles']:add('valid_'+role,role=role)
+for flag in (False,True):add('emit_held_'+str(flag).lower(),handler='held',expected='E_ACTUAL_ENTRY_UNWIRED',flag=flag)
+wrappers=['schema_version','record_type','Root_thread','role','owner_scope','lease','selection','peer_packet','producer_support','role_inputs','created_utc','target_execution','operational_authority','source_only']
+for key in wrappers:add('wrapper_missing_'+key,handler='delete',expected='E_SCHEMA',label='wrapper',field=key)
+add('wrapper_unknown',handler='extra',expected='E_SCHEMA',label='wrapper')
+for key in ('canonical','carried'):add('inputs_missing_'+key,handler='delete',expected='E_PEER_INPUT_ROSTER',label='wrapper',field='role_inputs.'+key)
+for key in ('role','subject','source_cap'):add('inputrow_missing_'+key,handler='delete',expected='E_PEER_INPUT_ROSTER',label='wrapper',field='role_inputs.canonical.0.'+key)
+for key in ['schema_version','record_type','author','actual_Source_editor','Source','protocol','peer_role_data','peer_base_catalogue','metadata_entry','actual_entry','declared_roles','target_execution','operational_authority','actual_producer_issued']:
+    add('producer_API_missing_'+key,handler='delete',expected='E_CODE_API',label='producer_API',field=key)
+add('producer_API_unknown',handler='extra',expected='E_CODE_API',label='producer_API')
+for role in roledata['peer_roles']:
+    for key in roledata['original_output_contracts'][role]['closed_keys']:
+        add('original_'+role+'_missing_'+key,role=role,handler='delete',expected='E_ORIGINAL_PEER_SCHEMA',label='draft',field=key)
+    add('original_'+role+'_unknown',role=role,handler='extra',expected='E_ORIGINAL_PEER_SCHEMA',label='draft')
+    for key,value in roledata['original_output_contracts'][role]['immutable_literal_fields'].items():
+        add('original_'+role+'_immutable_'+key,role=role,handler='immutable',expected='E_ORIGINAL_PEER_SCHEMA'if value is None else'E_ORIGINAL_PEER_IMMUTABLE',field=key)
+    for kind in ('canonical','carried'):
+        if(kind=='canonical'and roledata['canonical_input_roles'][role])or(kind=='carried'and roledata['carried_input_names_and_caps'][role]):
+            for variant in ('omit','extra','reverse','duplicate'):
+                add('roster_'+role+'_'+kind+'_'+variant,role=role,handler='roster',expected='E_PEER_INPUT_ROSTER',kind=kind,variant=variant)
+for label,schema,role in [('inner','peer_packet20','metadata_peer'),('receipt','selected_peer_receipt27_v2','metadata_peer'),('decision','generic_peer_content_decision13_v2','metadata_peer'),('decision','phase_content_decision15_v2','phase_peer'),('witness','peer_serialization_witness13_v2','metadata_peer'),('inverse','peer_inverse12_v2','metadata_peer'),('context','phase_context21_v2','phase_peer')]:
+    for key in base['schemas'][schema]['fields']:add('closed_'+schema+'_missing_'+key,role=role,handler='delete',expected='E_SCHEMA',label=label,field=key)
+    add('closed_'+schema+'_unknown',role=role,handler='extra',expected='E_SCHEMA',label=label)
+for role in roledata['peer_roles']:
+    policy=roledata['role_specific_joins'][role]
+    fields=({'source_manifest_sha256':'metadata_manifest'}if role=='metadata_peer'else{'actual_script_sha256':'capture_bound'}if role=='metadata_bound_review'else policy.get('top_sha_fields',{})if role=='phase_peer'else{'pipeline_source_sha256':'pipeline','pipeline_binding_sha256':'binding'}if role=='pipeline_peer'else{'checker_template_sha256':'checker','source_manifest_sha256':'checker_manifest','full_source_details_sha256':'checker_dependency_audit'})
+    for field in fields:add('source_join_'+role+'_'+field,role=role,handler='source_hash',expected='E_ORIGINAL_PEER_SOURCE_JOIN',field=field)
+for key in roledata['role_specific_joins']['metadata_bound_review']['source_bindings_closed9']:
+    add('bound_binding_'+key,role='metadata_bound_review',handler='source_hash',expected='E_ORIGINAL_PEER_SOURCE_JOIN',field='source_bindings.'+key)
+for field in ('owner_scope','lease','selection','Root_thread'):
+    add('wrapper_join_'+field,handler='wrapper_join',expected='E_PEER_WRAPPER_JOIN',field=field)
+for label,field,expected in [('wrapper','schema_version','E_UNSUPPORTED_AUTHOR_PACKET_ABI'),('wrapper','record_type','E_UNSUPPORTED_AUTHOR_PACKET_ABI'),('wrapper','role','E_UNSUPPORTED_PEER_ROLE'),('wrapper','created_utc','E_CHRONOLOGY'),('decision','created_utc','E_CHRONOLOGY'),('receipt','created_utc','E_CHRONOLOGY')]:
+    add('value_'+label+'_'+field,handler='value',expected=expected,label=label,field=field)
+for field in ('target_execution','operational_authority','source_only'):add('wrapper_false_'+field,handler='flip',expected='E_AUTHORITY',label='wrapper',field=field)
+for label in ('producer_capsule','producer_full','producer_adoption'):
+    for field in ('native_Parser_executed','target_execution','operational_authority','created_utc'):
+        add('codeproof_'+label+'_missing_'+field,handler='delete',expected='E_ADOPTION'if label=='producer_adoption'else'E_REVIEW',label=label,field=field)
+    add('codeproof_'+label+'_native_true',handler='flip',expected='E_AUTHORITY',label=label,field='native_Parser_executed')
+for label in ('producer_capsule','producer_full','content_capsule','content_full','proposal_capsule','proposal_full'):
+    for variant in ('author','case_alias','descendant'):
+        add('reviewer_'+label+'_'+variant,handler='reviewer',expected='E_REVIEWER',label=label,variant=variant)
+for key in ('checks_passed','checks_failed'):
+    add('codeproof_count_bool_'+key,handler='proof_bool',expected='E_REVIEW',label='producer_full',field=key)
+for label in ('producer_capsule','producer_full'):
+    add('proof_coverage_'+label,handler='coverage',expected='E_REVIEW_COVERAGE',label=label)
+for variant in ('pin_bytes_bool','pin_key_subclass','record_key_subclass','record_extra','record_hash','record_length','casefold_alias','packet_float','packet_duplicate','packet_C0','packet_surrogate','packet_bad_JSON','metadata_node_budget'):
+    add('strict_'+variant,handler='strict',expected={'pin_bytes_bool':'E_PIN_BYTES','pin_key_subclass':'E_PIN','record_key_subclass':'E_RECORD_SCHEMA','record_extra':'E_RECORD_SCHEMA','record_hash':'E_RECORD_HASH','record_length':'E_RECORD_LENGTH','casefold_alias':'E_RECORD_ALIAS','packet_float':'E_JSON_NUMBER','packet_duplicate':'E_DUPLICATE_JSON_KEY','packet_C0':'E_VALUE','packet_surrogate':'E_VALUE','packet_bad_JSON':'E_JSON','metadata_node_budget':'E_NODES'}[variant],variant=variant)
+assert len({x['name']for x in cases})==len(cases)
+prefix='''"""Fresh I13 peer-only memory fixture Source. Never import old targets or fixtures."""
+import base64
+import copy
+import hashlib
+import json
+
+'''
+source=prefix+'FIXED = '+repr(fixed)+'\nCASE_CATALOGUE = '+repr(cases)+'\n'
+source+=r'''
+HOME=r'D:\I13PeerSynthetic'
+UUID='01234567-89ab-cdef-0123-456789abcdef'
+NOW='2026-10-25T11:00:20.000000+00:00'
+EDITOR='/root/i13_peer_fixture_caller'
+def _wire(v):return(json.dumps(v,sort_keys=True,separators=(',',':'),ensure_ascii=False)+'\n').encode()
+def _pin(path,raw):return dict(path=path,bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+def _json(raw):return json.loads(raw.decode('utf8'))
+def _time(second):return '2026-10-25T11:00:%02d.000000+00:00'%second
+def _fixed(name):
+    row=copy.deepcopy(FIXED[name]);return row['pin'],base64.b64decode(row['base64'],validate=True)
+def _value_get(v,path):
+    for key in path.split('.'):
+        v=v[int(key)]if type(v)is list else v[key]
+    return v
+def _parent(v,path):
+    parts=path.split('.');return _value_get(v,'.'.join(parts[:-1]))if len(parts)>1 else v,parts[-1]
+def _fingerprint(v):
+    if type(v)is dict:return('dict',tuple((_fingerprint(k),_fingerprint(x))for k,x in v.items()))
+    if type(v)is list:return('list',tuple(_fingerprint(x)for x in v))
+    if type(v)is bytes:return('bytes',len(v),hashlib.sha256(v).hexdigest())
+    return(type(v).__name__,v)
+def _seal():return hashlib.sha256(repr(_fingerprint((FIXED,CASE_CATALOGUE))).encode()).hexdigest()
+def _mutable_ids(v):
+    out=set()
+    def walk(x):
+        if type(x)in(dict,list):
+            out.add(id(x))
+            for y in (list(x)+list(x.values())if type(x)is dict else x):walk(y)
+    walk(v);return out
+
+class _Build:
+    def __init__(self,role,peer,catalogue_bytes):
+        self.rows=[];self.labels={};self.mutable=set();self.role=role
+        for name in FIXED:
+            p,raw=_fixed(name);self.add_raw(name,p,raw,False)
+        self.base=_json(_fixed('base_catalogue')[1]);self.policy=_json(_fixed('role_data')[1])
+        self.add_raw('common_catalogue',_pin(_json(catalogue_bytes)['peer_role_data']['path'].rsplit('\',2)[0]+r'\m3_protocol_audit_001\I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_004.json',catalogue_bytes),catalogue_bytes,False)
+        # The catalogue identity is a pinned Source constant on the owned module.
+        self.rows[-1]['pin']=copy.deepcopy(peer.COMMON_CATALOGUE_PIN);self.labels['common_catalogue']=self.rows[-1]['pin']['path']
+        owner=self.add('owner',dict(schema_version=2,record_type='synthetic_unissued_owner_scope',author='/root',created_utc=_time(0),target_execution=False,operational_authority=False))
+        lease=self.add('lease',dict(schema_version=2,record_type='synthetic_unissued_lease',author='/root',created_utc=_time(0),target_execution=False,operational_authority=False))
+        old=_json(_fixed('historical45')[1]);inventory=_json(_fixed('M3_inventory17')[1]);basis={r['role']:r['available_basis']for r in inventory['roles']}
+        selected=[]
+        for r in old['rows']:
+            row=copy.deepcopy(r);name=row['role']
+            if name!='composer':
+                row.update(canonical_path=HOME+'\canonical\'+name+'_fresh001.json',draft_path=HOME+'\draft\'+name+'_fresh001.json',selected_ordinal=1,preparation_Source_author='/root/i13_peer_preparer/'+name,must_change_Source_bytes=True)
+                row['predecessor']=copy.deepcopy(basis.get(name,row['predecessor']))
+                if name==role:row['predecessor']=_fixed('predecessor_'+role)[0]
+            selected.append(row)
+        selection=self.add('selection',dict(author='/root',created_utc=_time(0),current_complete45_inventory=_fixed('full_historical45')[0],current_owner_scope=owner,current_selection=_fixed('historical45')[0],derived_launcher_runtime_path=HOME+r'\unissued-launcher-runtime.json',new_canonical_lease=lease,operational_authority=False,record_type='Root_owner_v2_actual_separate_future45_Source_path_selection',rows=selected,schema_version=2,selected_Source_nonce='0123456789abcdef0123456789abcdef',target_execution=False))
+        self.scope,self.selection=owner,selection
+        row=next(r for r in selected if r['role']==role);current=[];inputs={'canonical':[],'carried':[]};byname={}
+        for name in self.policy['canonical_input_roles'][role]:
+            r=next(x for x in selected if x['role']==name);raw=('fresh synthetic recorded dependency '+name+'\n').encode();p=self.add_raw('input_'+name,_pin(r['canonical_path'],raw),raw,False)
+            inputs['canonical'].append(dict(role=name,subject=p,source_cap=r['source_cap']));current.append(p);byname[name]=p
+        for r in self.policy['carried_input_names_and_caps'][role]:
+            name=r['role'];raw=('fresh synthetic carried data '+name+'\n').encode();p=self.add_raw('input_'+name,_pin(HOME+'\carried\'+str(len(current))+'.data',raw),raw,False)
+            inputs['carried'].append(dict(role=name,subject=p,source_cap=r['source_cap']));current.append(p);byname[name]=p
+        priorraw=_fixed('predecessor_'+role)[1];prior=_json(priorraw);draft=copy.deepcopy(prior)
+        draft['created_utc']=_time(0)if 'created_utc'in draft else None
+        if draft.get('created_utc')is None:draft.pop('created_utc',None)
+        if role=='metadata_peer':
+            for key in self.policy['role_specific_joins'][role]['nested_mutable_lists']:draft[key]=[]
+            draft.update(finite_input_count=15,manifest_payload_count=12,source_manifest_sha256=byname['metadata_manifest']['sha256'])
+        elif role=='metadata_bound_review':
+            draft['actual_script_sha256']=byname['capture_bound']['sha256'];draft['phase_set']=['before','after']
+            draft['source_bindings']={k:byname[v.split('.',1)[1]]['sha256']for k,v in self.policy['role_specific_joins'][role]['source_bindings_closed9'].items()}
+        elif role=='phase_peer':
+            for key,name in self.policy['role_specific_joins'][role]['top_sha_fields'].items():draft[key]=byname[name]['sha256']
+            draft['PowerShell_parser_errors']=0;draft['exact_two_literal_reversal_all_four']=True;draft['phase_sources']=[]
+            for name in self.policy['role_specific_joins'][role]['phase_sources']['ordered_bound_roles']:
+                r=copy.deepcopy(byname[name]);r.update(PowerShell_parser_errors=0,exact_two_literal_reversal=True,template_sha256=byname[name.replace('_bound','_template')]['sha256']);draft['phase_sources'].append(r)
+        elif role=='pipeline_peer':draft.update(pipeline_source_sha256=byname['pipeline']['sha256'],pipeline_binding_sha256=byname['binding']['sha256'])
+        else:draft.update(checker_template_sha256=byname['checker']['sha256'],source_manifest_sha256=byname['checker_manifest']['sha256'],full_source_details_sha256=byname['checker_dependency_audit']['sha256'])
+        draftpin=self.add_raw('draft',_pin(row['draft_path'],_wire(draft)),_wire(draft),True)
+        proposal=self.add_raw('proposal',_pin(HOME+'\proposal\'+role+'.json',_wire(draft)),_wire(draft),True)
+        constructor_api=_json(_fixed('constructor_API')[1]);constructor_support=self.code('constructor',_fixed('constructor_Source')[0],_fixed('constructor_API')[0],constructor_api['author'])
+        self.add_raw('producer_Source',copy.deepcopy(peer.__source_pin__),peer.__source_bytes__,False)
+        self.add_raw('producer_API',copy.deepcopy(peer.__API_pin__),peer.__API_bytes__,True)
+        producer_support=self.code('producer',self.p('producer_Source'),self.p('producer_API'),'/root/i2_resume_gap')
+        ss=self.proof('selection_proof',[selection,lease],1,2);selection_support=dict(subject=selection,different_review=ss[0],Root_adoption=ss[1])
+        actor='/root/i13_peer_content/'+role
+        decision=dict(schema_version=2,record_type='Root_owner_v2_actual_genuine_selected_peer_content_decision',author=actor,reviewer=actor,created_utc=_time(3),current_owner_scope=owner,operational_authority=False,target_execution=False,verdict='PASS_STATIC_SELECTED_PEER_METADATA_CONTENT_ONLY',role=role,actual_current_Source_inputs=current,actual_support_fact3s=current,approved_original_schema_updates={})
+        parsers=[]
+        if role=='phase_peer':
+            for name in ('result','request','owner_purpose_acceptance','Root_admission','different_result_review','result_Root_adoption'):parsers.append(self.add('parser_'+name,dict(record_type='synthetic_recorded_Parser_reference_'+name,target_execution=False,operational_authority=False)))
+            decision.update(record_type='Root_owner_v2_actual_genuine_phase_peer_content_decision',verdict='PASS_STATIC_ACTUAL_PHASE_PS_SOURCE_BINDINGS_ONLY',actual_fresh_native_Parser_result=parsers[0],actual_fresh_native_Parser_support=parsers)
+        dp=self.add('decision',decision);cp=self.proof('content',[dp,*current,owner,selection],4,5);pp=self.proof('proposal',[proposal,dp,*current,owner,selection],6,7)
+        content_support=dict(decision=dp,different_review=cp[0],Root_adoption=cp[1]);proposal_support=dict(proposal=proposal,different_review=pp[0],Root_adoption=pp[1])
+        context=None
+        if role=='phase_peer':
+            parser=dict(record_type='Root_owner_v2_fresh_Parser_saved_result_support',schema_version=2,implementation_support={})
+            for name,p in zip(('result','request','owner_purpose_acceptance','Root_admission','different_result_review','result_Root_adoption'),parsers):parser[name]=p
+            context=self.add('context',dict(schema_version=2,record_type='Root_owner_v2_actual_genuine_phase_peer_dictionary_context',author='/root',created_utc=_time(7),current_owner_scope=owner,role=role,Source_producer_support=constructor_support,own_program_support=constructor_support,publisher_support=constructor_support,lease_producer_support=constructor_support,actual_reversal_FILEs={},canonical_Source_inputs={},carried_Source_inputs={},current_content_evidence_support={},new_lease_support={},fresh_parser_support=parser,genuine_content_support=content_support,genuine_proposal_support=proposal_support,selection_support=selection_support,operational_authority=False,target_execution=False))
+        witness=self.add('witness',dict(schema_version=2,record_type='Root_owner_v2_selected_peer_serialization_metadata_witness',author='/root',created_utc=_time(8),current_owner_scope=owner,selection=selection,physical_Source_editor='/root',proposal=proposal,selected_draft=draftpin,content_Root_adoption=cp[1],proposal_Root_adoption=pp[1],operational_authority=False,target_execution=False))
+        pred=self.p('predecessor_'+role)
+        inv=self.add('inverse',dict(schema_version=2,record_type='Root_owner_v2_peer_complete_predecessor_inverse_metadata',author='/root',created_utc=_time(9),current_owner_scope=owner,selection=selection,draft=draftpin,predecessor=pred,inverse_sha256=pred['sha256'],complete_predecessor_bytes_base64=base64.b64encode(priorraw).decode(),operational_authority=False,target_execution=False))
+        receipt=self.add('receipt',dict(schema_version=2,record_type='Root_owner_v2_genuine_static_peer_selected_byte_author_receipt',author='/root',created_utc=_time(10),Root_future_path_selection=selection,actual_Root_content_adoption=pp[1],actual_Root_serialization_witness=witness,actual_complete_predecessor_inverse=inv,actual_current_Source_inputs=current,actual_genuine_content_decision=dp,actual_genuine_content_proposal=proposal,actual_recipe_Source_support=[self.p('constructor_Source')],canonical_publication=False,current_owner_scope=owner,draft=draftpin,genuine_content_author_and_reviewer=actor,metadata_Source_worker=row['preparation_Source_author'],new_canonical_lease=lease,operational_authority=False,original_fixtures_and_runtime_admission=False,original_peer_source_author_nominal=prior['source_author'],physical_receipt_author='/root',physical_selected_byte_editor='/root',predecessor=pred,retained_semantic_Source_author=row['retained_semantic_Source_author'],role=role,target_execution=False))
+        inner=self.add('inner',dict(actual_content_actor=actor,actual_content_authors=[],constructor_support=constructor_support,content_decision=dp,content_support=content_support,context=context,current_source_inputs=current,draft=draftpin,inverse_evidence=inv,lease=lease,owner_scope=owner,predecessor=pred,proposal=proposal,proposal_support=proposal_support,receipt=receipt,recipe_sources=[self.p('constructor_Source')],role=role,root_thread=UUID,selection_support=selection_support,serialization_witness=witness))
+        self.add('wrapper',dict(schema_version=2,record_type='Root_owner_v2_selected_peer_canonical_author_metadata_packet',Root_thread=UUID,role=role,owner_scope=owner,lease=lease,selection=selection,peer_packet=inner,producer_support=producer_support,role_inputs=inputs,created_utc=_time(11),target_execution=False,operational_authority=False,source_only=True))
+    def add_raw(self,label,p,raw,mutable):
+        assert all(r['pin']['path']!=p['path']for r in self.rows)
+        self.rows.append(dict(pin=copy.deepcopy(p),body=raw));self.labels[label]=p['path']
+        if mutable:self.mutable.add(p['path'])
+        return copy.deepcopy(p)
+    def add(self,label,v):
+        raw=_wire(v);return self.add_raw(label,_pin(HOME+'\records\'+label+'.json',raw),raw,True)
+    def p(self,label):return copy.deepcopy(next(r['pin']for r in self.rows if r['pin']['path']==self.labels[label]))
+    def proof(self,name,subjects,when,adopt):
+        reviewer='/root/i13_peer_independent_review'
+        common=dict(schema_version=1,record_type='synthetic_source_proof',reviewer=reviewer,verdict='PASS_SOURCE_SYNTHETIC_METADATA_ONLY',checks_failed=0,checks_passed=1,created_utc=_time(when),subjects=copy.deepcopy(subjects),target_execution=False,operational_authority=False,native_Parser_executed=False)
+        full=copy.deepcopy(common);full['checks']=[dict(name='whole_source_and_metadata',passed=True,evidence=copy.deepcopy(subjects))]
+        fp=self.add(name+'_full',full);caps=copy.deepcopy(common);caps['full_proof']=fp;cap=self.add(name+'_capsule',caps)
+        ap=self.add(name+'_adoption',dict(schema_version=1,record_type='synthetic_Root_source_adoption',author='/root',verdict='ACCEPT_SOURCE_SYNTHETIC_METADATA_ONLY',created_utc=_time(adopt),subjects=[*copy.deepcopy(subjects),cap,fp,self.scope,self.selection],different_review=cap,full_proof=fp,target_execution=False,operational_authority=False,native_Parser_executed=False))
+        return cap,ap
+    def code(self,name,source,api,editor):
+        p=self.proof(name,[source,api],1,2);return dict(Source=source,API=api,different_review=p[0],Root_adoption=p[1],editor=editor)
+    def finish(self):
+        rows=copy.deepcopy(self.rows);return dict(packet=next(r['body']for r in rows if r['pin']['path']==self.labels['wrapper']),records=rows,labels=copy.deepcopy(self.labels),mutable=sorted(self.mutable))
+
+def _make(role,peer,catalogue_bytes):return _Build(role,peer,catalogue_bytes).finish()
+def _row(b,label):return next(r for r in b['records']if r['pin']['path']==b['labels'][label])
+def _replace_pins(v,old,new):
+    if type(v)is dict:
+        if set(v)=={'path','bytes','sha256'}and v==old:return copy.deepcopy(new)
+        return{k:_replace_pins(x,old,new)for k,x in v.items()}
+    if type(v)is list:return[_replace_pins(x,old,new)for x in v]
+    return v
+def _rewrite(b,label,v):
+    row=_row(b,label);old=copy.deepcopy(row['pin']);row['body']=_wire(v);row['pin']=_pin(old['path'],row['body']);queue=[(old,copy.deepcopy(row['pin']))]
+    while queue:
+        old,new=queue.pop(0)
+        for r in b['records']:
+            if r['pin']['path']not in b['mutable']or r is row:continue
+            v=_json(r['body']);changed=_replace_pins(v,old,new)
+            if changed!=v:
+                before=copy.deepcopy(r['pin']);r['body']=_wire(changed);r['pin']=_pin(before['path'],r['body']);queue.append((before,copy.deepcopy(r['pin'])))
+    b['packet']=_row(b,'wrapper')['body']
+
+class _Str(str):pass
+class _Hostile:
+    def __getattribute__(self,name):raise AssertionError('held entry inspected context')
+
+def _mutate(b,spec):
+    handler=spec['handler'];label=spec.get('label','draft');field=spec.get('field')
+    if handler=='strict':
+        variant=spec['variant'];r=b['records'][0]
+        if variant=='pin_bytes_bool':r['pin']['bytes']=True
+        elif variant=='pin_key_subclass':r['pin']={_Str(k):v for k,v in r['pin'].items()}
+        elif variant=='record_key_subclass':b['records'][0]={_Str(k):v for k,v in r.items()}
+        elif variant=='record_extra':r['extra']=False
+        elif variant=='record_hash':r['body']=bytes([r['body'][0]^1])+r['body'][1:]
+        elif variant=='record_length':r['body']+=b'X'
+        elif variant=='casefold_alias':r=copy.deepcopy(r);r['pin']['path']=r['pin']['path'].lower();b['records'].append(r)
+        else:
+            r=_row(b,'wrapper');v=_json(r['body'])
+            if variant=='packet_float':v['extra']=0.5;raw=_wire(v)
+            elif variant=='packet_duplicate':raw=r['body'].replace(b'{',b'{"role":"metadata_peer",',1)
+            elif variant=='packet_C0':v['extra']='\n';raw=_wire(v)
+            elif variant=='packet_surrogate':v['extra']='\ud800';raw=(json.dumps(v,sort_keys=True)+'\n').encode()
+            elif variant=='metadata_node_budget':v['extra']=[0]*50000;raw=_wire(v)
+            else:raw=b'{'
+            r['body']=raw;r['pin']=_pin(r['pin']['path'],raw);b['packet']=raw
+        return
+    v=_json(_row(b,label)['body'])
+    if handler=='delete':parent,key=_parent(v,field);del parent[int(key)if type(parent)is list else key]
+    elif handler=='extra':v['unexpected_field']=False
+    elif handler=='immutable':
+        old=v[field];v[field]=(not old)if type(old)is bool else True if old is None else old+1 if type(old)is int else old+'_changed'
+    elif handler=='source_hash':parent,key=_parent(v,field);parent[key]='0'*64
+    elif handler=='roster':
+        v=_json(_row(b,'wrapper')['body']);label='wrapper';xs=v['role_inputs'][spec['kind']]
+        if spec['variant']=='omit':xs.pop()
+        elif spec['variant']=='reverse':xs.reverse()
+        else:xs.append(copy.deepcopy(xs[0]))
+    elif handler=='wrapper_join':
+        v=_json(_row(b,'wrapper')['body']);label='wrapper';v[field]=('11234567-89ab-cdef-0123-456789abcdef'if field=='Root_thread'else copy.deepcopy(v['peer_packet']))
+    elif handler=='value':
+        v[field]=3 if field=='schema_version'else'wrong_record_type'if field=='record_type'else'profile'if field=='role'else _time(19)if label=='decision'else _time(19)if label=='receipt'else _time(1)
+    elif handler=='flip':v[field]=not v[field]
+    elif handler=='reviewer':
+        actor='/root/i2_resume_gap';v['reviewer']=actor.upper()if spec['variant']=='case_alias'else actor+'/descendant'if spec['variant']=='descendant'else actor
+    elif handler=='proof_bool':v[field]=False
+    elif handler=='coverage':
+        v['subjects']=[]
+        if 'checks'in v:
+            for row in v['checks']:row['evidence']=[]
+    else:raise AssertionError('unowned fixture handler '+handler)
+    _rewrite(b,label,v)
+
+def run(*,m3,publisher,peer,catalogue_bytes):
+    cases=[];seal=_seal()
+    for literal in CASE_CATALOGUE:
+        spec=copy.deepcopy(literal);name=spec['name'];expected=spec['expected_error']
+        assert not(_mutable_ids(spec)&_mutable_ids(CASE_CATALOGUE))
+        if spec['handler']=='isolation':
+            a=_make(spec['role'],peer,catalogue_bytes);b=_make(spec['role'],peer,catalogue_bytes)
+            assert not(_mutable_ids(a)&_mutable_ids(b))and not(_mutable_ids(a)&_mutable_ids(FIXED))
+            saved=_fingerprint(b);a['records'][0]['pin'].pop('path');assert _fingerprint(b)==saved and _seal()==seal
+        elif spec['handler']=='held':
+            flag=peer.ACTUAL_ENTRY_QUALIFIED
+            try:
+                peer.ACTUAL_ENTRY_QUALIFIED=spec['flag']
+                try:peer.emit_selected_peer_current_owner(context=_Hostile())
+                except peer.I13MetadataError as e:assert e.code==expected
+                else:raise AssertionError('held emitter unexpectedly returned')
+            finally:peer.ACTUAL_ENTRY_QUALIFIED=flag
+        else:
+            b=_make(spec['role'],peer,catalogue_bytes)
+            assert not(_mutable_ids(b)&_mutable_ids(FIXED))
+            if spec['handler']!='positive':
+                before=_fingerprint(b);_mutate(b,spec);assert _fingerprint(b)!=before,'mutation did not change typed input'
+            try:result=peer.validate_selected_peer_author_packet_metadata(packet=b['packet'],records=b['records'],catalogue_bytes=catalogue_bytes,expected_root_thread=UUID,source_editor=EDITOR,now_utc=NOW)
+            except peer.I13MetadataError as e:
+                assert expected is not None and e.code==expected,(name,'wrong typed first guard',e.code,expected)
+            else:
+                assert expected is None,(name,'expected refusal returned')
+                v=_json(result);assert v['role']==spec['role']and v['structural_graph_validated']is True and v['metadata_only']is True
+                assert v['full_original_I2_DAG_closed']is False and v['actual_peer_content_qualified']is False and v['current_canonical_authority_qualified']is False and v['native_Parser_authority']is False
+                assert type(v['charged_metadata_nodes'])is int and v['charged_metadata_nodes']<=50000
+        assert _seal()==seal,'global fixed pin/literal/case specification mutated'
+        cases.append(dict(name=name,passed=True));print(json.dumps(dict(event='CASE_PASS',name=name),sort_keys=True),flush=True)
+    return dict(cases=cases,passed=len(cases),failed=0,metadata_only=True,target_execution=False,operational_authority=False,scientific_authority=False,actual_family_publication=False)
+'''
+raw=source.encode();assert len(raw)<=2097152
+path=OUT/'exercise_selected_peer_author_metadata_memory_001.py';tree=ast.parse(raw);compile(raw,str(path),'exec',dont_inherit=True)
+with path.open('xb')as f:f.write(raw)
+catalogue=dict(schema_version=1,record_type='I13_fresh_peer_literal_case_catalogue',author='/root/i2_resume_gap',Source=pin(path,raw),cases=cases,count=len(cases),names_json_sha256=hashlib.sha256(json.dumps([x['name']for x in cases],sort_keys=True,separators=(',',':')).encode()).hexdigest(),target_execution=False,tests_executed=False,operational_authority=False)
+for name,v in [('I13_PEER_FRESH_LITERAL_CASE_CATALOGUE_001.json',catalogue),('I13_PEER_FRESH_MEMORY_FIXTURE_SOURCE_AUTHOR_RECEIPT_001.json',dict(schema_version=1,record_type='I13_fresh_peer_fixture_Source_author_receipt',author='/root/i2_resume_gap',Source=pin(path,raw),kernel=pin(OUT/'validate_selected_peer_author_packet_metadata_004.py'),API=pin(OUT/'CURRENT_OWNER_SELECTED_PEER_CANONICAL_AUTHOR_METADATA_INERT_API_004.json'),case_count=len(cases),fixed_capture_pins=[v['pin']for v in fixed.values()],method='Fresh fixture authored from schema/protocol and exact raw fixed data only. No old fixture imports/copies, no target/fixture import/call/run. AST/compile only; intended first guards require genuine Source review and fresh Root once scope.',author_tool=pin(Path(__file__)),target_execution=False,tests_executed=False,operational_authority=False,actual_family_publication=False))]:
+    payload=(json.dumps(v,sort_keys=True,indent=2)+'\n').encode();assert len(payload)<=2097152
+    with (OUT/name).open('xb')as f:f.write(payload)
+print(json.dumps(dict(Source=pin(path,raw),cases=len(cases),catalogue=pin(OUT/'I13_PEER_FRESH_LITERAL_CASE_CATALOGUE_001.json')),sort_keys=True))

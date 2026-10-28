@@ -1,0 +1,129 @@
+"""Genuine Root-owned snapshot controls Source review; no reviewed function is called."""
+from pathlib import Path
+import ast,base64,datetime,hashlib,json,os
+R=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003');C=R/'m3_peer_contracts_016';T=C/'i13';O=R/'input_snapshot_controls_different_Source_review_001'
+checks=[]
+def sha(b):return hashlib.sha256(b).hexdigest()
+def pin(p,b=None):
+ p=Path(p);b=p.read_bytes()if b is None else b
+ return dict(path=str(p),bytes=len(b),sha256=sha(b))
+def load(p):return json.loads(Path(p).read_bytes().decode('utf8'))
+def tree(p):return ast.parse(Path(p).read_bytes().decode('utf8'))
+def dump(n):return ast.dump(n,include_attributes=False)
+def funcs(tr):return{n.name:n for n in tr.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+def const(tr):
+ d={}
+ for n in tr.body:
+  if isinstance(n,ast.Assign)and len(n.targets)==1 and isinstance(n.targets[0],ast.Name):
+   try:d[n.targets[0].id]=ast.literal_eval(n.value)
+   except(ValueError,TypeError):pass
+ return d
+def check(name,passed,evidence=None):
+ assert type(passed)is bool
+ checks.append(dict(name=name,passed=passed,evidence=evidence))
+def exact(p):return pin(p['path'])==p
+freeze=C/'ROOT_I13_INPUT_SNAPSHOT_ROOT_CONTROLS001_SOURCE_AUTHOR_FREEZE_001.json';f=load(freeze)
+inversep=R/'ROOT_I13_INPUT_SNAPSHOT_CONTROL_SOURCE002_COMPLETE001_INVERSES_001.json';iv=load(inversep)
+sup=Path(f['products']['supervisor']['path']);planp=Path(f['products']['role_plan']['path']);admission=Path(f['products']['admission_helper']['path']);template=Path(f['custom_Source_template']['path']);author=Path(f['own_metadata_author_Source']['path'])
+subjects=[pin(p)for p in(sup,planp,admission,freeze,template,author,inversep)]
+check('freeze_whole_pin',pin(freeze)==dict(path=str(freeze),bytes=6167,sha256='adc7973f3a5faa0c8bcb60f03d1b230a491f68b2c970804335efb88cbc588156'))
+check('inverse_receipt_whole_pin',pin(inversep)==dict(path=str(inversep),bytes=55142,sha256='37258a94b8305e07d2a533e7453d55d811024a33cf47f7e26a7be7fec2165ff6'))
+for k,p in f['products'].items():check('product_pin_'+k,exact(p))
+check('template_pin',exact(f['custom_Source_template']))
+check('Root_author_pin',exact(f['own_metadata_author_Source']))
+check('Root_authorship',f['author']==iv['author']=='/root')
+for name in('target_execution','operational_authority','scientific_authority','actual_family_publication','tests_executed'):
+ check('freeze_false_'+name,f[name]is False)
+ check('inverse_false_'+name,iv[name]is False)
+for i,row in enumerate(iv['predecessors']):
+ raw=base64.b64decode(row['complete_bytes_base64'],validate=True)
+ check('whole001_inverse_'+str(i),pin(row['pin']['path'],raw)==row['pin']and Path(row['pin']['path']).read_bytes()==raw)
+ check('canonical_Base64_inverse_'+str(i),base64.b64encode(raw).decode('ascii')==row['complete_bytes_base64'])
+for k,p in iv['successors'].items():check('inverse_successor_pin_'+k,exact(p))
+check('exact3_complete_predecessors',len(iv['predecessors'])==len(iv['successors'])==3)
+check('preliminary_four_gap_refusal_pin',exact(iv['genuine_preliminary_refusal'])and iv['genuine_preliminary_refusal']['sha256']=='f7fde2c28b372952f7232980c0209ad005fce6c3f858df00e9e08c0a04265dc6')
+prelim=load(iv['genuine_preliminary_refusal']['path'])
+check('preliminary_four_gaps_retained',prelim['checks_passed']==16 and prelim['checks_failed']==4 and prelim['verdict'].startswith('REFUSE_'))
+st=tree(sup);sf=funcs(st);sc=const(st);at=tree(admission);af=funcs(at);old=tree(f['previous_supervisor']['path']);oldf=funcs(old)
+for name in f['exact_reused_common_functions']:check('common12_AST_exact_'+name,dump(sf[name])==dump(oldf[name]))
+check('all12_common_functions',len(f['exact_reused_common_functions'])==12)
+check('previous_Sup011_exact',exact(f['previous_supervisor']))
+for p in(sup,admission,author):
+ raw=p.read_bytes();compile(raw,str(p),'exec',dont_inherit=True)
+ check('UTF8_AST_compile_only_'+p.name,len(raw)<=2097152)
+plan=load(planp)
+check('literal_roleplan_exact',sc['ROLE_PLAN']==pin(planp)and sc['ROLE_PLAN_VALUE']==plan)
+check('protocol_adoption_exact',sc['PROTOCOL_ADOPTION']==f['protocol_adoption']and exact(sc['PROTOCOL_ADOPTION']))
+check('Source3_exact',sc['SOURCE_SCOPE']==f['Source_scope']and exact(sc['SOURCE_SCOPE']))
+check('closed_Source_inputs9',set(sc['SOURCE_INPUTS'])=={'fixture_basis','m3_Source','m3_API','publisher_Source','publisher_API','peer_Source','peer_API','catalogue','protocol'}and sc['SOURCE_INPUTS']==f['Source_inputs']==plan['Source_inputs'])
+for k,p in sc['SOURCE_INPUTS'].items():check('literal_binding_dependency_pin_'+k,exact(p))
+check('fixture_pin_is_literal_dependency_only',sc['FIXTURE']==f['new_fixture']and exact(sc['FIXTURE']))
+for name in('m3','peer','publisher'):
+ check('Source_literal_pin_'+name,sc['SOURCES'][name]==sc['SOURCE_INPUTS'][name+'_Source']and exact(sc['SOURCES'][name]))
+ check('API_literal_pin_'+name,sc['APIS'][name]==sc['SOURCE_INPUTS'][name+'_API']and exact(sc['APIS'][name]))
+ check('Source_cap65536_'+name,sc['SOURCES'][name]['bytes']<=65536)
+check('current_catalogue_literal',sc['CATALOGUE']==sc['SOURCE_INPUTS']['catalogue'])
+protocol=load(sc['SOURCE_INPUTS']['protocol']['path']);expected_sites=[x['id']for x in protocol['reference_Source_sites']]
+check('Source51_exact_namespace',len(expected_sites)==51 and set(sc['SOURCE_SITE_IDS'])==set(expected_sites))
+check('roles_exact6_order',plan['fixed_roles']==['capture_template','metadata_manifest','plan','capture_bound','metadata_binding','phase_binding'])
+check('groups_exact3_disjoint',plan['groups']==[dict(group_id='I13_INPUT_GROUP_%03d'%(i+1),roles=plan['fixed_roles'][i*2:i*2+2])for i in range(3)])
+check('groups_complete_exact6',len({r for g in plan['groups']for r in g['roles']})==6 and[r for g in plan['groups']for r in g['roles']]==plan['fixed_roles'])
+for k in('actual_family_publication','automatic_retry_permitted','old936_qualification','operational_authority','scientific_authority','target_execution'):check('roleplan_false_'+k,plan[k]is False)
+check('roleplan_zero_calls',type(plan['snapshot_calls_admitted'])is int and plan['snapshot_calls_admitted']==0 and plan['maximum_roles_per_snapshot']==plan['maximum_route_ledgers_per_graph']==2)
+budget=dict(total_seconds=60,wait_seconds=50,cleanup_seconds=10,reap_seconds=5,stdout_maximum_bytes=2097152,stderr_maximum_bytes=2097152)
+check('budgets_exact',sc['BUDGETS']==budget)
+check('limits_exact',sc['LEDGER_LIMITS']==dict(record_count=256,rawbytes=33554432,perrecord=2097152,output=2097152,source_node_guard=50000,depth=48))
+sources={n:ast.get_source_segment(sup.read_bytes().decode('utf8'),v)for n,v in sf.items()}
+check('data_carrier_no_compile_exec',not any(isinstance(n,ast.Call)and isinstance(n.func,ast.Name)and n.func.id in('exec','compile','eval')for n in ast.walk(sf['data_carrier'])))
+check('data_carrier_only_raw_attrs',all(x in sources['data_carrier']for x in('__source_pin__','__source_bytes__','__API_pin__','__API_bytes__','types.ModuleType')))
+execs=[n for n in ast.walk(st)if isinstance(n,ast.Call)and isinstance(n.func,ast.Name)and n.func.id=='exec']
+check('only_fixture_compiled_executed',len(execs)==1 and'raw = read_pin(FIXTURE)'in sources['load_fixture_only']and'exec(compile(raw,FIXTURE' in sources['load_fixture_only'])
+check('one_fixed_snapshot_export_only','fixture.snapshot_I13_M3_input_node_ledger('in sources['child']and not any(x in sources['child']for x in('.run(','.run_diagnostic(','validate_M3_complete_stage_output_metadata(')))
+check('typed_snapshot_refusal_truth','except MemoryError:'in sources['child']and'except ValueError as exc:'in sources['child']and"record_type='I13_owned_data_only_input_snapshot_typed_refusal'"in sources['child']and'return 1'in sources['child'])
+check('no_old_CASE_PASS_or936_acceptance',"old_CASE_PASS_or_936_qualification=False"in sources['parent']and"plan_is_actual_target_trace=False"in sources['parent'])
+check('prelaunch_role_group_exact_join',"pre.get('role_group_id') == v['role_group_id']"in sources['scope'])
+check('fresh_Source_reserve_scope',"(parse(src['interval_end']) - now).total_seconds() > 60"in sources['scope'])
+check('general_runtime_isolated_flags',all(x in sources['child']for x in('sys.flags.isolated==1','sys.flags.no_site==1','sys.flags.dont_write_bytecode==1'))and"'-I', '-S', '-B'"in sources['parent'])
+check('Source_only_stable_inputs_disjoint_outputs',"disjoint inputs outputs"in sources['scope']and"one owned namespace"in sources['scope'])
+check('claim_before_launch',sources['parent'].index("claim = write_new")<sources['parent'].index('subprocess.Popen'))
+check('fresh_all6_owned_absence',"not any(os.path.lexists(p) for p in outputs.values())"in sources['parent'])
+for text,label in(("time.monotonic() - start >= 50",'wait50'),('min(5, 60 -','reap5within60'),('counts[name] > 2097152','stream2M'),('actual_stream_EOF=stream_eof','savedEOF'),('stream_pump_errors=pump_errors','savedpumperrors'),('acceptance_elapsed_ns>60000000000','candidate60'),('final_elapsed_ns<=60000000000','final60'),('return 0 if final_accepted else 1','truthfulExit')):check('custody_'+label,text in sources['parent'])
+check('true_drain_required',"drained = threads_finished and all(stream_eof.values()) and not any(pump_errors.values())"in sources['parent'])
+check('acceptance_requires_all_custody_and_ledger',"accepted=reason is None and proc.returncode==0 and drained and not overflow.is_set() and ledger_valid"in sources['parent'])
+check('launch_failure_saved_refusal',all(x in sources['parent']for x in("'CHILD_LAUNCH_REFUSAL'",'child_launched=False','reaped=False','return 1')))
+check('saved_result_pin_only_no_duplicated_payload',"child_result=None if result is None else dict(pin=result['pin'])"in sources['parent'])
+check('claim_and_child_actual_parent_join',all(x in sources['child']for x in("claim.get('scope')==scope_pin","claim.get('supervisor')==value['supervisor']","claim['parent_pid']==os.getppid()")))
+check('phase_arithmetic_resolves_each_node_charge',all(x in sources['check_phase_plan']for x in("charge=1+11*g['record_count']","charge=7","charge=row['strict_JSON']['nodes']","event['charge_nodes']==charge","event['local_cumulative_nodes']==local","event['conservative_cumulative_nodes']==conservative")))
+check('phase_cachemiss_roster_source_join',all(x in sources['check_phase_plan']for x in("subject['path'] not in parsed[cache]","use['first_parse_ordinal']==len(parsed[cache])+1","site in use['Source_site_ids']","row['pin']==subject")))
+check('phase_firstguard_recomputed',all(x in sources['check_phase_plan']for x in("before=p+added","before=c","before=p;charge=c;added=c;merged=True;local=p+c;conservative=p+c;after=p+c","route['first_planned_50000_crossing']==first")))
+check('phase_order_complete',all(x in sources['check_phase_plan']for x in("no phase after final parent result","no interleaved child execution","child result decode Source/order","complete ordered cache/result phases")))
+check('phase_all_parsed_paths_represented',"parsed[cache]=={r['pin']['path'] for r in rows if r[key]['designation']=='JSON_PARSE'}"in sources['check_phase_plan'])
+check('merge_addition_exact_Source_site',"site=='publisher:_direct' and childdone and decoded"in sources['check_phase_plan'],dict(actual_guard="site=='publisher:_prewrite'",required='publisher:_direct at current publisher006:_direct line598',impact='Every valid emitted ledger uses the actual Source site _direct and is refused by this control.'))
+check('headline_two_cache_result_accounting',all(x in sources['validate_ledger']for x in("child_result_nodes']==route['parent_child_result_decode_nodes']","parent=eager+7+route['parent_unique_JSON_nodes']+route['parent_child_result_decode_nodes']+route['parent_final_result_nodes']","child=eager+7+route['child_unique_JSON_nodes']+route['child_result_nodes']","planned_conservative_total']==parent+child")))
+check('all_record_roster_hash_rawtotals',all(x in sources['validate_ledger']for x in("sum(x['bytes'] for x in pins)==g['total_record_bytes']","hashlib.sha256(roster).hexdigest()==g['record_set_LF_fact3_sha256']","ensure_ascii=False")))
+check('conditional_not_actual_trace_required',"'plan_is_actual_target_trace'"in sources['validate_ledger']and"all_non_node_predicates_assumed_satisfied'] is True"in sources['validate_ledger'])
+asource=admission.read_bytes().decode('utf8')
+check('admission_does_not_spawn_or_import_subject',not any(isinstance(n,ast.Import)and any(x.name in('subprocess','importlib')for x in n.names)for n in at.body))
+check('admission_perwrite_Source_reserve',isinstance(af['save'].body[0],ast.Expr)and isinstance(af['save'].body[0].value,ast.Call)and isinstance(af['save'].body[0].value.func,ast.Name)and af['save'].body[0].value.func.id=='reserve')
+check('admission_reserve_before_owned_mkdir','reserve();owned.mkdir(parents=True)'in asource)
+check('admission_current_Source3_interval',all(x in asource for x in("726c201dd6349aca56122129acf71b259b821a667c0720a3a4838ffb8aefe1ad","(dt.datetime.fromisoformat(source_scope['interval_end'])-now_check).total_seconds()>60","(dt.datetime.fromisoformat(source_scope['interval_end'])-end).total_seconds()>60")))
+check('admission_latest_peer_fullrelease_only',all(x in asource for x in("peer['reported_full_compute_custody_released'] is peer['grant_consumed_closed'] is True","peer['Root_acceptance']['peer_result_accepted'] is False","max(int(p.stem.rsplit('_',1)[1]) for p in grants)==grant")))
+check('admission_prior_owned_custody_closed',all(x in asource for x in("Path(v['outputs']['claim']).exists()","s['reaped'] is s['streams_drained'] is True","s['custody_error'] is None")))
+check('admission_actual_Source_plus_roles_spent_guard',"and oldplan['Source_inputs']==plan['Source_inputs']"not in asource and"identical actual Source inputs + selected roles already allocated"in asource,dict(actual_extra_conjunct="oldplan['Source_inputs']==plan['Source_inputs']",impact='Changes confined to plan Source_inputs wrappers can make same_inputs false despite identical actual module/API/catalogue/fixture bytes and selected roles.',repair='Use only actual modules/APIs/catalogue/fixture equality and selected role sequence; no wrapper equality conjunct.'))
+check('admission_fresh_resource_original_floors',"m.available_phys>=1073741824 and disk>=10737418240"in asource)
+check('admission_exclusive_new_scope','not os.path.lexists(p)'in asource and"p.open('xb')"in asource)
+check('admission_zero_case_or_ledger_claims',"snapshot_invoked=False"in asource and'CASE_PASS'not in asource)
+assert len({x['name']for x in checks})==len(checks)
+bad=[x for x in checks if not x['passed']]
+assert{r['name']for r in bad}=={'merge_addition_exact_Source_site','admission_actual_Source_plus_roles_spent_guard'},bad
+assert not os.path.lexists(O);O.mkdir()
+def save(p,v):
+ raw=(json.dumps(v,sort_keys=True,ensure_ascii=True,indent=2,allow_nan=False)+'\n').encode('ascii');assert len(raw)<=2097152 and not os.path.lexists(p)
+ assert(datetime.datetime.fromisoformat('2026-10-25T18:03:03.861408+00:00')-datetime.datetime.now(datetime.timezone.utc)).total_seconds()>60
+ with p.open('xb')as h:h.write(raw);h.flush();os.fsync(h.fileno())
+ assert p.read_bytes()==raw
+ return pin(p,raw)
+base=dict(schema_version=2,record_type='Independent_I13_Root_snapshot_controls_Source_refusal',reviewer='/root/project_architecture',source_author='/root',created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds'),subjects=subjects,checks_passed=sum(x['passed']for x in checks),checks_failed=len(bad),verdict='REFUSE_ROOT_SNAPSHOT_CONTROLS002_TWO_CONCRETE_REPAIRS',metadata_only=True,target_execution=False,operational_authority=False,scientific_authority=False,native_Parser_executed=False,actual_family_publication=False,tests_executed=False,reviewed_subject_functions_called=False,own_fixture015_or_model_semantics_accepted=False,scope='Root-owned controls only. Architecture-owned fixture015/model/freeze are exact literal binding dependencies only, not semantically accepted by this review.',findings=bad)
+full=save(O/'INDEPENDENT_I13_ROOT_SNAPSHOT_CONTROLS002_SOURCE_REFUSAL_FULL_PROOF_001.json',dict(base,checks=checks,review_author_Source=pin(Path(__file__)),preliminary_four_gap_refusal=iv['genuine_preliminary_refusal'],remaining_scope='Only wrong merge Source-site constant and extra replay wrapper conjunct remain. All Root predecessor and original supervisor bytes preserved; no scope/grant/child call made.'))
+caps=save(O/'INDEPENDENT_I13_ROOT_SNAPSHOT_CONTROLS002_SOURCE_REFUSAL_CAPSULE_001.json',dict(base,full_proof=full))
+print(json.dumps(dict(checks_passed=base['checks_passed'],checks_failed=len(bad),capsule=caps,full=full)))

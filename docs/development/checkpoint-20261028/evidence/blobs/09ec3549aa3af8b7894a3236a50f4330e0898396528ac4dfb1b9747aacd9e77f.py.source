@@ -1,0 +1,301 @@
+"""Own bounded saved-byte integrity refresh. No Subject import or execution.
+
+Run only after Source013 is genuinely adopted. This script reads saved ordinary
+files and emits new metadata solely inside its own fixed review directory.
+"""
+import ast
+import datetime
+import decimal
+import hashlib
+import json
+import os
+import stat
+import sys
+from pathlib import Path
+
+BASE = Path(r'D:\Aenv\pro2\WORK\resume-20261028-001')
+OUT = BASE / 'saved_failure_refresh_review_001'
+OLD = Path(r'D:\Aenv\pro2\WORK\resume-20261027-004')
+PEER = Path(r'D:\Aenv\pro3\runs\coordination\cho51_p3_contracts_20261027_v1')
+CAP = 2097152
+DEPTH = 48
+NODES = 50000
+RESERVE = 60
+SCOPE = {'path': str(BASE / 'ROOT_CURRENT_BOOTSTRAP004_FAILURE_CLOSEOUT_METADATA_SOURCE_SCOPE_013.json'), 'bytes': 6065, 'sha256': 'c00fe52251923ed2149e11fca2b9fcd72825b53df50c26bacac67a646b74e53f'}
+PACKET = {'path': str(OLD / 'ROOT_BOOTSTRAP004_SAVED_PACKET_AND_D01_MISSING_SUCCESS_EVIDENCE_001.json'), 'bytes': 7148, 'sha256': 'e39a4403f685a641fa5125384647a58c9d1d145bbf99a303e5f0c3bed93edd9e'}
+CALLER = {'path': str(OLD / 'bootstrap004_actual_review_001' / 'caller_independent_001' / 'INDEPENDENT_BOOTSTRAP004_SAVED_CALLER_REFUSAL_UNCLOSED_CUSTODY_CAPSULE_001.json'), 'bytes': 9353, 'sha256': '3f298eb7d13ecb030c16e387cf90c977a5506e1fde73bd5eaf19a15bbc7ac862'}
+DIAG_PATH = OLD / 'bootstrap004_actual_review_001' / 'source_diagnosis_independent_001' / 'INDEPENDENT_BOOTSTRAP004_SAVED_SOURCE_ROUTE_DIAGNOSIS_CAPSULE_001.json'
+DIAG = {'path': str(DIAG_PATH), 'bytes': 13589, 'sha256': '48edae10a4222a725894b4a09c9b74cbf475e2d9b636867d148a54119f98bffc'}
+PEER_PINS = [
+    {'path': str(PEER / 'bootstrap-external-audit_004.json'), 'bytes': 4925, 'sha256': '365153e07d2f925d36168f0218404ae37c18962d0bbabb0598a284ff6740b75d'},
+    {'path': str(PEER / 'bootstrap-actual-review_004.json'), 'bytes': 8841, 'sha256': 'df900ab63aaf0f4ef0febbe11c3db7fa23ff9a178f5d8f65f6233ff35948e098'},
+    {'path': str(PEER / 'bootstrap-disposition_004.json'), 'bytes': 2695, 'sha256': '1faf198894e0f210e5bb8692a8c0c4b35f10963a1e2c8c928d545eb808c335ec'},
+]
+checks = []
+cache = {}
+pins = {}
+fractional_tokens = []
+tree_stats = {}
+
+def need(ok, name, evidence=None):
+    checks.append({'name': name, 'passed': bool(ok), 'evidence': evidence})
+    if not ok:
+        raise AssertionError(name)
+
+def f3(raw, path):
+    return {'path': str(path), 'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
+
+def fp(s):
+    return (s.st_dev, s.st_ino, s.st_mode, s.st_nlink, s.st_size, s.st_mtime_ns, s.st_ctime_ns, getattr(s, 'st_file_attributes', 0))
+
+def ancestors(path):
+    chain = [path] + list(path.parents)
+    if len(chain) > 20:
+        raise ValueError('ancestor cap')
+    for p in chain:
+        s = os.lstat(p)
+        if stat.S_ISLNK(s.st_mode) or getattr(s, 'st_file_attributes', 0) & 1024:
+            raise ValueError('reparse/symlink path: ' + str(p))
+
+def saved(path, expected=None):
+    path = Path(path)
+    key = str(path)
+    if key not in cache:
+        if not path.is_absolute() or not any(path.is_relative_to(root) for root in (BASE, OLD, Path(r'D:\Aenv\pro2\WORK\resume-20261027-002'), PEER)):
+            raise ValueError('saved input outside fixed roots')
+        ancestors(path)
+        before = os.lstat(path)
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or not 0 <= before.st_size <= CAP:
+            raise ValueError('ordinary singlelink bounded file required')
+        with open(path, 'rb') as handle:
+            opened = os.fstat(handle.fileno())
+            raw = handle.read(CAP + 1)
+            afterfd = os.fstat(handle.fileno())
+        after = os.lstat(path)
+        if len(raw) > CAP or not fp(before) == fp(opened) == fp(afterfd) == fp(after):
+            raise ValueError('saved file changed during same-buffer read')
+        ancestors(path)
+        cache[key] = raw
+        pins[key] = f3(raw, path)
+    actual = pins[key]
+    if expected is not None:
+        if actual != {k: expected[k] for k in ('path', 'bytes', 'sha256')}:
+            raise ValueError('F3 mismatch: ' + key)
+    return cache[key]
+
+def pairs(items):
+    result = {}
+    for k, v in items:
+        if k in result:
+            raise ValueError('duplicate JSON key: ' + k)
+        result[k] = v
+    return result
+
+def constant(token):
+    raise ValueError('nonfinite JSON token ' + token)
+
+def parse(raw, label, own=False):
+    value = json.loads(raw.decode('utf-8-sig'), object_pairs_hook=pairs, parse_float=decimal.Decimal, parse_constant=constant)
+    count = 0
+    maximum = 0
+    def walk(v, depth, address):
+        nonlocal count, maximum
+        count += 1
+        maximum = max(maximum, depth)
+        if depth > DEPTH or count > NODES:
+            raise ValueError('JSON tree cap: ' + label)
+        if isinstance(v, float):
+            raise ValueError('binary float forbidden')
+        if isinstance(v, decimal.Decimal):
+            if own:
+                raise ValueError('own metadata must be float-free')
+            fractional_tokens.append({'path': label + address, 'original_decimal_token': str(v)})
+        elif isinstance(v, dict):
+            for k, w in v.items():
+                walk(k, depth + 1, address + '/<key>')
+                walk(w, depth + 1, address + '/' + k)
+        elif isinstance(v, list):
+            for i, w in enumerate(v):
+                walk(w, depth + 1, address + '/' + str(i))
+        elif v is not None and type(v) not in (str, int, bool):
+            raise ValueError('unexpected JSON type')
+    walk(value, 0, '')
+    tree_stats[label] = {'depth': maximum, 'nodes': count}
+    return value
+
+def doc(pin, own=False):
+    return parse(saved(pin['path'], pin), pin['path'], own)
+
+def decimal_strings(v):
+    if isinstance(v, decimal.Decimal):
+        return str(v)
+    if isinstance(v, list):
+        return [decimal_strings(w) for w in v]
+    if isinstance(v, dict):
+        return {k: decimal_strings(w) for k, w in v.items()}
+    return v
+
+def artifact(pin):
+    raw = saved(pin['path'], pin)
+    if Path(pin['path']).suffix.lower() == '.json':
+        parse(raw, pin['path'])
+
+def read_review(cap_pin, count, label):
+    capsule = doc(cap_pin, own=True)
+    full_pin = capsule['full_proof']
+    full = doc(full_pin, own=True)
+    names = [c['name'] for c in full['checks']]
+    need(len(names) == len(set(names)) == count and all(c['passed'] is True for c in full['checks']), label + ' saved unique all-true full checks', {'count': count})
+    need(capsule['checks_passed'] == full['checks_passed'] == count and capsule['checks_failed'] == full['checks_failed'] == 0, label + ' capsule full count joins')
+    common = sorted(set(capsule) & set(full))
+    need(all(capsule[k] == full[k] for k in common), label + ' all capsule full common field joins', {'common_fields': common, 'capsule_only': sorted(set(capsule)-set(full)), 'full_only': sorted(set(full)-set(capsule))})
+    need(capsule['reviewed_artifacts'] == full['reviewed_artifacts'] and len({p['path'] for p in capsule['reviewed_artifacts']}) == len(capsule['reviewed_artifacts']), label + ' exact unique reviewed-artifact graph')
+    for p in capsule['reviewed_artifacts']:
+        artifact(p)
+    for key in ('scope', 'scope_adoption', 'own_review_Source', 'own_metadata_reviewer_Source'):
+        if key in capsule:
+            artifact(capsule[key])
+    for p in capsule.get('basis', []):
+        artifact(p)
+    need(True, label + ' every reviewed artifact/basis/own Source exact stable F3', {'reviewed_artifact_count': len(capsule['reviewed_artifacts'])})
+    return capsule, full
+
+def current():
+    return datetime.datetime.now(datetime.timezone.utc)
+
+def reserve(scope):
+    start = datetime.datetime.fromisoformat(scope['interval_start'])
+    end = datetime.datetime.fromisoformat(scope['interval_end'])
+    now = current()
+    if not start <= now or not (end - now).total_seconds() > RESERVE:
+        raise ValueError('current Source013 interval/publication reserve refused')
+    return now.isoformat()
+
+def write_new(path, value):
+    raw = (json.dumps(decimal_strings(value), indent=2, sort_keys=True, allow_nan=False) + '\n').encode('utf-8')
+    parse(raw, str(path), own=True)
+    if len(raw) > CAP or path.parent != OUT:
+        raise ValueError('own output cap or location')
+    with open(path, 'xb') as handle:
+        handle.write(raw)
+    return f3(saved(path), path)
+
+def main():
+    if len(sys.argv) != 4:
+        raise ValueError('usage: own_script adoption_path adoption_bytes adoption_sha256')
+    adoption_pin = {'path': sys.argv[1], 'bytes': int(sys.argv[2]), 'sha256': sys.argv[3]}
+    scope = doc(SCOPE, own=True)
+    adoption = doc(adoption_pin, own=True)
+    reserve(scope)
+    # Adoption fields are deliberately structural and must join actual Source013.
+    need(adoption.get('Source_only_failure_closeout_scope_adopted') is True and adoption.get('Source_only_scope') == SCOPE, 'actual Source013 Root adoption exact scope join', adoption_pin)
+    need(scope['metadata_cap_bytes'] == CAP and scope['metadata_depth'] == DEPTH and scope['metadata_nodes'] == NODES and scope['publication_reserve_seconds'] == RESERVE, 'Source013 bounded metadata limits unchanged')
+    held = ('target_execution','live_native_or_process_or_resource_or_pause_query_admitted','bootstrap_or_controller_or_helper_rerun_admitted','cleanup_or_arbitrary_descendant_kill_admitted','native_preparation_request_advancement_permitted','native_pin_preparation_admitted','scientific_authority','actual_family_publication','operational_authority')
+    need(all(scope[k] is False for k in held), 'Source013 no operation, native request or scientific authority')
+    own_raw = saved(Path(__file__).resolve())
+    own_ast = ast.parse(own_raw.decode('utf-8'), filename=str(Path(__file__).resolve()))
+    banned = {'subprocess','ctypes','multiprocessing','socket','shutil','runpy','importlib'}
+    imported = {n.name.split('.')[0] for node in ast.walk(own_ast) if isinstance(node, ast.Import) for n in node.names}
+    need(not imported & banned, 'own metadata Source AST uses no native/process/network/Subject importer', {'imports': sorted(imported)})
+    packet = doc(PACKET, own=True)
+    artifact(packet['own_metadata_Source'])
+    caller, caller_full = read_review(CALLER, 64, 'caller')
+    saved(DIAG_PATH, DIAG)
+    diag_pin = DIAG
+    diagnosis, diagnosis_full = read_review(diag_pin, 70, 'diagnosis')
+    audit, peer_review, disposition = [doc(pin) for pin in PEER_PINS]
+    need(disposition['review'] == PEER_PINS[1] and disposition['external_actual_tool_audit'] == PEER_PINS[0] and peer_review['external_audit']['sha256'] == PEER_PINS[0]['sha256'], 'peer actual review disposition exact saved F3 joins')
+    need(disposition['disposition'] == 'FAILED_UNRELEASED_CONSUMED' and peer_review['review_status'] == 'COMPLETE_FAILED_UNRELEASED_CONSUMED' and peer_review['actual_validation_passed'] is False, 'peer saved disposition preserves failed consumed result')
+    for pin in packet['saved_source_outputs']:
+        artifact(pin)
+    need(len(packet['saved_source_outputs']) == 7, 'Root packet seven actual saved output pins unchanged')
+    failure = doc(next(p for p in packet['saved_source_outputs'] if p['path'].endswith('bootstrap-failure_004.json')))
+    attempt = doc(next(p for p in packet['saved_source_outputs'] if p['path'].endswith('bootstrap-attempt_004.json')))
+    completion_pin = next(p for p in packet['saved_source_outputs'] if p['path'].endswith('bootstrap-caller-completion_004.json'))
+    completion = doc(completion_pin)
+    release = doc(next(p for p in packet['saved_source_outputs'] if p['path'].endswith('bootstrap-release_004.json')))
+    need(failure['failure'] == 'Unexpected descendant; no authority to kill it' and failure['start_attempted'] is True and failure['child_started'] is True and failure['start_outcome'] == 'started' and failure['child_pid'] == 302124, 'actual failure proves started helper despite prelaunch attempt counter', {'prelaunch_attempt_helper_invocations': attempt.get('helper_invocations'), 'actual_child_pid': 302124})
+    need(failure['child_reaped'] is False and failure['custody_closed'] is False and failure['stdout_eof'] is True and failure['stderr_eof'] is True, 'actual saved failure preserves EOF without reap/custody')
+    need(completion['failure_sha256'] == next(p['sha256'] for p in packet['saved_source_outputs'] if p['path'].endswith('bootstrap-failure_004.json')) and completion['supervision_sha256'] is None and release['caller_completion_sha256'] == completion_pin['sha256'], 'failure completion release exact hash chain')
+    need(completion['invoke_tool_exit_code'] == 1 and release['complete_tool_exit_code'] == 0 and all(completion[k] is False for k in ('operation_succeeded','custody_closed','full_caller_accepted')) and all(release[k] is False for k in ('operation_succeeded','custody_closed','operation_released','full_caller_accepted','observational_manifest_accepted')), 'Complete Release bookkeeping retains failed unclosed unreleased result')
+    blockers = caller['actual_result_blockers']
+    need(len(blockers) == 4 and len({b['id'] for b in blockers}) == 4, 'caller four actual acceptance blockers retained', blockers)
+    need(len(diagnosis['unestablished_actual_facts']) == 5 and not diagnosis['actual_bootstrap_success'] and not diagnosis['native_preparation_request_permitted'], 'diagnosis five unknown groups and conditional native hold retained', diagnosis['unestablished_actual_facts'])
+    trusted_pin = next(p for p in caller['reviewed_artifacts'] if 'TRUSTED_APP_' in p['path'])
+    trusted = doc(trusted_pin)
+    records = trusted['six_actual_records_in_thread_order']
+    need(len(records) == 6 and len({r['id'] for r in records}) == 6 and [r['exitCode'] for r in records] == [0,0,1,0,0,0] and [r['status'] for r in records] == ['completed','completed','failed','completed','completed','completed'], 'trusted saved app six commands unique ordered status/exit corroboration')
+    need(all(' -Mode ' + mode in records[i]['command'] for i, mode in enumerate(('Begin','Invoke','Complete','Release'),1)) and 'Unexpected descendant; no authority to kill it' in records[2]['output']['text'], 'trusted app actual mode command order and Invoke refusal corroborated')
+    pre = parse(records[0]['output']['text'].encode('utf-8'), 'trusted_saved_pre')
+    post = parse(records[5]['output']['text'].encode('utf-8'), 'trusted_saved_post')
+    delta = post['qpc'] - pre['qpc']
+    need(delta == 111606095 and pre['frequency'] == post['frequency'] == 10000000 and decimal.Decimal(delta) / decimal.Decimal(pre['frequency']) == decimal.Decimal('11.1606095'), 'saved app exact outer QPC arithmetic preserved', {'pre': pre['qpc'], 'post': post['qpc'], 'frequency': pre['frequency'], 'delta_ticks': delta, 'seconds_decimal': '11.1606095', 'timing_is_not_physical_release': True})
+    need(trusted['later_readonly_sample_record'][0]['output']['truncated'] is True and trusted['later_readonly_sample_record'][0]['output']['originalChars'] == 8087 and any('No independently verified zero rows' in s for s in trusted['limitations']), 'later truncated PID sample is not zero-row or original reap evidence')
+    need(packet['actual_mode_exit_vector'] == caller['actual_mode_exit_vector'] == disposition['actual_mode_exit_codes'] == [0,1,0,0] and packet['bootstrap004_identity_consumed'] is True and packet['native_preparation_request_review_advanced'] is False, 'Root caller peer mode vector consumed identity and native hold agree')
+    # Current ordinary saved-file directory metadata only: never process absence.
+    ancestors(PEER)
+    before = os.lstat(PEER)
+    entries = []
+    with os.scandir(PEER) as it:
+        for entry in it:
+            entries.append(entry.name)
+            if len(entries) > 4096:
+                raise ValueError('saved artifact directory entry cap')
+    after = os.lstat(PEER)
+    if fp(before) != fp(after):
+        raise ValueError('ordinary saved directory metadata changed during listing')
+    names = ['bootstrap-supervision_004.json','bootstrap-helper-attempt_004.json','preparation-bootstrap-pins_004.json']
+    need(all(n not in entries for n in names), 'bounded current saved directory success artifacts absent', {'directory': str(PEER), 'entries_examined': len(entries), 'maximum_entries': 4096, 'missing_names': names, 'observed_utc': current().isoformat(), 'semantics': 'Ordinary saved-artifact directory metadata only, not native identity, physical release, future absence or process/host absence.'})
+    # Re-read all cached fixed inputs for a later exact stable F3 snapshot; no scripts run.
+    snapshot = list(pins.values())
+    for pin in snapshot:
+        path = pin['path']
+        del cache[path]
+        saved(path, pin)
+    need(True, 'all refreshed input F3 pins reread unchanged before own proof', {'count': len(snapshot)})
+    observed = reserve(scope)
+    need(len({c['name'] for c in checks}) == len(checks), 'own check names unique')
+    own_pin = pins[str(Path(__file__).resolve())]
+    result = {
+        'record_type': 'Independent_Source013_saved_bootstrap004_failure_integrity_refresh_only',
+        'schema_version': 1, 'reviewer': '/root/failure_refresh_review',
+        'observed_utc': observed, 'scope': SCOPE, 'scope_adoption': adoption_pin,
+        'own_metadata_reviewer_Source': own_pin,
+        'verdict': 'PASS_REFRESHED_SAVED_FAILURE_INTEGRITY_ONLY',
+        'checks_passed': len(checks), 'checks_failed': 0,
+        'actual_disposition': 'REJECTED_UNCLOSED_UNRELEASED_CONSUMED',
+        'actual_peer_disposition': 'FAILED_UNRELEASED_CONSUMED',
+        'actual_mode_exit_vector': [0,1,0,0], 'actual_child_pid': 302124,
+        'actual_child_reaped': False, 'actual_custody_closed': False,
+        'actual_operation_succeeded': False, 'actual_operation_released': False,
+        'bootstrap004_identity_consumed': True, 'actual_result_blockers': blockers,
+        'unestablished_actual_facts': diagnosis['unestablished_actual_facts'],
+        'prior_genuine_review_counts': {'caller': {'passed':64,'failed':0}, 'source_diagnosis': {'passed':70,'failed':0}},
+        'reviewed_capsules_and_fulls': [CALLER, caller['full_proof'], diag_pin, diagnosis['full_proof']],
+        'snapshot_input_F3': sorted(snapshot, key=lambda p: p['path']),
+        'input_tree_stats': {k: dict(v) for k, v in tree_stats.items()},
+        'exact_original_fractional_JSON_tokens': [{'path': p, 'original_decimal_token': t} for p, t in sorted({(d['path'], d['original_decimal_token']) for d in fractional_tokens})],
+        'fractional_JSON_handling': 'Saved input bytes unchanged; json.parse_float Decimal; exact decimal tokens emitted only as strings. Own proofs contain no fractional JSON numbers.',
+        'remaining_actionable_integrity_findings': [],
+        'native_preparation_request_advanced': False,
+        'native_preparation_or_execution_permitted': False,
+        'subject_Source_repair_or_attempt_issued': False,
+        'retry_or_replay_permitted': False,
+        'original_reviewer_or_subject_script_rerun': False,
+        'live_native_process_resource_or_pause_query_performed': False,
+        'Subject_PS_parse_load_compile_call_performed': False,
+        'physical_custody_release_claimed': False,
+        'whole_host_quiet_claimed': False,
+        'runtime_or_scientific_acceptance': False,
+        'standing_science_or_spent_identity_recount_performed': False,
+        'claim_limit': 'PASS authenticates bounded saved byte refresh and prior proof joins only. Actual004 failed/unclosed/unreleased with no success payload/D01. Current bounded saved-file absence is not current process/native absence. No original checker or subject executes. The actual refused row, guard ordinal and cleanup stage remain unknown; no harmless row, whitelist or physical release is inferred. No native request advances.',
+    }
+    full_path = OUT / 'INDEPENDENT_SOURCE013_BOOTSTRAP004_FAILURE_SAVED_BYTE_REFRESH_FULL_PROOF_001.json'
+    full_pin = write_new(full_path, dict(result, checks=checks))
+    reserve(scope)
+    capsule_path = OUT / 'INDEPENDENT_SOURCE013_BOOTSTRAP004_FAILURE_SAVED_BYTE_REFRESH_CAPSULE_001.json'
+    capsule_pin = write_new(capsule_path, dict(result, full_proof=full_pin))
+    print(json.dumps({'capsule': capsule_pin, 'full_proof': full_pin, 'own_Source': own_pin, 'checks_passed': len(checks), 'checks_failed': 0, 'snapshot_input_count': len(snapshot), 'verdict': result['verdict'], 'actual_disposition': result['actual_disposition']}, sort_keys=True))
+
+if __name__ == '__main__':
+    main()

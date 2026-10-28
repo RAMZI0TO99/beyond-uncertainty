@@ -1,0 +1,16 @@
+"""Own review-tool bookkeeping correction, no target or reviewed helper invocation."""
+from pathlib import Path
+root=Path(__file__).parent
+text=(root/'review_I12_supervisor003_outer002_source_001.py').read_text(encoding='utf8')
+text=text.replace("OUT=BASE/'supervisor_source_different_review_001'","OUT=BASE/'supervisor_source_different_review_002'")
+old="    return ast.literal_eval(next(n.value for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id==name for t in n.targets)))"
+new="""    node=next(n.value for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id==name for t in n.targets))
+    if isinstance(node,ast.Call):
+        assert isinstance(node.func,ast.Name) and node.func.id=='dict' and not node.args
+        assert all(k.arg is not None for k in node.keywords)
+        return {k.arg:ast.literal_eval(k.value) for k in node.keywords}
+    return ast.literal_eval(node)"""
+assert old in text;text=text.replace(old,new)
+path=root/'review_I12_supervisor003_outer002_source_002.py'
+with path.open('xb') as f:f.write(text.encode('utf8'))
+print(str(path))

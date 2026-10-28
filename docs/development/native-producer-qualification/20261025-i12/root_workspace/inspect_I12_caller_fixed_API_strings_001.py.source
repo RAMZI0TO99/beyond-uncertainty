@@ -1,0 +1,19 @@
+"""Own actual fixed metadata data compatibility read only; no target import/call."""
+import ast
+import json
+from pathlib import Path
+root=Path(__file__).parent/'receipt_caller_integration_015'
+tree=ast.parse((root/'caller'/'compose_current_owner_receipt_caller_002.py').read_bytes())
+layers=ast.literal_eval(next(n.value for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='FIXED_LAYERS' for t in n.targets)))
+def walk(v,path=()):
+    out=[]
+    if type(v) is str and any(ord(c)<32 for c in v):out.append('.'.join(map(str,path)))
+    elif type(v) is dict:
+        for k,x in v.items():out+=walk(k,path+('KEY',))+walk(x,path+(k,))
+    elif type(v) is list:
+        for i,x in enumerate(v):out+=walk(x,path+(i,))
+    return out
+for key,row in layers.items():
+    data=json.loads(Path(row['API']['path']).read_bytes())
+    bad=walk(data)
+    print(json.dumps(dict(layer=key,control_string_count=len(bad),examples=bad[:12]),sort_keys=True))

@@ -1,0 +1,113 @@
+"""Reviewer-owned Source hash/JSON/AST audit; never import or invoke targets."""
+import ast
+import base64
+from datetime import datetime, timezone
+import hashlib
+import json
+from pathlib import Path
+
+BASE = Path(r"D:\Aenv\pro2\WORK\resume-20261025-001\i2_receipt_contract_014")
+HERE = BASE / "source_review_001"
+FILES = BASE / "i11"
+
+
+def pin(path):
+    body = path.read_bytes()
+    return {"path": str(path), "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}
+
+
+def pairs(rows):
+    out = {}
+    for key, value in rows:
+        if key in out:
+            raise ValueError("duplicate JSON key")
+        out[key] = value
+    return out
+
+
+def no_number(value):
+    raise ValueError("float/nonfinite JSON token")
+
+
+def read_json(path):
+    return json.loads(path.read_bytes().decode("utf-8", "strict"), object_pairs_hook=pairs,
+                      parse_float=no_number, parse_constant=no_number)
+
+
+def literals(tree):
+    out = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+            try:
+                out[node.targets[0].id] = ast.literal_eval(node.value)
+            except (ValueError, TypeError):
+                pass
+    return out
+
+
+def write(path, value):
+    with path.open("x", encoding="utf-8", newline="\n") as handle:
+        json.dump(value, handle, sort_keys=True, indent=2)
+        handle.write("\n")
+
+
+def main():
+    checks = []
+    def check(name, ok, detail=None):
+        checks.append(dict(name=name, passed=bool(ok), detail=detail))
+    names = ["validate_finite8_canonical_receipt_metadata_001.py", "CURRENT_OWNER_FINITE8_CANONICAL_RECEIPT_METADATA_INERT_API_001.json", "test_finite8_canonical_receipt_metadata_memory_only_001.py", "I11_FINITE8_CANONICAL_RECEIPT_METADATA_SOURCE_AUTHOR_RECEIPT_001.json", "I11_EXACT_SOURCE_REGION_AND_NO_OLD_TARGET_CHANGE_INVENTORY_001.json"]
+    inputs = {name: pin(FILES / name) for name in names}
+    protocol = read_json(BASE / "ROOT_I11_EXACT_FINITE8_CANONICAL_RECEIPT_ABI_METADATA_QUALIFICATION_PROTOCOL_001.json")
+    for key in ("ROOT_I11_EXACT_FINITE8_CANONICAL_RECEIPT_ABI_METADATA_QUALIFICATION_PROTOCOL_001.json", "ROOT_I11_PROTOCOL001_EXACT_API_AND_RECORDED_CHRONOLOGY_CLARIFICATION_001.json", "ROOT_I11_PROTOCOL001_ACTOR_CLOSURE_AND_COMPOSER_CLARIFICATION_001.json", "ROOT_I11_PROTOCOL_DIFFERENT_REVIEW_ADOPTION_001.json"):
+        inputs[key] = pin(BASE / key)
+        read_json(BASE / key)
+        check("strict_JSON:" + key, True)
+    inputs["current_source_scope"] = protocol["source_scope"]
+    trees = {name: ast.parse((FILES / name).read_bytes(), filename=name) for name in (names[0], names[2])}
+    constants = {name: literals(tree) for name, tree in trees.items()}
+    validator, fixture = constants[names[0]], constants[names[2]]
+    api = read_json(FILES / names[1]); author = read_json(FILES / names[3]); inventory = read_json(FILES / names[4])
+    for key, name in (("Source", names[0]), ("API", names[1]), ("fixture", names[2]), ("inventory", names[4])):
+        check("author_exact_pin:" + key, author[key] == inputs[name])
+    check("API_exact_Source_pin", api["Source"] == inputs[names[0]])
+    check("literal_schemas_match_protocol", validator["CONTRACT"]["schemas"] == protocol["exact_closed_schemas"])
+    check("literal_domains_caps_guards_match_protocol", validator["CONTRACT"]["literals"] == protocol["exact_literals"])
+    check("fixture_literal_contract_matches_validator", fixture["C"] == validator["CONTRACT"])
+    check("false_actual_entry_constant", validator["ACTUAL_ENTRY_QUALIFIED"] is False)
+    actual = next(node for node in trees[names[0]].body if isinstance(node, ast.FunctionDef) and node.name == "require_actual_finite8_canonical_dependency_admission")
+    check("real_entry_unconditional_second_raise", isinstance(actual.body[-1], ast.Raise) and isinstance(actual.body[0], ast.If) and isinstance(actual.body[0].body[0], ast.Raise))
+    imports = {node.names[0].name.split(".")[0] for node in trees[names[0]].body if isinstance(node, ast.Import)}
+    check("validator_imports_only_allowed_stdlib", imports == {"hashlib", "json", "re", "datetime"} and not any(isinstance(node, ast.ImportFrom) for node in ast.walk(trees[names[0]])))
+    forbidden = {"open", "exec", "eval", "compile", "__import__", "input"}
+    check("validator_no_forbidden_calls", not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in forbidden for node in ast.walk(trees[names[0]])))
+    check("validator_no_cli_main_guard", not any(isinstance(node, ast.If) and "__name__" in ast.unparse(node.test) for node in trees[names[0]].body))
+    catalogue = fixture["CASE_CATALOGUE"]
+    check("fixture237_unique_AST_literal_cases", len(catalogue) == len({row[0] for row in catalogue}) == 237)
+    check("fixture_all_eight_role_selectors", {row[2][0] for row in catalogue if row[1] == "selector"} == set(range(8)))
+    for index, row in enumerate(fixture["FIXED"]):
+        body = base64.b64decode(row["base64"], validate=True)
+        check("fixture_fixed_inert_bytes:" + str(index), len(body) == row["pin"]["bytes"] and hashlib.sha256(body).hexdigest() == row["pin"]["sha256"], row["pin"])
+    for name, expected in protocol["pinned_authoritative_evidence"].items():
+        actual_pin = pin(Path(expected["path"]))
+        check("old_target_evidence_unchanged:" + name, actual_pin == expected)
+    findings = [
+        {"id": "B1", "file": names[0], "line": 152, "title": "Superset objects satisfy direct fact3 proof coverage", "detail": "_occurs uses contains-key/subset equality. Extended pins or observation12 can satisfy a required exact closed3 fact occurrence. Require exact key set and independent capsule/full/adoption extended-only controls."},
+        {"id": "B2", "file": names[0], "line": 300, "title": "Unsupported ABI dispatch follows closed finite8 shape", "detail": "Real single29/peer27 shapes refuse E_SCHEMA before unsupported ABI dispatch. Reject known unsupported types before applying finite8 schema, and test actual differing shapes rather than only type-string mutation."},
+        {"id": "B3", "file": names[2], "line": 273, "title": "Fixture omits adopted variants and mutation evidence", "detail": "133 deletes cover only five main schemas. Catalogue lacks required ordinal/basename, remaining closed shapes, real subclass, phase-body cap, stale-resource/sibling/actor-source variants. change helper does not assert changed input/intended predicate. Require explicit full variant-to-case mapping and reachable predicates. Respect50000-node co-limit over10000 named checks; do not increase budgets or promise impossible simultaneous maxima."},
+        {"id": "B4", "file": names[0], "line": 635, "title": "Nested canonical dependency pins use generic metadata cap", "detail": "Nested dependency canonical pin is validated with2MiB default and purpose reads generic2MiB. Apply its declared role's original Source cap, including65536 for matching finite8 TEMPLATE/capture_bound/metadata_binding/metadata_bound_review; other support pins retain metadata cap. Nested authority remains explicitly unqualified."},
+        {"id": "B5", "file": names[0], "line": 426, "title": "Indexing before shape checks leaks untyped errors", "detail": "Catalogue author indexed before closed11; purpose input.path before fact3; observation path/bytes/sha/cap before closed12. Validate shapes before indexing and cover malformed rows with typedI11Error controls."}
+    ]
+    for finding in findings:
+        check("blocking_finding:" + finding["id"], False, finding)
+    observations = ["Validator and fixture were only read, hashed and AST-inspected; neither was imported/invoked.", "Positive bundle construction appears acyclic by manual Source trace; no positive bundle was generated or run.", "Staging suffix matches actual pinned I7 Source002:258,270-284,570-575. It is not an invented I11 ABI.", "Empty reconciliation/input-observation arrays are allowed typed metadata under the adopted narrow contract; full physical/read-closure remains held.", "Actor union is collected before proof evaluation and exact composer null carry is preserved in Source001.", "Frozen001 bytes and237 unrun cases remain history; require additive successor with genuine new Source review before any target test."]
+    full = dict(schema_version=1, record_type="independent_I11_Source001_AST_review_full_proof", reviewer="/root/project_architecture", created_utc=datetime.now(timezone.utc).isoformat(), verdict="REFUSED_I11_SOURCE001_PENDING_ADDITIVE_CORRECTION", checks_failed=sum(not row["passed"] for row in checks), checks=checks, findings=findings, observations=observations, inputs=inputs, reviewer_tool=pin(Path(__file__)), target_execution=False, tests_executed=False, operational_authority=False, scientific_authority=False)
+    full_path = HERE / "INDEPENDENT_I11_SOURCE001_REFUSAL_FULL_PROOF_001.json"
+    write(full_path, full)
+    capsule = dict(schema_version=1, record_type="independent_I11_Source001_review_refusal_capsule", reviewer="/root/project_architecture", created_utc=datetime.now(timezone.utc).isoformat(), verdict=full["verdict"], checks_failed=full["checks_failed"], check_count=len(checks), full_proof=pin(full_path), inputs=inputs, findings=findings, observations=observations, target_execution=False, tests_executed=False, operational_authority=False, scientific_authority=False)
+    capsule_path = HERE / "INDEPENDENT_I11_SOURCE001_REFUSAL_CAPSULE_001.json"
+    write(capsule_path, capsule)
+    print(json.dumps(dict(checks=len(checks), checks_failed=full["checks_failed"], full_proof=pin(full_path), capsule=pin(capsule_path))))
+
+
+if __name__ == "__main__":
+    main()

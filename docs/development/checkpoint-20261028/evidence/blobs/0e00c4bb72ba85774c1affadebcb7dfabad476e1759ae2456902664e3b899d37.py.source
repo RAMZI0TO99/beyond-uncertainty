@@ -1,0 +1,239 @@
+"""Derive prospective whole-record partitions from saved metadata only; no builders/capture."""
+import datetime as dt
+import hashlib
+import json
+import math
+import os
+import re
+import stat
+from pathlib import Path
+
+R = Path(__file__).parents[1]
+O = R.parent / 'resume-20261025-003'
+OUT = Path(__file__).parent
+CAP = 2097152
+RAW_CAP = 1048576
+checks = []
+
+def need(value, name):
+    if not value:
+        raise ValueError(name)
+    checks.append(name)
+
+def raw(path):
+    p = Path(path)
+    for q in (p, *p.parents):
+        s = q.lstat()
+        if q.is_symlink() or getattr(s, 'st_file_attributes', 0) & 1024:
+            raise ValueError('ordinary nonreparse lineage')
+    a = p.stat()
+    if not stat.S_ISREG(a.st_mode) or a.st_nlink != 1 or not 0 <= a.st_size <= CAP:
+        raise ValueError('single-link regular bounded metadata')
+    with p.open('rb') as f:
+        h0 = os.fstat(f.fileno())
+        b = f.read(CAP + 1)
+        h1 = os.fstat(f.fileno())
+    z = p.stat()
+    fields = lambda s: (s.st_dev, s.st_ino, s.st_mode, s.st_nlink, s.st_size, s.st_mtime_ns)
+    if not (fields(a) == fields(h0) == fields(h1) == fields(z) and len(b) == a.st_size <= CAP):
+        raise ValueError('stable same-handle metadata bytes')
+    return b
+
+def fact(path, b=None):
+    if b is None:
+        b = raw(path)
+    return dict(path=str(path), bytes=len(b), sha256=hashlib.sha256(b).hexdigest())
+
+def strict(b):
+    def pairs(rows):
+        d = {}
+        for k, v in rows:
+            if k in d:
+                raise ValueError('duplicate JSON key')
+            d[k] = v
+        return d
+    def finite(s):
+        v = float(s)
+        if not math.isfinite(v):
+            raise ValueError('nonfinite JSON')
+        return v
+    def reject(s):
+        raise ValueError('nonfinite JSON token')
+    return json.loads(b, object_pairs_hook=pairs, parse_float=finite, parse_constant=reject)
+
+def read_pin(p):
+    b = raw(p['path'])
+    need(fact(p['path'], b) == p, 'exact pinned metadata ' + p['sha256'])
+    return strict(b)
+
+def canonical(v, ascii=False, lf=True):
+    return (json.dumps(v, sort_keys=True, separators=(',', ':'), ensure_ascii=ascii,
+                       allow_nan=False) + ('\n' if lf else '')).encode('utf-8')
+
+def digest(v):
+    return hashlib.sha256(canonical(v)).hexdigest()
+
+def nodes_depth(v, depth=1):
+    if type(v) is dict:
+        sub = [nodes_depth(x, depth + 1) for x in v.values()]
+        return 1 + len(v) + sum(x[0] for x in sub), max([depth] + [x[1] for x in sub])
+    if type(v) is list:
+        sub = [nodes_depth(x, depth + 1) for x in v]
+        return 1 + sum(x[0] for x in sub), max([depth] + [x[1] for x in sub])
+    return 1, depth
+
+def write(name, obj):
+    b = (json.dumps(obj, sort_keys=True, indent=2, ensure_ascii=False, allow_nan=False) + '\n').encode('utf-8')
+    n, d = nodes_depth(obj)
+    need(len(b) <= CAP and n <= 50000 and d <= 48, 'own metadata byte/node/depth caps ' + name)
+    scope_now = dt.datetime.now(dt.timezone.utc)
+    need(dt.datetime.fromisoformat(scope['interval_start']) <= scope_now and
+         (dt.datetime.fromisoformat(scope['interval_end']) - scope_now).total_seconds() > 60,
+         'strict original60second reserve at exclusive write ' + name)
+    p = OUT / name
+    with p.open('xb') as f:
+        need(f.write(b) == len(b), 'complete exclusive own metadata write ' + name)
+        f.flush()
+        os.fsync(f.fileno())
+    need(raw(p) == b, 'exact saved metadata readback ' + name)
+    return fact(p, b)
+
+scope_pin = dict(path=str(R/'ROOT_CURRENT_I13_RAW_INPUT_RETENTION_SOURCE_SCOPE_007.json'), bytes=6266,
+                 sha256='e203fe614b01e19b4ecc6632ff77ddebc8c812a88dae46aba4bd3643454563f5')
+scope = read_pin(scope_pin)
+adoption_pin = dict(path=str(R/'ROOT_I13_SOURCE_SCOPE007_DIFFERENT_REVIEW_ADOPTION_001.json'), bytes=3115,
+                    sha256='a517732dd0b4870e08381fb3ce31baa435385d6ae3e700dd2f014708df3a5969')
+adoption = read_pin(adoption_pin)
+need(adoption['Source_scope'] == scope_pin and adoption['contract_preparation_and_review_adopted'] is True
+     and adoption['raw_acquisition_admitted'] is False, 'adopted preparation only scope')
+h2_pin = dict(path=str(O/'ROOT_I13_FIXED6_NODE_LEDGER_AND_NEXT_CONTRACT_DECISION_HANDOFF_002.json'), bytes=20676,
+              sha256='18de5bc59d9e30ccbc33908a25947053a719a2fa8f6d0d671ced10cd41f446d0')
+h2 = read_pin(h2_pin)
+snapshots = h2['three_exact_disjoint_consumed_snapshots']
+need(len(snapshots) == 3, 'three immutable saved snapshots')
+expected = ['capture_template', 'metadata_manifest', 'plan', 'capture_bound', 'metadata_binding', 'phase_binding']
+stage_map = dict(zip(expected, ['templates', 'manifest', 'plan', 'capture', 'binding', 'phase_binding']))
+graphs = []
+snapshot_basis = []
+source_inputs = None
+for saved in snapshots:
+    adopted = read_pin(saved['adoption'])
+    need(adopted['child_result'] == saved['result'] and adopted['checks_failed'] == 0 and
+         adopted['snapshot_operation_completed'] is True and adopted['raw_synthetic_input_bodies_independently_reread'] is False,
+         'saved adoption accepts metadata not retained raw body')
+    result = read_pin(saved['result'])
+    ledger = result['ledger']
+    need(len(ledger['graphs']) == 2 and ledger['metadata_only'] is True and
+         ledger['target_execution'] is False and ledger['plan_is_actual_target_trace'] is False and
+         ledger['validator_exports_called'] == 0, 'saved ledger unchanged nonTarget boundaries')
+    if source_inputs is None:
+        source_inputs = ledger['Source_inputs']
+    need(ledger['Source_inputs'] == source_inputs and len(source_inputs) == 9, 'same exact closed9 Source inputs')
+    snapshot_basis.append(dict(snapshot=saved['result'], adoption=saved['adoption']))
+    for g in ledger['graphs']:
+        role = g['role']
+        need(role in expected and g['stage'] == stage_map[role], 'known role and stage ' + role)
+        rows = g['record_ledger']
+        need(type(g['record_count']) is int and 0 < g['record_count'] == len(rows) <= 256,
+             'original count bound ' + role)
+        need([r['ordinal'] for r in rows] == list(range(1, len(rows) + 1)) and
+             all(type(r['ordinal']) is int for r in rows), 'original onebased ordinal order ' + role)
+        need(g['global_seals_unchanged'] is True and
+             [route['route'] for route in g['route_ledgers']] == ['prewrite', 'canonical'],
+             'both saved route ledgers and unchanged seals ' + role)
+        roster = []
+        for row in rows:
+            p = row['pin']
+            need(set(p) == {'path','bytes','sha256'} and type(p['path']) is str and p['path'] and
+                 type(p['bytes']) is int and 0 <= p['bytes'] <= RAW_CAP and
+                 type(p['sha256']) is str and re.fullmatch('[0-9a-f]{64}', p['sha256']) is not None,
+                 'whole fact3 smaller than raw partition cap ' + role + ':' + str(row['ordinal']))
+            need(type(row['labels']) is list and all(type(x) is str for x in row['labels']),
+                 'exact label roster ' + role + ':' + str(row['ordinal']))
+            roster.append(dict(ordinal=row['ordinal'], pin=p, labels=row['labels']))
+        need(len({r['pin']['path'].casefold() for r in roster}) == len(roster), 'within graph unique paths ' + role)
+        need(digest([r['pin'] for r in roster]) == g['record_set_LF_fact3_sha256'], 'original LF wholepin roster digest ' + role)
+        total = sum(r['pin']['bytes'] for r in roster)
+        need(type(g['total_record_bytes']) is int and total == g['total_record_bytes'] <= 33554432,
+             'original full raw sum within unchanged32MiB graph cap ' + role)
+        gid = digest(dict(snapshot=saved['result'], role=role,
+                          record_set_LF_fact3_sha256=g['record_set_LF_fact3_sha256']))
+        groups = []
+        active = []
+        size = 0
+        for row in roster:
+            if active and size + row['pin']['bytes'] > RAW_CAP:
+                groups.append(active)
+                active, size = [], 0
+            active.append(row)
+            size += row['pin']['bytes']
+        if active:
+            groups.append(active)
+        partitions = []
+        for i, group in enumerate(groups, 1):
+            raw_bytes = sum(x['pin']['bytes'] for x in group)
+            empty_sizes = [len(canonical(dict(ordinal=x['ordinal'], pin=x['pin'],
+                              encoding='BASE64_RFC4648_CANONICAL', body_base64=''), ascii=True, lf=False)) for x in group]
+            encoded_sizes = [4 * ((x['pin']['bytes'] + 2) // 3) for x in group]
+            upper = 65536 + sum(empty_sizes) + sum(encoded_sizes) + max(len(group)-1, 0)
+            node_upper = 4096 + 15*len(group)
+            need(raw_bytes <= RAW_CAP and upper <= CAP and node_upper <= 50000,
+                 'static partition byte and node upper bound ' + role + ':' + str(i))
+            partitions.append(dict(partition_id=gid + '-part-' + str(i).zfill(3),
+                ordinals=[x['ordinal'] for x in group], rawbytes=raw_bytes,
+                selected_fact3_LF_sha256=digest([x['pin'] for x in group]),
+                row_count=len(group), canonical_empty_rows_size_upper_bound=sum(empty_sizes),
+                base64_character_count=sum(encoded_sizes), canonical_header_max_bytes=65536,
+                canonical_header_max_nodes=4096, json_row_added_nodes=15,
+                transport_output_bytes_upper_bound=upper, transport_tree_nodes_upper_bound=node_upper,
+                actual_body_bytes_acquired=False, actual_transport_serialized=False))
+        need([i for p in partitions for i in p['ordinals']] == list(range(1,len(roster)+1)),
+             'closed disjoint original order partition cover ' + role)
+        graphs.append(dict(graph_id=gid, role=role, stage=g['stage'], snapshot=saved['result'],
+            record_set_LF_fact3_sha256=g['record_set_LF_fact3_sha256'], record_count=len(roster),
+            total_record_bytes=total, record_roster=roster, partitions=partitions,
+            saved_route_names=['prewrite','canonical'], cross_graph_deduplication=False))
+
+need([g['role'] for g in graphs] == expected, 'exact six graph ordered coverage')
+need(len({g['graph_id'] for g in graphs}) == 6, 'separate graph namespaces no rebinding')
+for p in source_inputs.values():
+    b = raw(p['path'])
+    need(fact(p['path'], b) == p, 'unchanged closed9 Source pin only ' + p['sha256'])
+plan = dict(schema_version=1, record_type='I13_prospective_raw_input_whole_record_partition_selection_plan',
+    author='/root', created_utc=dt.datetime.now(dt.timezone.utc).isoformat(), Source_scope=scope_pin,
+    Source_scope_adoption=adoption_pin, accepted_saved_handoff=h2_pin, saved_snapshot_basis=snapshot_basis,
+    Source_inputs=source_inputs, graphs=graphs, graph_count=6,
+    logical_record_count=sum(g['record_count'] for g in graphs),
+    total_logical_record_bytes=sum(g['total_record_bytes'] for g in graphs),
+    partition_count=sum(len(g['partitions']) for g in graphs),
+    largest_single_record_bytes=max(r['pin']['bytes'] for g in graphs for r in g['record_roster']),
+    maximum_partition_output_upper_bound=max(p['transport_output_bytes_upper_bound'] for g in graphs for p in g['partitions']),
+    maximum_partition_node_upper_bound=max(p['transport_tree_nodes_upper_bound'] for g in graphs for p in g['partitions']),
+    rules=dict(selection='Greedy contiguous original one-based whole-record ordinals; start new partition before raw sum would exceed1048576.',
+       graph_id='SHA256 of sort_keys/minified/ensure_ascii=False UTF8 canonical JSON plus LF for {snapshot,role,record_set_LF_fact3_sha256}.',
+       digests='SHA256 of ordered fact3 list sort_keys/minified/ensure_ascii=False UTF8 canonical JSON plus LF.',
+       output_upper_bound='65536 + sum(ensure_ascii=True canonical empty-row bytes without LF + 4*((pin.bytes+2)//3)) + max(row_count-1,0); header with records=[] includes LF.',
+       node_upper_bound='4096 + 15*row_count; dict keys and values count as nodes; header includes empty records list.',
+       header_constraint='Future qualified Source must enforce canonical header bytes<=65536,nodes<=4096,complete tree depth<=48 andnodes<=50000; this metadata arithmetic is not an implemented guard.',
+       raw_roster='Exact six saved graph namespaces; same path or bytes across graphs are not deduplicated or rebound.',
+       no_materialization='No raw bodies read or generated, no Base64 bodies materialized, no originalvirtual-path writes, no per-record files.',
+       physical_copy_cap='A later explicitly approved inert bundle+manifest publication must prove<=512 totalcopyrows and<=64MiB; this plan grants no publication.'),
+    raw_acquisition_admitted=False, actual_raw_bodies_retained=False, actual_transport_serialized=False,
+    old_snapshot_scope_replayed=False, new_builder_fixture_validator_or_target_calls=0,
+    compact_ABI_status='NOT_READY', implementation_blockers_remain=11,
+    current_main936=dict(completed=32,passed=20,failed=12,remaining_unestablished=904),
+    target_execution=False, operational_authority=False, scientific_authority=False,
+    actual_family_publication=False, Native8=False, Parser=False,runtime=False,actual6=False,science=False)
+plan_pin = write('ROOT_I13_RAW_RETENTION_SIX_GRAPH_WHOLE_RECORD_SELECTION_PLAN_001.json', plan)
+proof = dict(schema_version=1, record_type='Root_I13_saved_roster_static_partition_arithmetic_proof_only',
+    author='/root', plan=plan_pin, author_Source=fact(Path(__file__)), checks_passed=len(checks), checks_failed=0,
+    checks=checks.copy(), expected_independent_review_pending=True,
+    no_original_Source_import_compile_or_call=True, saved_metadata_only=True,
+    raw_acquisition_admitted=False, actual_raw_bodies_retained=False,
+    summary={k:plan[k] for k in ('logical_record_count','total_logical_record_bytes','partition_count','largest_single_record_bytes','maximum_partition_output_upper_bound','maximum_partition_node_upper_bound')})
+proof_pin = write('ROOT_I13_RAW_RETENTION_SELECTION_PLAN_STATIC_ARITHMETIC_PROOF_001.json', proof)
+freeze = write('ROOT_I13_RAW_RETENTION_SELECTION_PLAN_AUTHOR_FREEZE_001.json',
+    dict(schema_version=1, record_type='Root_I13_selection_plan_author_freeze_for_different_review',
+         author='/root', plan=plan_pin, static_arithmetic_proof=proof_pin, author_Source=fact(Path(__file__)),
+         different_review_pending=True, raw_acquisition_admitted=False, all_execution_gates_held=True))
+print(json.dumps(dict(plan=plan_pin, proof=proof_pin, freeze=freeze, summary=proof['summary'])))

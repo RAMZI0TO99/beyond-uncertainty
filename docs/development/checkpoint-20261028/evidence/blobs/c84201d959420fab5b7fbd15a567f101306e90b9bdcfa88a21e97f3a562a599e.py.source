@@ -1,0 +1,112 @@
+"""Own metadata audit author only. Never imports/calls any project target."""
+import ast
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+ROOT=Path(__file__).parent
+OUT=ROOT/'m3_peer_contracts_016'/'canonical_peer_protocol_audit_001'
+OLD=ROOT.parent/'resume-20261025-002'/'receipt_caller_integration_015'
+BASE=ROOT.parent/'resume-20261007-001'/'generation'/'observer010_lease009_root_001'
+CATPATH=OLD/'I12_EXACT_RECEIPT_FORMAT_SCHEMA_AND_FIXED_DATA_CATALOGUE_002.json'
+CAT=json.loads(CATPATH.read_bytes())
+SPENT={p['path'].casefold() for p in CAT['spent_pin75']}
+READS={}
+def read(path):
+    path=Path(path)
+    assert str(path).casefold() not in SPENT,('spent body forbidden',str(path))
+    with path.open('rb') as f:raw=f.read(2097153)
+    assert 0<len(raw)<=2097152,str(path)
+    READS[str(path)]=dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+    return raw
+def pin(path,raw=None):
+    raw=read(path) if raw is None else raw
+    return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+def pairs(rows):
+    value={}
+    for key,item in rows:
+        if key in value:raise ValueError('duplicate JSON key')
+        value[key]=item
+    return value
+def bad(value):raise ValueError('noninteger JSON')
+def load(path):return json.loads(read(path).decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def summary(path):
+    raw=read(path);v=json.loads(raw.decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+    assert type(v) is dict
+    return dict(pin=pin(path,raw),schema_version=v.get('schema_version'),record_type=v.get('record_type'),keys=sorted(v),field_builtin_types={k:type(x).__name__ for k,x in v.items()},scalar_fields={k:x for k,x in v.items() if type(x) in (str,int,bool) or x is None})
+def verify(p):
+    raw=read(Path(p['path']));assert pin(Path(p['path']),raw)==p
+    return raw
+ROLES=['metadata_peer','metadata_bound_review','phase_peer','pipeline_peer','checker_peer']
+selectionpath=BASE/'ROOT_SOURCE022_LEASE010_SEPARATE_FUTURE45_SOURCE_PATH_SELECTION_001.json'
+selection=load(selectionpath)
+selected=[]
+for row in selection['rows']:
+    if row['role'] not in ROLES:continue
+    result=dict(row=row,canonical_path_present=Path(row['canonical_path']).is_file(),draft_path_present=Path(row['draft_path']).is_file(),predecessor=summary(Path(row['predecessor']['path'])))
+    assert result['predecessor']['pin']==row['predecessor']
+    if result['canonical_path_present']:
+        result['canonical']=summary(Path(row['canonical_path']))
+        result['draft']=summary(Path(row['draft_path']))
+        result['canonical_equals_draft_whole_bytes']=read(Path(row['canonical_path']))==read(Path(row['draft_path']))
+    selected.append(result)
+SAMPLES=[
+'ROOT_SOURCE022_SELECTED45_ROLE_SOURCE_CANONICAL_PUBLICATION_RECEIPT_M3_PEER009_001.json',
+'ROOT_SOURCE022_SELECTED45_ROLE_SOURCE_CANONICAL_PUBLICATION_RECEIPT_BOUNDPEER018_002.json',
+'ROOT_SOURCE021_SELECTED45_ROLE_SOURCE_CANONICAL_PUBLICATION_RECEIPT_PHASEPEER019_001.json',
+'ROOT_SOURCE021_SELECTED45_ROLE_SOURCE_CANONICAL_PUBLICATION_RECEIPT_PIPELINEPEER025_001.json',
+'ROOT_SELECTED45_ROLE_SOURCE_CANONICAL_PUBLICATION_RECEIPT_CKPEER14_001.json']
+samples=[];canonical_pins=[]
+for name in SAMPLES:
+    path=BASE/name;pub=load(path);rows=[r for r in pub['published'] if r['role'] in ROLES]
+    selection_key='Root_future_path_selection' if 'Root_future_path_selection' in pub else 'Root_selection'
+    lease_key='actual_new_lease' if 'actual_new_lease' in pub else 'actual_lease009'
+    sample=dict(publication=summary(path),selected_peer_rows=rows,original_request=summary(Path(pub['actual_Root_request']['path'])),publisher_Source=pin(Path(pub['publisher_source']['path'])),actual_selection_field=selection_key,actual_selection_value=pub[selection_key],actual_lease_field=lease_key,actual_lease_value=pub[lease_key],publication_current_selection_matches=pub[selection_key]==pin(selectionpath))
+    assert sample['original_request']['pin']==pub['actual_Root_request']
+    assert sample['publisher_Source']==pub['publisher_source']
+    for row in rows:
+        verify(row['canonical']);verify(row['draft']);canonical_pins.append(row['canonical'])
+        verify(row['exact_Source_review']);verify(row['Root_Source_review_adoption'])
+        if 'author_receipt' in row:
+            a=load(Path(row['author_receipt']['path']));verify(row['author_receipt'])
+            sample['issued_author_receipt']=summary(Path(row['author_receipt']['path']))
+            sample['author_receipt_canonical_inputs']=[{k:x[k] for k in ('role','kind','subject','source_cap','different_Source_review','Root_adoption','Root_canonical_publication')} for x in a['canonical_Source_inputs']]
+            sample['author_receipt_carried_inputs']=[{k:x[k] for k in ('role','kind','subject','source_cap')} for x in a['carried_Source_inputs']]
+            for key in ('actual_author_request','actual_peer_content_proposal','Owner_genuine_content_review','Owner_review_Root_adoption'):
+                sample[key]=summary(Path(a[key]['path']));assert sample[key]['pin']==a[key]
+    samples.append(sample)
+recons=[]
+for path in sorted(BASE.glob('*RECONCILIATION*.json')):
+    if str(path).casefold() in SPENT:continue
+    value=load(path)
+    if type(value) is dict and value.get('canonical_Source') in canonical_pins:
+        row=summary(path);row['canonical_Source']=value['canonical_Source'];row['original_refs']={}
+        for key in ('initial_actual_Root_request','initial_actual_canonical_publication_receipt','initial_actual_execution_witness','actual_canonical_delta_Source_review','canonical_delta_Root_adoption'):
+            p=value[key];verify(p);row['original_refs'][key]=summary(Path(p['path']))
+        for key in ('Root_future_path_selection','new_canonical_lease','prior_actual_publisher_Source'):row[key]=value[key]
+        recons.append(row)
+sourcepaths={
+'I12_peer004':OLD/'i12'/'validate_selected_peer_receipt_metadata_004.py',
+'I12_peer_API004':OLD/'i12'/'CURRENT_OWNER_SELECTED_PEER_RECEIPT_METADATA_GRAPH_INERT_API_004.json',
+'I12_single003':OLD/'i12'/'validate_generic_single_receipt_metadata_003.py',
+'I11_finite8003':ROOT.parent/'resume-20261025-001'/'i2_receipt_contract_014'/'i11'/'validate_finite8_canonical_receipt_metadata_003.py',
+'I5_phase_current003':Path(r'D:\Aenv\pro2\github-portable-20261012-001\docs\development\native-interface-implementation\20261015-i5\assemble_genuine_phase_peer_current_owner_deferred_003.py.source'),
+'I2_held006':OLD/'i2'/'build_M3_metadata_current_owner_deferred_006.py'}
+sources={};phase_tree=None
+for key,path in sourcepaths.items():
+    raw=read(path);value=dict(pin=pin(path,raw))
+    if path.suffix in ('.py','.source'):
+        tree=ast.parse(raw);lines=raw.splitlines(keepends=True);value['regions']=[]
+        keep={'_Peer','_Graph','validate_selected_peer_receipt_metadata','validate_selected_peer_canonical_dependency_metadata','execute_stage','validate_current_owner_phase_peer_context','_i5_phase_shapes','_current_generic_receipt24','canonical_dependency','admit'}
+        for n in tree.body:
+            if isinstance(n,(ast.FunctionDef,ast.ClassDef)) and n.name in keep:
+                part=b''.join(lines[n.lineno-1:n.end_lineno]);value['regions'].append(dict(name=n.name,first_line=n.lineno,last_line=n.end_lineno,bytes=len(part),sha256=hashlib.sha256(part).hexdigest()))
+        if key=='I5_phase_current003':phase_tree=tree
+    sources[key]=value
+schema24=ast.literal_eval(next(n.value for n in phase_tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='SCHEMA24' for t in n.targets)))
+decls={k:CAT['schemas'][k] for k in ('selected_peer_receipt27_v2','generic_peer_content_decision13_v2','phase_content_decision15_v2','peer_serialization_witness13_v2','peer_inverse12_v2','peer_packet20','phase_context21_v2','phase_parser_support9_v2','code_support5','decision_support3','proposal_support3')}
+audit=dict(schema_version=1,record_type='I13_canonical_peer_actual_historical_and_owner_v2_declared_contract_gap_audit',author='/root/i2_resume_gap',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),Root_Source_scope=pin(ROOT/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_001.json'),Root_Source_scope_adoption=pin(ROOT/'ROOT_I13_CURRENT_SOURCE_SCOPE_DIFFERENT_REVIEW_ADOPTION_001.json'),actual_selected45=pin(selectionpath),actual_selected_peer_subset=selected,actual_historical_publication_samples=samples,actual_historical_reconciliation_samples=recons,current_owner_v2_declared_schemas=decls,current_declared_schema_catalogue=pin(CATPATH),source_evidence=sources,legacy_role_contracts={k:schema24[k] for k in ('phase_peer','pipeline_peer','checker_peer')},role_caps={k:CAT['ROLE_SOURCE_CAPS'][k] for k in ROLES},findings=[dict(id='P01',finding='Actual selected metadata_peer009/bound018 author envelopes are historical schema1 closed34, not owner-v2 closed27. Current peer27/decision13or15/witness13/inverse12 are declared metadata formats, separate from issued history.'),dict(id='P02',finding='Historical canonical peers use actual selected45 batch request/publication records with differing original tags/fields. New canonical peer route must not alias these, finite8 request21/publication43, generic single29, or author receipt27.'),dict(id='P03',finding='Selected phase_peer020 and pipeline_peer026 canonical/draft files are absent. Their19/25 older samples bind an older selection/lease.'),dict(id='P04',finding='Selected checker_peer015 exists but its raw body is copied-consumer Unit006 metadata with null actual_binding and false execution/runtime/tests. No matching actual canonical publication/reconciliation was located among the explicitly audited historical batch samples; physical presence does not issue canonical support.'),dict(id='P05',finding='Retained semantic author and original predecessor.source_author are separate actors. phase_peer/pipeline_peer nominal selector_prep differs retained owner_docs_review; never restore the I12peer003 overconstraint corrected004.'),dict(id='P06',finding='metadata_peer8/bound_review7 current Source role rosters include profile/static and unresolved M3/canonical peer routes. A format pass cannot establish full G01 or current input authority; carried Source references have no new execution eligibility.'),dict(id='P07',finding='Historical staging/canonical API vectors retain actual differing access-time cells alongside shared7 identities. Preserve raw values; no fresh physical measurement follows.')],audited_read_set=list(READS.values()),spent_identity_body_reads=0,target_imports=0,target_calls=0,tests_executed=False,target_execution=False,operational_authority=False,scientific_authority=False,actual_family_publication=False,full_G01_closed=False,method='Own stdlib read/hash/strict JSON/AST metadata only. Every body read excluded all75 exact spent paths; no target/fixture import/call, native/Parser/Job or replay. Actual historical key names retained without normalization. New peer canonical route remains proposed/unissued.',author_tool=pin(Path(__file__)))
+raw=(json.dumps(audit,sort_keys=True,indent=2)+'\n').encode();assert len(raw)<=2097152
+path=OUT/'I13_CANONICAL_PEER_ACTUAL_HISTORY_AND_OWNER_V2_GAP_AUDIT_001.json'
+with path.open('xb') as f:f.write(raw)
+print(json.dumps(dict(audit=pin(path,raw),historical_publications=len(samples),historical_reconciliations=len(recons),actual_read_records=len(READS),spent_identity_body_reads=0),sort_keys=True))

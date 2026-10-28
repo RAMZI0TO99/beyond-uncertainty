@@ -1,0 +1,81 @@
+"""Root exact narrow protocol review and adoption; no target import or call.
+
+The input binds genuinely different saved reviews, including the refused006
+boundary. No execution admission or operational lease is issued here.
+"""
+import ast,copy,datetime,hashlib,json
+from pathlib import Path
+R=Path(__file__).parent
+CONFIG=R/'I13_RECORDED_CONTEXT_PROTOCOL_REVIEW_INPUT_001.json'
+checks=[]
+def ck(ok,name,evidence):
+    assert ok,name
+    checks.append(dict(name=name,passed=True,evidence=evidence))
+def pin(p):
+    p=Path(p);b=p.read_bytes()
+    return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def pairs(items):
+    d={}
+    for k,v in items:
+        assert k not in d
+        d[k]=v
+    return d
+def bad(v):raise ValueError('noninteger JSON token')
+def load(p):
+    b=Path(p).read_bytes();assert 0<len(b)<=2097152
+    return json.loads(b.decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def exact(p):
+    ck(pin(p['path'])==p,'exact_'+p['sha256'],p)
+    return load(p['path'])
+def save(name,value):
+    p=R/name;b=(json.dumps(value,indent=2,sort_keys=True,allow_nan=False)+'\n').encode()
+    assert len(b)<=2097152
+    with p.open('xb') as h:assert h.write(b)==len(b)
+    return pin(p)
+cfg=load(CONFIG);old=exact(cfg['prior_adoption'])
+oldcat=exact(old['subjects']['common_catalogue'])
+cat=exact(cfg['catalogue']);pro=exact(cfg['protocol']);clar=exact(cfg['correction'])
+for key in ('target_execution','operational_authority','scientific_authority','native_Parser_executed'):
+    ck(clar[key] is False,'correction_'+key+'_false',cfg['correction'])
+renames={'prewrite_packet14':'prewrite_packet15','selected_publication31':'selected_publication32'}
+ck(set(cat['schemas'])==(set(oldcat['schemas'])-set(renames))|set(renames.values()),'only_two_schema_successors',renames)
+for name,body in oldcat['schemas'].items():
+    if name in renames:continue
+    ck(cat['schemas'][name]==body,'unchanged_schema_'+name,cfg['catalogue'])
+for oldname,newname,newfield,newtype,newtag in (
+    ('prewrite_packet14','prewrite_packet15','recorded_evaluation_utc','utc6','Root_owner_v2_selected_role_prewrite_metadata_packet_with_recorded_evaluation'),
+    ('selected_publication31','selected_publication32','prewrite_packet','fact3','Root_owner_v2_selected_role_Source_metadata_canonical_publication_with_prewrite_packet')):
+    expected=copy.deepcopy(oldcat['schemas'][oldname]);expected['field_count']+=1
+    expected['exact_keys'].append(newfield);expected['fields'][newfield]=newtype
+    expected['fields']['record_type']['literal']=newtag
+    ck(cat['schemas'][newname]==expected,'exact_closed_successor_'+newname,cfg['catalogue'])
+for key in ('original_guards','counter_mode','counter_composition_policy','ROLE_SOURCE_CAPS','fixed_port_registry','fixed_inventory_descriptive_LF_rule'):
+    ck(cat[key]==oldcat[key],'unchanged_'+key,cfg['catalogue'])
+i8=Path(clar['original_I8_Source']['path']);ck(pin(i8)==clar['original_I8_Source'],'original_I8_exact',clar['original_I8_Source'])
+text=i8.read_text();tree=ast.parse(text)
+scope=next(n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='_SCOPE_KEYS' for t in n.targets))
+scopekeys=ast.literal_eval(scope.value.args[0])
+ck({'interval_start','interval_end','owner_instruction_record','owner_policy_record'}<=scopekeys,'existing_owner_scope_fields',sorted(scopekeys))
+ck('end - now > PUBLICATION_RESERVE_TICKS' in text and 'PUBLICATION_RESERVE_TICKS = 60 * TICKS_PER_SECOND' in text,'original_strict_60_reserve',clar['original_I8_Source'])
+ck(cfg['strict_reserve_literal'] in json.dumps(cat) and cfg['strict_reserve_literal'] in json.dumps(pro),'explicit_corrected_strict_reserve',cfg['strict_reserve_literal'])
+for index,review in enumerate(cfg['accepted_reviews']):
+    cap=exact(review['capsule']);full=exact(review['full_proof'])
+    for body,label in ((cap,'capsule'),(full,'full')):
+        ck(body['reviewer']=='/root/i2_resume_gap' and body['reviewer']!=clar['author'],'different_reviewer_'+str(index)+label,review['capsule'])
+        ck(type(body['checks_passed']) is int and body['checks_passed']>0 and type(body['checks_failed']) is int and body['checks_failed']==0,'positive_counts_'+str(index)+label,review['capsule'])
+        for field in ('target_execution','operational_authority','scientific_authority','native_Parser_executed','tests_executed'):
+            ck(body[field] is False,'review_'+str(index)+label+'_'+field,review['capsule'])
+    ck(pin(review['full_proof']['path'])==cap['full_proof'],'capsule_full_join_'+str(index),review)
+    ck(len(full['checks'])==full['checks_passed'] and len({v['name'] for v in full['checks']})==len(full['checks']) and all(set(v)=={'name','passed','evidence'} and v['passed'] is True for v in full['checks']),'unique_all_pass_checks_'+str(index),review)
+    for subject in cfg['required_review_subjects'][index]:
+        ck(subject in cap['subjects'] and subject in full['subjects'],'direct_review_subject_'+str(index)+'_'+subject['sha256'],subject)
+refused=exact(cfg['refused006_review'])
+ck(refused['checks_failed']==1 and refused['verdict'].startswith('REFUSE'),'006_preserved_bounded_refusal',cfg['refused006_review'])
+scope=exact(old['Source_scope']);now=datetime.datetime.now(datetime.timezone.utc)
+ck((datetime.datetime.fromisoformat(scope['interval_end'])-now).total_seconds()>60,'current_Source_reserve',old['Source_scope'])
+subjects=copy.deepcopy(old['subjects']);subjects.update(common_protocol=cfg['protocol'],common_catalogue=cfg['catalogue'],recorded_context_clarification=cfg['correction'])
+proof=save('ROOT_I13_RECORDED_CONTEXT_PROTOCOL_FOCUSED_FULL_PROOF_004.json',dict(schema_version=1,record_type='Root_I13_recorded_context_read_hash_AST_focused_review',author='/root',created_utc=now.isoformat(),subjects=subjects,checks=checks,checks_passed=len(checks),checks_failed=0,target_execution=False,operational_authority=False,scientific_authority=False,tests_executed=False,native_Parser_executed=False))
+value=copy.deepcopy(old)
+value.update(record_type='Root_I13_exact_final_protocol007_recorded_context_adoption',verdict='ACCEPT_EXACT_I13_PROTOCOL007_SOURCE_AUTHORING_ONLY',created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),subjects=subjects,prior_complete_adoption=cfg['prior_adoption'],recorded_context_different_reviews=cfg['accepted_reviews'],preserved006_refusal=cfg['refused006_review'],Root_corrective_proof=proof,Root_corrective_checks_passed=len(checks),Root_corrective_checks_failed=0,Root_metadata_reader=pin(__file__),recorded_evaluation_is_metadata_only=True,Source_reserve_strictly_greater_than_60_seconds=True,resource_age_at_most_60_seconds=True)
+out=save('ROOT_I13_FINAL_PROTOCOL007_RECORDED_CONTEXT_DIFFERENT_REVIEW_ADOPTION_004.json',value)
+print(json.dumps(dict(adoption=out,proof=proof,checks_passed=len(checks),target_execution=False)))

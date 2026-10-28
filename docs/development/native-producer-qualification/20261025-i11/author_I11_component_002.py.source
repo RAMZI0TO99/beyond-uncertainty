@@ -1,0 +1,501 @@
+"""Own static correction author. Reads preserved001; creates only002 artifacts.
+No emitted validator/fixture imports, calls or tests; compile/AST are data checks.
+"""
+import ast
+import base64
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+
+HERE=Path(__file__).parent
+OUT=HERE/'i11'
+P=json.loads((HERE/'ROOT_I11_EXACT_FINITE8_CANONICAL_RECEIPT_ABI_METADATA_QUALIFICATION_PROTOCOL_001.json').read_bytes())
+OLD_SOURCE=OUT/'validate_finite8_canonical_receipt_metadata_001.py'
+OLD_FIXTURE=OUT/'test_finite8_canonical_receipt_metadata_memory_only_001.py'
+OLD_API=OUT/'CURRENT_OWNER_FINITE8_CANONICAL_RECEIPT_METADATA_INERT_API_001.json'
+
+
+def pin(path):
+    raw=Path(path).read_bytes()
+    return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+
+
+def create(path,body):
+    with path.open('xb') as handle:handle.write(body)
+    return pin(path)
+
+
+def replace_once(text,old,new):
+    if text.count(old)!=1:raise ValueError('exact Source edit not unique: '+old[:100])
+    return text.replace(old,new,1)
+
+
+def assignment(text,name):
+    tree=ast.parse(text)
+    node=next(n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id==name for t in n.targets))
+    return node,ast.literal_eval(node.value)
+
+
+def replace_assignment(text,name,value):
+    node,_=assignment(text,name)
+    lines=text.splitlines(keepends=True)
+    return ''.join(lines[:node.lineno-1])+name+' = '+repr(value)+'\n'+''.join(lines[node.end_lineno:])
+
+
+source=OLD_SOURCE.read_text(encoding='utf8')
+source=replace_once(source,"if all(k in value for k in ('path', 'bytes', 'sha256')) and _same({k: value[k] for k in pin}, pin):",
+                           "if set(value) == {'path', 'bytes', 'sha256'} and _same(value, pin):")
+source=replace_once(source,"        _closed(self.request, 'batch_request21_v2')\n        _closed(self.publication, 'batch_publication43_v2')\n",'')
+source=replace_once(source,"        _need(self.request.get('record_type') == CONTRACT['schemas']['batch_request21_v2']['record_type'] and\n",
+'''        _need(type(self.request.get('record_type')) is str and type(self.publication.get('record_type')) is str and
+              type(self.request.get('schema_version')) is int and type(self.publication.get('schema_version')) is int, 'E_SCHEMA')
+        _need(self.request.get('record_type') == CONTRACT['schemas']['batch_request21_v2']['record_type'] and
+''')
+source=replace_once(source,"add(self.s.record(self.e['publisher_catalogue'])['author'])","add(self.s.record(self.e['publisher_catalogue'], 'publisher_actual45_catalogue11')['author'])")
+source=replace_once(source,"        paths = [p['path'] for p in purpose['inputs']]\n        for pin in purpose['inputs']:\n            self.s.raw(pin)\n",
+'''        for pin in purpose['inputs']:
+            self.s.raw(pin)
+        paths = [p['path'] for p in purpose['inputs']]
+''')
+source=replace_once(source,"        r, p, e = self.request, self.publication, self.e\n        _noauth(r); _noauth(p)\n",
+'''        r, p, e = self.request, self.publication, self.e
+        for support, schema in ((r['current_owner_support'], 'owner_support3'), (r['new_lease_support'], 'lease_support5'),
+                                (r['Root_future_path_selection_support'], 'subject_support3'), (r['predecessor_inventory_support'], 'subject_support3'),
+                                (p['current_owner_support'], 'owner_support3'), (p['actual_new_lease_support'], 'lease_support5'),
+                                (p['Root_future_path_selection_acceptance'], 'subject_support3'), (p['predecessor_inventory_support'], 'subject_support3')):
+            _support(self.s, support, schema)
+        _closed(r['producer_supports'], ('M3',)); _closed(p['producer_supports'], ('M3',))
+        _support(self.s, r['producer_supports']['M3'], 'tool_support4')
+        _support(self.s, p['producer_supports']['M3'], 'tool_support4')
+        _noauth(r); _noauth(p)
+''')
+source=replace_once(source,"        for observation in p['complete_input_postreads']:\n            self._observation",
+                          "        for observation in p['complete_input_postreads']:\n            _closed(observation, 'recorded_observation12', 'E_OBSERVATION')\n            self._observation")
+source=replace_once(source,"        for observation in recon['actual_input_observations']:\n            self._observation",
+                          "        for observation in recon['actual_input_observations']:\n            _closed(observation, 'recorded_observation12', 'E_OBSERVATION')\n            self._observation")
+source=replace_once(source,"                    _pin(dependency[key])\n",
+                          "                    _pin(dependency[key], self.rows[dependency['role']]['source_cap'] if key == 'canonical' else 2097152)\n")
+source=replace_once(source,"        _need(len(set(dep_roles)) == len(dep_roles) and set(dep_roles) == _dependencies(facts['stage'], facts['role']), 'E_FACTS')\n",
+'''        _need(all(d['canonical']['path'] == self.rows[d['role']]['canonical_path'] for d in facts['dependencies']), 'E_FACTS')
+        _need(len(set(dep_roles)) == len(dep_roles) and set(dep_roles) == _dependencies(facts['stage'], facts['role']), 'E_FACTS')
+''')
+source=replace_once(source,"        raise I11Error('E_ACTUAL_ENTRY_HELD')","        raise I11Error('E_ACTUAL_ENTRY_UNWIRED')")
+
+fixture=OLD_FIXTURE.read_text(encoding='utf8')
+_,cases=assignment(fixture,'CASE_CATALOGUE')
+cases=[(n,k,a,'E_ACTUAL_ENTRY_UNWIRED' if n=='real_entry_false' else e) for n,k,a,e in cases]
+
+# General finite mutation authoring helper. Changed-input assertions run only later
+# inside the new separately admitted fixture, never in this author.
+start=fixture.index('def change(')
+end=fixture.index('\n\ndef invoke(',start)
+MUTATION=r'''
+def mutate(bundle, edits=(), body_edits=()):
+    """Fresh finite DAG mutation: assert intended difference, rehash parents.
+    Source001 helper is preserved in its complete predecessor bytes.
+    """
+    bundle=copy.deepcopy(bundle)
+    store={r['pin']['path']:r for r in bundle['records']}
+    values={p:json.loads(store[p]['body']) for p in bundle['_json_paths']}
+    changed=set()
+    for mark,path,value,delete in edits:
+        target=bundle['_marks'].get(mark,mark)
+        before=_wire(values[target])
+        if path is None:
+            values[target]=value
+        else:
+            node=values[target]
+            for key in path[:-1]:node=node[key]
+            if delete:
+                assert path[-1] in node,'fixture delete must exist'
+                del node[path[-1]]
+            else:
+                assert _wire(node.get(path[-1]) if type(node) is dict else node[path[-1]])!=_wire(value),'fixture mutation must differ'
+                node[path[-1]]=value
+        assert _wire(values[target])!=before,'fixture record mutation must change bytes'
+        changed.add(target)
+    for path,raw in body_edits:
+        assert type(raw) is bytes and raw!=store[path]['body'],'fixture raw mutation must differ'
+        values[path]=raw;changed.add(path)
+    assert changed,'fixture mutation needs actual edit'
+    memo={};active=set()
+    def resolve(value):
+        if type(value) is dict:
+            path=value.get('path')
+            if set(value)=={'path','bytes','sha256'} and path in values:return build(path)['pin']
+            result={k:resolve(v) for k,v in value.items()}
+            # Recorded observations retain their extra fields; update only actual
+            # resized Source pair data so cap controls reach role admission.
+            base=path[:-8] if type(path) is str and path.endswith('.staging') else path
+            if set(('path','bytes','sha256','path9','descriptor9','raw9')).issubset(result) and base in dict(body_edits):
+                raw=dict(body_edits)[base];result['bytes']=len(raw);result['sha256']=hashlib.sha256(raw).hexdigest()
+                for key in ('path9','descriptor9','raw9'):result[key][2]=len(raw)
+                result['shared_descriptor7']=[result['descriptor9'][i] for i in C['literals']['SHARED7']]
+            return result
+        if type(value) is list:return [resolve(v) for v in value]
+        return value
+    def build(path):
+        if path in memo:return memo[path]
+        assert path not in active,'fixture DAG cycle'
+        active.add(path);raw=values[path] if type(values[path]) is bytes else _wire(resolve(values[path]));active.remove(path)
+        memo[path]=dict(pin=_pin(path,raw),body=raw);return memo[path]
+    for path in values:build(path)
+    for path in changed:assert memo[path]['body']!=store[path]['body'],'fixture target changed after reconstruction'
+    bundle['dependency']=resolve(bundle['dependency']);bundle['expected']=resolve(bundle['expected'])
+    bundle['records']=[memo.get(path,row) for path,row in store.items()]
+    return bundle
+
+
+def change(bundle, mark, path, value=None, delete=False, raw_body=None):
+    if raw_body is not None:
+        target=bundle['_marks'][mark]
+        return mutate(bundle,body_edits=[(target,raw_body)])
+    return mutate(bundle,edits=[(mark,path,value,delete)])
+'''
+fixture=fixture[:start]+MUTATION.strip()+fixture[end:]
+fixture=replace_once(fixture,"        elif kind=='arg':\n",r'''        elif kind=='schema_variant':
+            location,mark,path,key,operation=args
+            def schema_case(location=location,mark=mark,path=path,key=key,operation=operation):
+                bundle=make_bundle()
+                if location=='record':
+                    if operation=='delete':return invoke(component,change(bundle,mark,path+[key],delete=True))
+                    return invoke(component,change(bundle,mark,path+['I11_unknown_key'],False))
+                root=bundle['records'][0] if location=='store' else (bundle if location=='argument' else bundle[location])
+                node=root
+                for part in path:node=node[part]
+                before=repr(node)
+                if operation=='delete':del node[key]
+                else:node['I11_unknown_key']=False
+                assert repr(node)!=before,'fixture input mutation differs'
+                return invoke(component,bundle)
+            check(name,schema_case,error)
+        elif kind=='multi_record':
+            indexes,edits,*declared=args
+            def multi_case():
+                bundle=make_bundle([ROLES[i] for i in indexes])
+                if declared:bundle['expected']['actual_content_authors']=declared[0]
+                return invoke(component,mutate(bundle,edits=edits))
+            check(name,multi_case,error)
+        elif kind=='whole_record':
+            mark,value=args
+            check(name,lambda mark=mark,value=value:invoke(component,mutate(make_bundle(),edits=[(mark,None,value,False)])),error)
+        elif kind=='extended_coverage':
+            mark=args[0]
+            def coverage_case(mark=mark):
+                bundle=make_bundle();store={r['pin']['path']:r for r in bundle['records']}
+                target=bundle['expected']['producer_support']['Source']
+                path=bundle['_marks'][mark];record=json.loads(store[path]['body'])
+                count=[0]
+                def extend(v):
+                    if type(v) is dict:
+                        if set(v)=={'path','bytes','sha256'} and v==target:
+                            count[0]+=1;return dict(v,extended_observation_only=True)
+                        return {k:extend(x) for k,x in v.items()}
+                    if type(v) is list:return [extend(x) for x in v]
+                    return v
+                changed=extend(record);assert count[0]>0 and changed!=record
+                return invoke(component,mutate(bundle,edits=[(mark,None,changed,False)]))
+            check(name,coverage_case,error)
+        elif kind=='subclass':
+            def subclass_case(which=args[0]):
+                bundle=make_bundle()
+                if which=='dict':bundle['dependency']=type('OwnedDict',(dict,),{})(bundle['dependency'])
+                elif which=='list':bundle['expected']['actual_content_authors']=type('OwnedList',(list,),{})([])
+                elif which=='str':bundle['expected']['root_thread']=type('OwnedStr',(str,),{})(THREAD)
+                elif which=='int':bundle['expected']['selected_canonical']['bytes']=type('OwnedInt',(int,),{})(bundle['expected']['selected_canonical']['bytes'])
+                elif which=='bytes':bundle['records'][0]['body']=type('OwnedBytes',(bytes,),{})(bundle['records'][0]['body'])
+                else:raise AssertionError('unknown subclass variant')
+                return invoke(component,bundle)
+            check(name,subclass_case,error)
+        elif kind=='phase_size':
+            def size_case(size=args[0]):
+                bundle=make_bundle();body=b'x'*size
+                return invoke(component,mutate(bundle,body_edits=[(bundle['expected']['selected_canonical']['path'],body),(bundle['expected']['selected_draft']['path'],body)]))
+            check(name,size_case,error)
+        elif kind=='check_count':
+            count=args[0]
+            check(name,lambda count=count:invoke(component,change(make_bundle(),'producer_full',['checks'],[dict(name='check_'+str(i),passed=True) for i in range(count)])),error)
+        elif kind=='nested_cap':
+            def nested_cap_case():
+                bundle=make_bundle([ROLES[4]])
+                return invoke(component,change(bundle,'facts:'+ROLES[4],['dependencies',0,'canonical','bytes'],65537))
+            check(name,nested_cap_case,error)
+        elif kind=='rename_phase':
+            def rename_case(index=args[0],variant=args[1]):
+                bundle=make_bundle([ROLES[index]])
+                store={r['pin']['path']:r for r in bundle['records']}
+                rows=json.loads(store[bundle['_marks']['selection']]['body'])['rows']
+                pos=next(i for i,r in enumerate(rows) if r['role']==ROLES[index]);row=rows[pos]
+                leaf=row['canonical_path'].rsplit('\\',1)[-1]
+                if variant=='prefix':leaf='unrelated-'+leaf
+                elif variant=='case':leaf=leaf.replace('.TEMPLATE.ps1','.template.ps1').replace('.BOUND.ps1','.bound.ps1')
+                elif variant=='suffix':leaf=leaf.replace('.TEMPLATE.ps1','.BOUND.ps1') if index<4 else leaf.replace('.BOUND.ps1','.TEMPLATE.ps1')
+                else:raise AssertionError('unknown basename variant')
+                return invoke(component,mutate(bundle,edits=[('selection',['rows',pos,'canonical_path'],row['canonical_path'].rsplit('\\',1)[0]+'\\'+leaf,False),
+                     ('selection',['rows',pos,'draft_path'],row['draft_path'].rsplit('\\',1)[0]+'\\'+leaf,False)]))
+            check(name,rename_case,error)
+        elif kind=='join_refs':
+            def join_case():
+                bundle=make_bundle();store={r['pin']['path']:r for r in bundle['records']};edits=[]
+                for mark,path,ref in args:
+                    value=bundle
+                    for part in ref:value=value[part]
+                    edits.append((mark,path,copy.deepcopy(value),False))
+                return invoke(component,mutate(bundle,edits=edits))
+            check(name,join_case,error)
+        elif kind=='expected_ref':
+            path,ref=args
+            def expected_ref_case():
+                bundle=make_bundle();value=bundle
+                for part in ref:value=value[part]
+                node=bundle['expected']
+                for part in path[:-1]:node=node[part]
+                assert node[path[-1]]!=value;node[path[-1]]=copy.deepcopy(value)
+                return invoke(component,bundle)
+            check(name,expected_ref_case,error)
+        elif kind=='stage_input':
+            def stage_input_case(action=args[0]):
+                bundle=make_bundle();store={r['pin']['path']:r for r in bundle['records']}
+                role=ROLES[0];mark='receipt:'+role;receipt=json.loads(store[bundle['_marks'][mark]]['body'])
+                purpose=copy.deepcopy(receipt['steps']['metadata_Source_provenance']['stage_purpose'])
+                if action=='self_output':purpose['inputs'].append(bundle['expected']['selected_draft'])
+                elif action=='duplicate':purpose['inputs'].append(purpose['inputs'][0])
+                elif action=='omit':purpose['inputs']=[p for p in purpose['inputs'] if p!=bundle['expected']['lease_support']['canonical']]
+                else:raise AssertionError('unknown owned stage input variant')
+                purpose['inputs'].sort(key=lambda p:p['path'])
+                subjects=[purpose['facts'],*purpose['inputs']]
+                edits=[(mark,['steps','metadata_Source_provenance','stage_purpose'],purpose,False)]
+                for suffix in ('full','capsule','adoption'):
+                    proof_mark='stage-templates_'+suffix
+                    edits.extend([(proof_mark,['exact_M3_Source_stage_purpose'],purpose,False),(proof_mark,['subjects'],subjects,False)])
+                return invoke(component,mutate(bundle,edits=edits))
+            check(name,stage_input_case,error)
+        elif kind=='arg':
+''')
+
+def add(name,kind,args,error=None):cases.append((name,kind,args,error))
+role=P['exact_literals']['finite8_role_order'][0]
+rp='receipt:'+role; fct='facts:'+role
+old=json.loads(Path(P['exact_literals']['current_selection_pin']['path']).read_bytes())
+row_index=next(i for i,r in enumerate(old['rows']) if r['role']==role)
+composer_index=next(i for i,r in enumerate(old['rows']) if r['role']=='composer')
+samples={
+ 'canonical_dependency9':('dependency',None,[],'E_SCHEMA'),
+ 'expected18':('expected',None,[],'E_SCHEMA'),
+ 'supplied_record2':('store',None,[],'E_RECORD_STORE'),
+ 'fact3':('store',None,['pin'],'E_PIN'),
+ 'batch_request_row10_v2':('record','request',['rows',0],'E_SCHEMA'),
+ 'batch_published_row_v2':('record','publication',['published',0],'E_SCHEMA'),
+ 'selection13_v2':('record','selection',[],'E_SCHEMA'),
+ 'selection_row9':('record','selection',['rows',row_index],'E_SCHEMA'),
+ 'owner_support3':('expected',None,['owner_support'],'E_SCHEMA'),
+ 'lease_support5':('expected',None,['lease_support'],'E_SCHEMA'),
+ 'expected_code_support5':('expected',None,['producer_support'],'E_SCHEMA'),
+ 'tool_support4':('record',fct,['tool_support'],'E_SCHEMA'),
+ 'selection_support3':('record',fct,['selection_support'],'E_SCHEMA'),
+ 'subject_support3':('record','request',['Root_future_path_selection_support'],'E_SCHEMA'),
+ 'external_M3_stage_support3':('expected',None,['stage_supports',role],'E_SCHEMA'),
+ 'stage_purpose6':('record',rp,['steps','metadata_Source_provenance','stage_purpose'],'E_SCHEMA'),
+ 'receipt_steps4':('record',rp,['steps'],'E_SCHEMA'),
+ 'metadata_provenance6':('record',rp,['steps','metadata_Source_provenance'],'E_SCHEMA'),
+ 'resource3':('record',rp,['steps','metadata_Source_provenance','resource_observation'],'E_SCHEMA'),
+ 'recorded_observation12':('record','publication',['published',0,'actual_publication_metadata_APIs','canonical'],'E_OBSERVATION'),
+ 'recorded_publication_pair2':('record','publication',['published',0,'actual_publication_metadata_APIs'],'E_OBSERVATION'),
+ 'publisher_actual45_catalogue11':('record','catalogue',[],'E_SCHEMA'),
+ 'publisher_catalogue_row3':('record','catalogue',['roles',0],'E_SCHEMA'),
+}
+mapping={}
+for schema,(loc,mark,path,error) in samples.items():
+    names=[]
+    for key in P['exact_closed_schemas'][schema]['keys']:
+        name='closed_'+schema+'_missing_'+key
+        add(name,'schema_variant',[loc,mark,path,key,'delete'],error);names.append(name)
+    name='closed_'+schema+'_unknown';add(name,'schema_variant',[loc,mark,path,None,'unknown'],error);names.append(name)
+    mapping[schema]=dict(public_cases=names)
+for schema,mark in [('batch_request21_v2','request'),('batch_publication43_v2','publication'),('reconciliation26_v2','reconciliation'),('generated_M3_receipt22_v2',rp),('M3_facts21_v2',fct)]:
+    prefix={'generated_M3_receipt22_v2':'receipt','M3_facts21_v2':'facts'}.get(schema,mark)
+    names=[n for n,k,a,e in cases if n.startswith('missing_'+prefix+'_') or n=='unknown_'+prefix]
+    if 'unknown_'+prefix not in names:
+        name='closed_'+schema+'_unknown';add(name,'record',[mark,['I11_unknown_key'],False],'E_SCHEMA');names.append(name)
+    for v in (1,True):
+        name='closed_'+schema+'_version_'+str(v);add(name,'record',[mark,['schema_version'],v],'E_SCHEMA');names.append(name)
+    mapping[schema]=dict(public_cases=names)
+mapping['proof4']=dict(public_cases=[],status='REFERENCE_ONLY_NO_I11_PUBLIC_ROUTE',reason='Root exact reference/co-limit clarification; no proof4 route added or qualified.')
+mapping['proof6']=dict(public_cases=[],status='REFERENCE_ONLY_NO_I11_PUBLIC_ROUTE',reason='Root exact reference/co-limit clarification; no proof6 route added or qualified.')
+
+for mark,error in [('producer_capsule','E_REVIEW'),('producer_full','E_REVIEW'),('producer_adoption','E_ADOPTION')]:
+    add('extended_only_coverage_'+mark,'extended_coverage',[mark],error)
+
+# Real differing historical shapes are reconstructed from independently read Source
+# key declarations. They are unsupported test DATA, not fabricated owner-v2 records.
+GENERIC=Path(r'D:\Aenv\pro2\github-portable-20261012-001\docs\development\native-interface-implementation\20261015-i5\prepare_pipeline_utility_checker_metadata_current_owner_deferred_003.py.source')
+PHASE=Path(r'D:\Aenv\pro2\github-portable-20261012-001\docs\development\native-interface-implementation\20261015-i5\assemble_genuine_phase_peer_current_owner_deferred_003.py.source')
+def source_literal(path,name):
+    _,value=assignment(path.read_text(encoding='utf8'),name)
+    return value
+single14={k:False for k in source_literal(GENERIC,'PUBLICATION_REQUEST_KEYS')}
+single14.update(schema_version=1,record_type='Root_Source024_selected_role_exact_reviewed_Source_publication_request')
+single29={k:False for k in source_literal(GENERIC,'SINGLE_ROLE_PUBLICATION_KEYS')}
+single29.update(schema_version=1,record_type='Root_Source024_selected45_role_Source_canonical_publication')
+peer27={k:False for k in source_literal(PHASE,'SELECTED_RECEIPT27_KEYS24')}
+peer27.update(schema_version=1,record_type='proposed_Root_Source024_genuine_static_peer_selected_byte_author_receipt')
+assert len(single14)==14 and len(single29)==29 and len(peer27)==27
+add('actual_single14_shape','whole_record',['request',single14],'E_UNSUPPORTED_PUBLICATION_ABI')
+add('actual_single29_shape','whole_record',['publication',single29],'E_UNSUPPORTED_PUBLICATION_ABI')
+add('actual_selected_peer27_shape','whole_record',['publication',peer27],'E_UNSUPPORTED_PUBLICATION_ABI')
+
+for which in ('dict','list','str','int','bytes'):add('actual_subclass_'+which,'subclass',[which],'E_RECORD_STORE' if which=='bytes' else 'E_TYPE')
+for size,error in [(65536,None),(65537,'E_PIN')]:add('phase_body_'+str(size),'phase_size',[size],error)
+for count,error in [(100,None),(10000,'E_LIMIT'),(10001,'E_LIMIT')]:add('named_checks_'+str(count),'check_count',[count],error)
+add('nested_canonical_phase_overcap','nested_cap',[],'E_PIN')
+for value in (0,-1,18,17,1000,True):
+    add('ordinal_boundary_'+str(value),'record',['selection',['rows',row_index,'selected_ordinal'],value],'E_SELECTION' if value in (0,-1,1000) or value is True else 'E_PHASE_BASENAME')
+leaf=old['rows'][row_index]['canonical_path'].rsplit('\\',1)[-1]
+for suffix in ('.ps1','.template.ps1','.BOUND.ps1'):
+    wrong='D:\\I11SyntheticMemoryOnly\\wrong'+suffix
+    add('basename_wrong_'+suffix,'record',['selection',['rows',row_index,'canonical_path'],wrong],'E_SELECTION')
+for i in range(8):
+    for variant in ('prefix','case','suffix'):add('basename_exact_role_'+str(i)+'_'+variant,'rename_phase',[i,variant],'E_PHASE_BASENAME')
+add('successor_null_actor','record',['selection',['rows',row_index,'preparation_Source_author'],None],'E_ACTOR')
+add('composer_fake_author','record',['selection',['rows',composer_index,'preparation_Source_author'],'/root/invented'],'E_SELECTION')
+add('composer_fake_cap','record',['selection',['rows',composer_index,'source_cap'],131072],'E_SELECTION')
+add('resource_age_gt60','record',[rp,['steps','metadata_Source_provenance','resource_observation','observed_utc'],'2026-10-25T07:59:00.000000+00:00'],'E_RESOURCE')
+add('purpose_empty_pin','record',[rp,['steps','metadata_Source_provenance','stage_purpose','inputs'],[{}]],'E_PIN')
+add('postread_empty_observation','record',['publication',['complete_input_postreads'],[{}]],'E_OBSERVATION')
+add('recon_empty_observation','record',['reconciliation',['actual_input_observations'],[{}]],'E_OBSERVATION')
+add('sibling_malformed_row','multi_record',[[0,1],[('publication',['published',1,'source_cap'],65537,False)]],'E_ROW_JOIN')
+add('sibling_actor_omission','multi_record',[[0,1],[('publication',['published',1,'metadata_Source_worker'],'/root/sibling_only',False),('producer_capsule',['reviewer'],'/root/sibling_only',False)]],'E_REVIEWER')
+add('root_prefix_positive','multi_record',[[0],[('producer_full',['reviewer'],'/root/actor2',False),('producer_capsule',['reviewer'],'/root/actor2',False)],['/root/actor']])
+for actor in ('/root//peer','/root/../peer',' /root/peer','/root/peer '):
+    add('actor_malformed_'+str(len(cases)),'record',['producer_capsule',['reviewer'],actor],'E_ACTOR')
+add('reviewer_case_descendant','record',['producer_capsule',['reviewer'],'/root/SYNTHETIC_PRODUCER/child'],'E_REVIEWER')
+add('extended_open_proof_metadata','record',['producer_full',['extra_bounded_metadata'],dict(note='inert')])
+add('purpose_self_output','stage_input',['self_output'],'E_STAGE_PURPOSE')
+add('purpose_duplicate_input','stage_input',['duplicate'],'E_STAGE_PURPOSE')
+add('purpose_omit_required','stage_input',['omit'],'E_STAGE_PURPOSE')
+add('stage_purpose_version','record',[rp,['steps','metadata_Source_provenance','stage_purpose','schema_version'],1],'E_STAGE_PURPOSE')
+add('selection_version_bool','record',['selection',['schema_version'],True],'E_SCHEMA')
+add('selection_version_one','record',['selection',['schema_version'],1],'E_SCHEMA')
+add('catalogue_version_bool','record',['catalogue',['schema_version'],True],'E_SCHEMA')
+add('catalogue_version_two','record',['catalogue',['schema_version'],2],'E_SCHEMA')
+for name,path,ref in [('swap_historical_actual',['historical_selection_inventory'],['expected','publisher_catalogue']),('swap_M3_actual',['M3_inventory'],['expected','publisher_catalogue'])]:
+    add(name,'expected_ref',[path,ref],'E_INVENTORY_DOMAIN')
+add('selection_historical_is_actual','join_refs',[('selection',['current_complete45_inventory'],['expected','publisher_catalogue'])],'E_INVENTORY_DOMAIN')
+add('catalogue_support_is_historical','join_refs',[
+ ('request',['predecessor_inventory_support','subject'],['expected','historical_selection_inventory']),
+ ('publication',['predecessor_inventory_support','subject'],['expected','historical_selection_inventory'])],'E_INVENTORY_DOMAIN')
+join_specs=[
+ ('request_owner_mismatch','request',['current_owner_support','current_owner_scope'],['expected','owner_support','current_owner_scope_Root_adoption'],'E_REQUEST_JOIN'),
+ ('pub_scope_mismatch','publication',['current_owner_scope'],['expected','owner_support','current_owner_scope_Root_adoption'],'E_REQUEST_JOIN'),
+ ('request_lease_mismatch','request',['new_lease_support','canonical'],['expected','owner_support','current_owner_scope'],'E_REQUEST_JOIN'),
+ ('request_producer_mismatch','request',['producer_supports','M3','Source'],['expected','publisher_support','Source'],'E_REQUEST_JOIN'),
+ ('request_publisher_mismatch','request',['publisher_source'],['expected','producer_support','Source'],'E_REQUEST_JOIN'),
+ ('row_canonical_wrong_path','publication',['published',0,'canonical'],['expected','selected_draft'],'E_ROW_JOIN'),
+ ('row_draft_mismatch','publication',['published',0,'draft'],['expected','selected_predecessor'],'E_ROW_JOIN'),
+ ('row_predecessor_mismatch','publication',['published',0,'predecessor'],['expected','selected_draft'],'E_ROW_JOIN'),
+ ('receipt_scope_mismatch',rp,['current_owner_scope'],['expected','owner_support','current_owner_scope_Root_adoption'],'E_RECEIPT'),
+ ('receipt_selection_mismatch',rp,['Root_future_path_selection'],['expected','lease_support','canonical'],'E_RECEIPT'),
+ ('receipt_lease_mismatch',rp,['new_canonical_lease'],['expected','owner_support','current_owner_scope'],'E_RECEIPT'),
+ ('facts_tool_mismatch',fct,['tool_support','Source'],['expected','publisher_support','Source'],'E_FACTS'),
+ ('facts_lease_mismatch',fct,['lease_support','canonical'],['expected','owner_support','current_owner_scope'],'E_FACTS'),
+ ('facts_inventory_mismatch',fct,['predecessor_inventory'],['expected','publisher_catalogue'],'E_FACTS'),
+ ('recon_canonical_mismatch','reconciliation',['canonical_Source'],['expected','selected_draft'],'E_RECONCILIATION_JOIN'),
+ ('recon_draft_mismatch','reconciliation',['exact_draft_Source'],['expected','selected_predecessor'],'E_RECONCILIATION_JOIN'),
+ ('recon_request_mismatch','reconciliation',['initial_actual_Root_request'],['expected','original_publication'],'E_RECONCILIATION_JOIN'),
+ ('recon_pub_mismatch','reconciliation',['initial_actual_canonical_publication_receipt'],['expected','request'],'E_RECONCILIATION_JOIN'),
+ ('recon_witness_mismatch','reconciliation',['initial_actual_execution_witness'],['expected','request'],'E_RECONCILIATION_JOIN'),
+ ('recon_publisher_mismatch','reconciliation',['prior_actual_publisher_Source'],['expected','producer_support','Source'],'E_RECONCILIATION_JOIN'),
+ ('recon_lease_mismatch','reconciliation',['new_canonical_lease'],['expected','owner_support','current_owner_scope'],'E_RECONCILIATION_JOIN'),
+ ('recon_selection_mismatch','reconciliation',['Root_future_path_selection'],['expected','lease_support','canonical'],'E_RECONCILIATION_JOIN'),
+ ('recon_scope_mismatch','reconciliation',['current_owner_scope'],['expected','owner_support','current_owner_scope_Root_adoption'],'E_RECONCILIATION_JOIN'),
+ ('recon_delta_review_mismatch','reconciliation',['actual_canonical_delta_Source_review'],['expected','producer_support','different_review'],'E_RECONCILIATION_JOIN'),
+ ('recon_delta_adoption_mismatch','reconciliation',['canonical_delta_Root_adoption'],['expected','producer_support','Root_adoption'],'E_RECONCILIATION_JOIN'),
+]
+for name,mark,path,ref,error in join_specs:add(name,'join_refs',[(mark,path,ref)],error)
+for name,mark,path,value,error in [
+ ('capsule_empty_subjects','producer_capsule',['subjects'],[],'E_REVIEW'),
+ ('full_empty_subjects','producer_full',['subjects'],[],'E_REVIEW'),
+ ('adoption_empty_subjects','producer_adoption',['subjects'],[],'E_ADOPTION'),
+ ('draft_acceptance_after_request','draft-'+role+'_adoption',['created_utc'],'2026-10-25T08:00:23.000000+00:00','E_CHRONOLOGY'),
+ ('delta_review_before_pub','delta_full',['created_utc'],'2026-10-25T08:00:21.000000+00:00','E_CHRONOLOGY'),
+ ('recon_before_delta_adoption','reconciliation',['created_utc'],'2026-10-25T08:00:24.000000+00:00','E_CHRONOLOGY'),
+ ('recon_review_before_recon','recon_full',['created_utc'],'2026-10-25T08:00:25.000000+00:00','E_CHRONOLOGY'),
+ ('recon_prior_time_mismatch','reconciliation',['prior_publication_created_utc'],'2026-10-25T08:00:21.000000+00:00','E_RECONCILIATION_JOIN'),
+ ('capsule_full_reviewer_mismatch','producer_full',['reviewer'],'/root/another_independent','E_REVIEW'),
+ ('source_proof_false_authority','producer_full',['operational_authority'],True,'E_AUTHORITY'),
+]:add(name,'record',[mark,path,value],error)
+for vector,index,value in [('path9',2,0),('descriptor9',5,0),('descriptor9',7,1024),('path9',6,2),('shared_descriptor7',0,999),('shared_identity_indexes',0,1)]:
+    add('observation_variant_'+str(len(cases)),'record',['publication',['published',0,'actual_publication_metadata_APIs','canonical',vector,index],value],'E_OBSERVATION')
+add('observation_vector_short','record',['publication',['published',0,'actual_publication_metadata_APIs','canonical','descriptor9'],[1]],'E_OBSERVATION')
+add('observation_cap_bool','record',['publication',['published',0,'actual_publication_metadata_APIs','canonical','cap'],True],'E_OBSERVATION')
+
+# Route every adopted category to concrete named assertions or the exact declared
+# Source-only co-limit/reference boundary. This is not an execution result.
+variants={}
+for row in P['separate_owned_synthetic_qualification_proposal']['positive_matrix']:
+    variants[row['id']]=dict(requirement=row['case'],case_names=[])
+for row in P['separate_owned_synthetic_qualification_proposal']['refusal_matrix']:
+    variants[row['id']]=dict(requirement=row['case'],case_names=[])
+groups={
+ 'P01':['positive_selector_0'],'P02':['four_templates'],'P03':['positive_selector_4'],'P04':['four_bounds'],'P05':['mixed_nonmatching'],
+ 'P06':['extended_open_proof_metadata'],'P07':['positive_selector_'+str(i) for i in range(8)],'P08':['detached_result'],
+ 'N01':[n for n,k,a,e in cases if n.startswith('unsupported_role_')],
+ 'N02':['actual_single14_shape','actual_single29_shape','actual_selected_peer27_shape'],
+ 'N03':[n for n,k,a,e in cases if n.startswith('closed_') or n.startswith('missing_') or n.startswith('unknown_')],
+ 'N04':['duplicate_JSON','float_JSON','nonfinite_JSON','surrogate_JSON','malformed_UTF8']+['actual_subclass_'+x for x in ('dict','list','str','int','bytes')],
+ 'N05':['store_body','store_2MiB+1','phase_body_65537'],
+ 'N06':[n for n,k,a,e in cases if n.startswith('path_refusal_')],
+ 'N07':['store_duplicate','store_body','store_bytearray','store_missing'],
+ 'N08':['store_257','store_32MiB+','store_2MiB+1','phase_body_65537','nodes_limit','depth_limit','named_checks_10000','named_checks_10001'],
+ 'N09':['wrong_thread','request_id_mismatch','request_owner_mismatch','pub_scope_mismatch','request_lease_mismatch','request_producer_mismatch','request_publisher_mismatch'],'N10':['empty_batch','pair_rejected','order_rejected','five_rejected','sibling_malformed_row'],
+ 'N11':['selection_nonce','successor_null_actor','composer_fake_author','composer_fake_cap'],
+ 'N12':[n for n,k,a,e in cases if n.startswith('ordinal_boundary_') or n.startswith('basename_exact_role_')],
+ 'N13':['swap_historical_actual','swap_M3_actual','selection_historical_is_actual','catalogue_support_is_historical'],'N14':['catalogue_guard','catalogue_flag'],
+ 'N15':['pub_row_cap','sibling_malformed_row','row_canonical_wrong_path','row_draft_mismatch','row_predecessor_mismatch'],'N16':['receipt_physical','receipt_inverse_false','receipt_authority','receipt_scope_mismatch','receipt_selection_mismatch','receipt_lease_mismatch'],
+ 'N17':['facts_thread','facts_native_authority','facts_stage','facts_dependencies','nested_canonical_phase_overcap'],
+ 'N18':['purpose_wrong_outputs','purpose_wrong_inputs','purpose_empty_pin','purpose_self_output','purpose_duplicate_input','purpose_omit_required'],
+ 'N19':['reviewer_omitted_retained','reviewer_worker_descendant','reviewer_worker_case','reviewer_root','reviewer_alias','reviewer_historical_editor','sibling_actor_omission'],
+ 'N20':['code_review_no_SOURCE','duplicate_checks','false_named_check','bool_checks_failed','extended_only_coverage_producer_capsule','extended_only_coverage_producer_full'],
+ 'N21':['adopt_nonRoot','extended_only_coverage_producer_adoption','adoption_empty_subjects'],'N22':['adopt_late','recon_birth_after_pub','now_before_graph','draft_acceptance_after_request','delta_review_before_pub','recon_before_delta_adoption','recon_review_before_recon'],
+ 'N23':['recon_rewrite','recon_verdict','recon_flag_scope'],'N24':[n for n,k,a,e in cases if n.startswith('recon_') and n.endswith('_mismatch')],'N25':['pub_descriptor_nlink','pub_stable_false','pub_rename_inode','pub_observation_bool','postread_empty_observation','recon_empty_observation']+[n for n,k,a,e in cases if n.startswith('observation_')],
+ 'N26':['receipt_resource_low','receipt_resource_bool','receipt_resource_future','resource_age_gt60'],
+ 'N27':['producer_flag_true','publisher_flag_true','real_entry_false','real_entry_toggle'],
+}
+for key,names in groups.items():variants[key]['case_names']=names
+
+fixture=replace_assignment(fixture,'CASE_CATALOGUE',cases)
+fixture+='\n\nCONSUMED_SCHEMA_CASE_MAPPING = '+repr(mapping)+'\n'
+fixture+='PROTOCOL_VARIANT_CASE_MAPPING = '+repr(variants)+'\n'
+fixture+='SOURCE_ONLY_REACHABILITY = '+repr(dict(proof4='reference only; no public route',proof6='reference only; no public route',named_checks_10000='global50000 nodes dominates independent positive; public 10000/10001 refuse E_LIMIT, per-count guard Source-reviewed'))+'\n'
+source_bytes=source.encode('utf8');fixture_bytes=fixture.encode('utf8')
+compile(source_bytes,'<I11 Source002 data compile>','exec');compile(fixture_bytes,'<I11 fixture002 data compile>','exec')
+_,catalogue=assignment(fixture,'CASE_CATALOGUE')
+assert catalogue==cases and len({x[0] for x in cases})==len(cases)
+sp=create(OUT/'validate_finite8_canonical_receipt_metadata_002.py',source_bytes)
+fp=create(OUT/'test_finite8_canonical_receipt_metadata_memory_only_002.py',fixture_bytes)
+api=json.loads(OLD_API.read_bytes())
+api.update(Source=sp,fixture_Source=fp,created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),literal_case_catalogue=cases,literal_case_count=len(cases),
+           exact_consumed_schema_case_mapping=mapping,protocol_variant_case_mapping=variants,Source001_preserved=pin(OLD_SOURCE),fixture001_preserved=pin(OLD_FIXTURE),API001_preserved=pin(OLD_API),
+           correction_source_editor='/root/i2_resume_gap',correction_author_tool=pin(__file__),
+           reference_and_co_limit_clarification=pin(HERE/'ROOT_I11_PROTOCOL_REFERENCE_SCHEMAS_AND_CO_LIMITS_CLARIFICATION_001.json'),
+           correction_summary=['B1 exact closed3 proof occurrence','B2 unsupported ABI before finite8 shape','B3 expanded literal matrix/actual-change assertions','B4 nested canonical role caps','B5 schema-before-index typed refusals','real-entry always UNWIRED per protocol'])
+ap=create(OUT/'CURRENT_OWNER_FINITE8_CANONICAL_RECEIPT_METADATA_INERT_API_002.json',(json.dumps(api,sort_keys=True,indent=2)+'\n').encode())
+regions=[]
+for path,raw in ((Path(sp['path']),source_bytes),(Path(fp['path']),fixture_bytes)):
+    tree=ast.parse(raw);lines=raw.splitlines(keepends=True)
+    for node in tree.body:
+        if isinstance(node,(ast.FunctionDef,ast.ClassDef)):
+            part=b''.join(lines[node.lineno-1:node.end_lineno]);regions.append(dict(path=str(path),name=node.name,first_line=node.lineno,last_line=node.end_lineno,bytes=len(part),sha256=hashlib.sha256(part).hexdigest()))
+inverse=[dict(pin=pin(p),complete_bytes_base64=base64.b64encode(p.read_bytes()).decode()) for p in (OLD_SOURCE,OLD_FIXTURE,OLD_API)]
+inventory=dict(schema_version=1,record_type='I11_Source002_complete_predecessor_inverse_and_exact_region_inventory',author='/root/i2_resume_gap',Source=sp,fixture=fp,API=ap,
+               complete_predecessors=inverse,regions=regions,literal_case_count=len(cases),case_catalogue=cases,consumed_schema_case_mapping=mapping,protocol_variant_case_mapping=variants,
+               source_only_named_check_colimit='10000/10001 public controls expected E_LIMIT; independent10000 positive unreachable under global50000node budget.',
+               extra_historical_shape_Source_pins=[pin(GENERIC),pin(PHASE)],author_tool=pin(__file__),old_targets_unchanged=True,target_execution=False,tests_executed=False)
+ip=create(OUT/'I11_EXACT_SOURCE_REGION_AND_NO_OLD_TARGET_CHANGE_INVENTORY_002.json',(json.dumps(inventory,sort_keys=True,indent=2)+'\n').encode())
+receipt=dict(schema_version=1,record_type='I11_Source002_and_fixture002_static_correction_author_receipt',author='/root/i2_resume_gap',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),
+             Source=sp,fixture=fp,API=ap,inventory=ip,predecessors=[pin(OLD_SOURCE),pin(OLD_FIXTURE),pin(OLD_API)],author_tool=pin(__file__),
+             protocol_adoption=pin(HERE/'ROOT_I11_PROTOCOL_DIFFERENT_REVIEW_ADOPTION_001.json'),literal_case_count=len(cases),AST_literal_case_catalogue_verified=True,
+             target_imports=0,target_calls=0,tests_executed=False,old_target_changes=False,full_G01_closed=False,operational_authority=False,scientific_authority=False)
+rp=create(OUT/'I11_FINITE8_CANONICAL_RECEIPT_METADATA_SOURCE_AUTHOR_RECEIPT_002.json',(json.dumps(receipt,sort_keys=True,indent=2)+'\n').encode())
+print(json.dumps(dict(Source=sp,fixture=fp,API=ap,inventory=ip,receipt=rp,literal_cases=len(cases),tests_executed=False),sort_keys=True))

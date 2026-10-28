@@ -1,0 +1,147 @@
+"""Genuine read/hash/strict-JSON/AST review. No target imports or calls."""
+import ast
+import datetime
+import hashlib
+import json
+from pathlib import Path
+
+ROOT = Path(r'D:\Aenv\pro2\WORK\resume-20261025-003')
+A = ROOT / 'm3_peer_contracts_016' / 'm3_protocol_audit_001'
+OUT = ROOT / 'm3_peer_contracts_016' / 'canonical_peer_protocol_audit_001' / 'common_protocol_review_003'
+checks = []
+
+def check(name, passed, evidence):
+    assert type(name) is str and name not in {r['name'] for r in checks}
+    assert type(passed) is bool
+    checks.append(dict(name=name, passed=passed, evidence=evidence))
+
+def pin(path, raw=None):
+    raw = path.read_bytes() if raw is None else raw
+    return dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+
+def pairs(values):
+    value = {}
+    for key, child in values:
+        assert key not in value, key
+        value[key] = child
+    return value
+
+def reject(token):
+    raise AssertionError('noninteger JSON token ' + token)
+
+def load(path, size, sha):
+    raw = path.read_bytes()
+    check('whole_pin_' + path.name, len(raw) == size and hashlib.sha256(raw).hexdigest() == sha, pin(path, raw))
+    value = json.loads(raw.decode('utf-8'), object_pairs_hook=pairs, parse_float=reject, parse_constant=reject)
+    check('strict_JSON_object_' + path.name, type(value) is dict and len(raw) <= 2097152 and not raw.startswith(b'\xef\xbb\xbf'), 'Unique-key UTF-8 object, no float/constants/BOM, metadata cap.')
+    return value
+
+cp = A / 'I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_006.json'
+pp = A / 'I13_PROPOSED_M3_GUARD_AND_SHARED_SELECTED_ROLE_PUBLISHER_PROTOCOL_006.json'
+xp = A / 'I13_PROPOSED_RECORDED_PREWRITE_EVALUATION_AND_PUBLICATION_CONTEXT_CORRECTION_001.json'
+c = load(cp, 219030, '1e3e71618c0e6f8a560c6475c19970113f8d81273b8aaad0ae98f22006226614')
+p = load(pp, 47693, '14f5d7062647ae70fcf525bf48fd846fcf08d277437bc4292aa694998fb5b082')
+x = load(xp, 6844, 'f1cbe9e4dd99763b9db2ea6188d7c5ee7a4394450e249ae342293d5d8c7ead5e')
+bcpath = A / 'I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_005.json'
+bppath = A / 'I13_PROPOSED_M3_GUARD_AND_SHARED_SELECTED_ROLE_PUBLISHER_PROTOCOL_005.json'
+bc = load(bcpath, 215468, '39be598b3d526130a99b5a3de58a44bf3446f7b31c8e3526a3074cdf49157f61')
+bp = load(bppath, 44458, 'ea51288a63b0b8e4eb06adb57d4d4231fa02475935a3fe2c94f105a3e6194d24')
+subjects = [pin(pp), pin(cp), pin(xp)]
+for name, value in (('catalogue', c), ('protocol', p), ('correction', x)):
+    for key in ('target_execution', 'operational_authority', 'scientific_authority'):
+        check(name + '_explicit_false_' + key, value.get(key) is False, {key: value.get(key)})
+check('correction_native_Parser_explicit_false', x.get('native_Parser_executed') is False, x.get('native_Parser_executed'))
+check('protocol_no_target_Source_or_tests_claim', p.get('target_Source_authored') is False and p.get('tests_executed') is False, 'Source proposal only.')
+check('catalogue_own_correction_pin', c['recorded_prewrite_context_correction'] == pin(xp), c['recorded_prewrite_context_correction'])
+check('protocol_own_correction_pin', p['recorded_prewrite_context_correction'] == pin(xp), p['recorded_prewrite_context_correction'])
+check('protocol_exact_catalogue_pin', p['catalogue'] == pin(cp), p['catalogue'])
+check('correction_exact_previous_catalogue', x['previous_catalogue'] == pin(bcpath), x['previous_catalogue'])
+check('correction_exact_previous_protocol', x['previous_common_protocol'] == pin(bppath), x['previous_common_protocol'])
+check('catalogue_previous_whole_pin', c['predecessor_unadopted_catalogue'] == pin(bcpath), c['predecessor_unadopted_catalogue'])
+check('protocol_previous_whole_pin', p['predecessor_unadopted_proposal'] == pin(bppath), p['predecessor_unadopted_proposal'])
+allowed_c = {'owner_Source_interval_policy', 'predecessor_unadopted_catalogue', 'recorded_prewrite_context_correction', 'recorded_prewrite_context_policy', 'schemas', 'state', 'validator_support_delivery'}
+allowed_p = {'catalogue', 'exact_correction_inventory', 'predecessor_unadopted_proposal', 'recorded_prewrite_context_correction', 'recorded_prewrite_context_rules', 'required_recorded_prewrite_context_controls', 'shared_publication_join_rules', 'state', 'validator_support_delivery'}
+for name, old, new, allowed in (('catalogue', bc, c, allowed_c), ('protocol', bp, p, allowed_p)):
+    changed = {key for key in old.keys() | new.keys() if old.get(key) != new.get(key)}
+    check(name + '_bounded_root_delta', changed == allowed, sorted(changed))
+    for key in sorted((old.keys() & new.keys()) - allowed):
+        check(name + '_unchanged_root_' + key, old[key] == new[key], 'Exact strict-JSON equality to005.')
+old_schemas, new_schemas = bc['schemas'], c['schemas']
+removed, added = {'prewrite_packet14', 'selected_publication31'}, {'prewrite_packet15', 'selected_publication32'}
+check('exact_only_two_schema_replacements', old_schemas.keys() - new_schemas.keys() == removed and new_schemas.keys() - old_schemas.keys() == added, dict(removed=sorted(removed), added=sorted(added)))
+for key in sorted(old_schemas.keys() & new_schemas.keys()):
+    check('unchanged_schema_' + key, old_schemas[key] == new_schemas[key], 'Complete fields/types/literals/closedness exact005.')
+for name in ('prewrite_packet15', 'selected_publication32'):
+    value = new_schemas[name]
+    check(name + '_closed_key_field_count', value['additional_fields_allowed'] is False and value['builtin_type'] == 'dict' and len(value['exact_keys']) == value['field_count'] == len(value['fields']) and set(value['exact_keys']) == set(value['fields']), value['exact_keys'])
+prewrite = new_schemas['prewrite_packet15']; pub = new_schemas['selected_publication32']
+old_prewrite = old_schemas['prewrite_packet14']; old_pub = old_schemas['selected_publication31']
+check('prewrite15_exact_added_field', set(prewrite['fields']) - set(old_prewrite['fields']) == {'recorded_evaluation_utc'} and prewrite['fields']['recorded_evaluation_utc'] == 'utc6', prewrite['fields']['recorded_evaluation_utc'])
+check('publication32_exact_added_field', set(pub['fields']) - set(old_pub['fields']) == {'prewrite_packet'} and pub['fields']['prewrite_packet'] == 'fact3', pub['fields']['prewrite_packet'])
+for label, old, new in (('prewrite', old_prewrite, prewrite), ('publication', old_pub, pub)):
+    for key in sorted(old['fields']):
+        if key != 'record_type':
+            check(label + '_unchanged_field_' + key, old['fields'][key] == new['fields'][key], old['fields'][key])
+    check(label + '_distinct_tag_same_version', old['fields']['record_type'] != new['fields']['record_type'] and old['fields']['schema_version'] == new['fields']['schema_version'], new['fields']['record_type'])
+check('prewrite_exact_current_eval_wire', x['current_prewrite15']['format'] == 'ASCII UTC6, exact wire equality caller now_utc', x['current_prewrite15'])
+check('prewrite_raw_whole_pin_join', 'canonical_packet14.prewrite_packet whole raw pin' in x['publication32']['rule'] and 'Request does not reference this later record' in x['publication32']['rule'], x['publication32']['rule'])
+check('rules_complete_correction_catalogue_protocol', c['recorded_prewrite_context_policy'] == p['recorded_prewrite_context_rules'] == x['canonical_prior_rules'], x['canonical_prior_rules'])
+check('controls_complete_protocol_correction', p['required_recorded_prewrite_context_controls'] == x['required_controls'], x['required_controls'])
+check('old_unissued_ABIs_explicit_unsupported', any('prewrite14 and publication31' in row and 'unsupported ABI' in row for row in x['canonical_prior_rules']), x['canonical_prior_rules'][6])
+check('owner_native_existing_interval_fields', 'interval_start/interval_end' in x['canonical_prior_rules'][1] and 'integer100ns' in x['canonical_prior_rules'][1], x['canonical_prior_rules'][1])
+check('owner_required_operatives_and_false_flags', all(t in x['canonical_prior_rules'][2] for t in ('schema_version2', 'authorRoot', 'Root_thread exact', 'owner_instruction_record/owner_policy_record exact fact3 raw bodies', 'target_execution/operational_authority/scientific_authority builtinFalse')), x['canonical_prior_rules'][2])
+check('resource_observation_not_evaluation', all(t in x['canonical_prior_rules'][4] for t in ('observed<=recorded evaluation', '<=60seconds age', 'RAM>=1GiB,disk>=10GiB', 'never relabeled evaluation')), x['canonical_prior_rules'][4])
+check('historical_evaluation_not_current_clock', 'never substitute currentnow or resource.observed_utc' in x['canonical_prior_rules'][0] and 'expired at currentnow' in x['canonical_prior_rules'][3], [x['canonical_prior_rules'][0], x['canonical_prior_rules'][3]])
+check('full_publication_chronology', 'Purpose/adoption<=recorded evaluation<=canonical raw recorded birth<=publicationcreated<=currentnow' in x['canonical_prior_rules'][3], x['canonical_prior_rules'][3])
+check('request_purpose_prewrite_acyclic_rule', 'Requestcreated/birth<=publisherpurposecreated<=full/capsule<=Rootadoption<=prewrite recorded evaluation' in x['canonical_prior_rules'][5] and 'purposeinputs exclude that futurepacket' in x['canonical_prior_rules'][5], x['canonical_prior_rules'][5])
+check('no_original_or_physical_authority_promotion', all(token in x['canonical_prior_rules'][7] for token in ('No Source execution/fixture calls/actual eligibility', 'publisher IO', 'human or physical authentication')), x['canonical_prior_rules'][7])
+check('resource_age_inclusive_kept_distinct', 'age0/60 permitted' in x['required_controls'][2] and '>60 or future observed refused' in x['required_controls'][2], x['required_controls'][2])
+check('all_54_result_fields_exact005', new_schemas['result54'] == old_schemas['result54'] and len(new_schemas['result54']['fields']) == 54, 'Every key/type/authority literal preserved.')
+check('all_budget_and_role_caps_exact005', c['original_guards'] == bc['original_guards'] and c['ROLE_SOURCE_CAPS'] == bc['ROLE_SOURCE_CAPS'] and c['lease_and_owner_domain'] == bc['lease_and_owner_domain'], c['original_guards'])
+check('conservative_node_accounting_exact005', c['counter_composition_policy'] == bc['counter_composition_policy'] and c['counter_mode'] == 'CONSERVATIVE_SUM_PER_INVOCATION_CACHE', c['counter_composition_policy'])
+check('Source_scope_exact_prior005', p['Source_scope'] == bp['Source_scope'], p['Source_scope'])
+scope_raw = Path(p['Source_scope']['path']).read_bytes()
+check('Source_scope_actual_whole_pin', pin(Path(p['Source_scope']['path']), scope_raw) == p['Source_scope'], p['Source_scope'])
+
+i8 = Path(x['original_I8_Source']['path']); i8raw = i8.read_bytes()
+check('actual_original_I8_whole_pin', pin(i8, i8raw) == x['original_I8_Source'], pin(i8, i8raw))
+i0 = Path(r'D:\Aenv\pro2\WORK\resume-20261015-001\native_owner_implementation_004\i0\validate_current_owner_support_002.py')
+i0raw = i0.read_bytes()
+check('actual_I0_whole_pin', len(i0raw) == 17920 and hashlib.sha256(i0raw).hexdigest() == '507686ebfef92ed7a85e670049cf0db6526cb336029dd2ce3374fc6191f55e83', pin(i0, i0raw))
+check('I0_complete_bytes_exact_I8_prefix', i8raw.startswith(i0raw), 'All17920 I0 bytes occur unchanged at I8 offset0.')
+i8tree, i0tree = ast.parse(i8raw), ast.parse(i0raw)
+scope_node = next(n for n in i8tree.body if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == '_SCOPE_KEYS' for t in n.targets))
+check('correction_scope_keys_AST_actual', ast.dump(scope_node, include_attributes=False) == x['original_I8_scope_keys_AST'], dict(line=scope_node.lineno, AST=ast.dump(scope_node, include_attributes=False)))
+keys = ast.literal_eval(scope_node.value.args[0])
+check('original_scope_interval_fields_and_no_alias', 'interval_start' in keys and 'interval_end' in keys and 'Source_window_end_utc' not in keys, sorted(keys))
+tickfn = next(n for n in i8tree.body if isinstance(n, ast.FunctionDef) and n.name == '_ticks')
+ticks_text = ast.get_source_segment(i8raw.decode(), tickfn)
+check('old_clock_builtin_wire_integer_only', all(t in ticks_text for t in ('type(value) is not str', 'TICKS_PER_SECOND', 'int(match.group(7).ljust(7, "0"))')) and not any(isinstance(n, ast.Constant) and type(n.value) is float for n in ast.walk(tickfn)), dict(first=tickfn.lineno, last=tickfn.end_lineno))
+utc_assign = next(n for n in i8tree.body if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == '_UTC' for t in n.targets))
+check('old_clock_ASCII_6_or7_wire', '[0-9]{6,7}' in ast.literal_eval(utc_assign.value.args[0]), dict(line=utc_assign.lineno, pattern=ast.literal_eval(utc_assign.value.args[0])))
+scopefn = next(n for n in i8tree.body if isinstance(n, ast.FunctionDef) and n.name == 'validate_current_owner_support')
+guard = next(n for n in ast.walk(scopefn) if isinstance(n, ast.If) and 'Scope requires current finite interval' in (ast.get_source_segment(i8raw.decode(), n) or ''))
+guard_raw = ast.get_source_segment(i8raw.decode(), guard)
+check('old_I0_I8_guard_strict_greater60_actual_AST', any(isinstance(n, ast.Compare) and len(n.ops) == 1 and isinstance(n.ops[0], ast.Gt) and isinstance(n.comparators[0], ast.Name) and n.comparators[0].id == 'PUBLICATION_RESERVE_TICKS' for n in ast.walk(guard)), dict(first_line=guard.lineno, last_line=guard.end_lineno, exact_source=guard_raw))
+check('old_ticks_persecond_and_Source_reserve_literal60', any(isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'TICKS_PER_SECOND' for t in n.targets) and ast.literal_eval(n.value) == 10000000 for n in i8tree.body) and any(isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'PUBLICATION_RESERVE_TICKS' for t in n.targets) and isinstance(n.value, ast.BinOp) and isinstance(n.value.op, ast.Mult) and ast.literal_eval(n.value.left) == 60 for n in i8tree.body), 'I8 lines17–18: integer100ns and60 seconds.')
+check('new006_preserves_original_strict_Source60_boundary', False, dict(finding='F01', actual_original=guard_raw, proposed_rule=x['canonical_prior_rules'][1], proposed_positive=x['required_controls'][3], required_correction='Source remaining strictly>60; exactly60 refuses,60seconds+100ns permits at this predicate using an owner UTC7 boundary. Resource age0..60 remains inclusive. Root explicitly withdrew earlier>=60 wording.'))
+
+failed = [r for r in checks if not r['passed']]
+assert len(failed) == 1 and failed[0]['name'] == 'new006_preserves_original_strict_Source60_boundary'
+verdict = 'REFUSE_I13_COMMON006_RECORDED_CONTEXT_SOURCE_RESERVE_BOUNDARY'
+OUT.mkdir(exist_ok=False)
+created = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds')
+proof = dict(schema_version=2, record_type='independent_I13_common006_recorded_context_full_Source_review', author='/root/i2_resume_gap', reviewer='/root/i2_resume_gap', source_author='/root/project_architecture', created_utc=created, verdict=verdict, subjects=subjects, inputs=[pin(bcpath), pin(bppath), pin(i8), pin(i0), p['Source_scope']], checks=checks, checks_passed=len(checks)-1, checks_failed=1, findings=[failed[0]], review_boundary='Genuine own read/hash/strictJSON/AST and semantic contract review; no target imports, functions, mains, fixtures or tests executed. Review only, no Source adoption.', target_execution=False, operational_authority=False, scientific_authority=False, native_Parser_executed=False, actual_admission=False, actual_family_publication=False)
+
+def save(path, value):
+    raw = (json.dumps(value, ensure_ascii=True, sort_keys=True, indent=2) + '\n').encode()
+    assert len(raw) <= 2097152
+    with path.open('xb') as stream:
+        stream.write(raw)
+    assert path.read_bytes() == raw
+    return pin(path, raw)
+
+fullpin = save(OUT / 'INDEPENDENT_I13_COMMON006_CONTEXT_CORRECTION_FULL_SOURCE_PROOF_001.json', proof)
+capsule = dict(schema_version=2, record_type='independent_I13_common006_recorded_context_Source_capsule', author='/root/i2_resume_gap', reviewer='/root/i2_resume_gap', source_author='/root/project_architecture', created_utc=created, verdict=verdict, subjects=subjects, full_proof=fullpin, checks_passed=len(checks)-1, checks_failed=1, findings=[dict(id='F01', location='correction001 canonical_prior_rules[1]/required_controls[3], copied catalogue006/protocol006 policies', issue='Source reserve>=60 and exact60 positive relax original strict>60.', original_Source=pin(i8), original_lines=[275,276], requested='Immutable007 strict>60 and boundary controls; keep resource age<=60 separate.')], target_execution=False, operational_authority=False, scientific_authority=False, native_Parser_executed=False, actual_admission=False, actual_family_publication=False)
+cpin = save(OUT / 'INDEPENDENT_I13_COMMON006_CONTEXT_CORRECTION_SOURCE_CAPSULE_001.json', capsule)
+print(json.dumps(dict(full_proof=fullpin, capsule=cpin, checks_passed=len(checks)-1, checks_failed=1), sort_keys=True))

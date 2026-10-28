@@ -1,0 +1,158 @@
+"""Create bounded inert metadata Source bundles after exact Root Source adoption.
+
+Actual Source editor: /root/project_architecture. No member is imported, parsed,
+compiled, called, restored or deleted. Complete historical bytes remain opaque.
+Partial outputs remain on refusal; this helper never rolls back or overwrites.
+"""
+import base64
+import datetime as dt
+import hashlib
+import json
+import os
+from pathlib import Path
+import sys
+
+ROOT=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003')
+SUBJECTS=ROOT/'m3_peer_contracts_016'
+PUB=ROOT/'publication_001'
+OUT=ROOT/'metadata_helper_source_bundles_001'
+INDEX=OUT/'I13_METADATA_HELPER_SOURCE_BUNDLE_INDEX_001.json'
+CAP=2097152
+PLAN=dict(path=str(ROOT/'I13_EXACT_METADATA_HELPER_SOURCE_BUNDLE_PACKAGING_PLAN_001.json'),bytes=38426,sha256='ee248717db124b607daff4884aae765ccdba995d7ed159fb31521c209abe0fa4')
+PLAN_ADOPTION=dict(path=str(ROOT/'ROOT_I13_EXACT_HELPER_SOURCE_BUNDLE_PLAN_DIFFERENT_REVIEW_ADOPTION_001.json'),bytes=1818,sha256='c1ef8f6ae9ce807077a0b45b0cfa027f42131fc9529073b5a395c0cc73d0351e')
+SCOPE=dict(path=str(ROOT/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_002.json'),bytes=7206,sha256='caaf2eb42d2394bccb56e34b040259a9f878cb2b57d4c082d2514079885e42b0')
+SCOPE_ADOPTION=dict(path=str(ROOT/'ROOT_I13_CURRENT_SOURCE_SCOPE002_DIFFERENT_REVIEW_ADOPTION_001.json'),bytes=2080,sha256='a1cf1fb5d94227e292172a4bae33cefe427f2ede3aa5e1472b18ddcbcbc515e2')
+
+def need(value,why):
+    if not value:raise ValueError(why)
+
+def wire(value):
+    return(json.dumps(value,sort_keys=True,ensure_ascii=True,separators=(',',':'),allow_nan=False)+'\n').encode('ascii')
+
+def pairs(items):
+    value={}
+    for key,child in items:
+        need(key not in value,'duplicate metadata key')
+        value[key]=child
+    return value
+
+def bad(value):raise ValueError('float or nonfinite metadata number')
+
+def decode(raw):
+    need(type(raw)is bytes and len(raw)<=CAP,'bounded builtin metadata bytes')
+    return json.loads(raw.decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+
+def body(path):
+    need(path.is_absolute(),'absolute metadata path')
+    for p in(path,*path.parents):
+        q=p.lstat()
+        need(not p.is_symlink()and not getattr(q,'st_file_attributes',0)&1024,'ordinary nonreparse lineage')
+    before=path.stat()
+    need(path.is_file()and before.st_nlink==1 and 0<=before.st_size<=CAP,'bounded ordinary Source/data')
+    with path.open('rb')as f:
+        raw=f.read(CAP+1);f.seek(0);again=f.read(CAP+1)
+    after=path.stat()
+    need(raw==again and len(raw)==before.st_size==after.st_size and all(getattr(before,k,None)==getattr(after,k,None)for k in('st_dev','st_ino','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes')),'stable whole bytes')
+    return raw
+
+def pin(path,raw=None):
+    if raw is None:raw=body(path)
+    return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+
+def fact(value):
+    need(type(value)is dict and set(value)=={'path','bytes','sha256'}and all(type(k)is str for k in value),'closed fact3')
+    need(type(value['path'])is str and type(value['bytes'])is int and 0<=value['bytes']<=CAP and type(value['sha256'])is str and len(value['sha256'])==64 and all(c in'0123456789abcdef'for c in value['sha256']),'typed bounded fact3')
+    need(Path(value['path']).is_absolute()and not any(ord(c)<32 for c in value['path']),'absolute ordinary path string')
+    return value
+
+def exact(subject):
+    fact(subject);path=Path(subject['path']);raw=body(path)
+    need(pin(path,raw)==subject,'exact pinned whole bytes')
+    return raw
+
+def occurs(value,subject):
+    if type(value)is dict:
+        if set(value)=={'path','bytes','sha256'}and wire(value)==wire(subject):return True
+        return any(occurs(child,subject)for child in value.values())
+    return type(value)is list and any(occurs(child,subject)for child in value)
+
+def adoption(value,subject):
+    need(type(value)is dict and value.get('author')=='/root'and type(value.get('verdict'))is str and value['verdict'].startswith('ACCEPT_')and value.get('target_execution')is False and value.get('operational_authority')is False and value.get('scientific_authority')is False and occurs(value,subject),'exact Root Source adoption')
+
+def fresh():
+    raw=exact(SCOPE);scope=decode(raw);adopted=decode(exact(SCOPE_ADOPTION));adoption(adopted,SCOPE)
+    now=dt.datetime.now(dt.timezone.utc)
+    need(scope['author']=='/root'and scope['target_execution']is False and scope['operational_authority']is False and scope['new_operational_execution_lease_issued']is False,'Source-only scheduling')
+    need(dt.datetime.fromisoformat(scope['interval_start'])<=now and(dt.datetime.fromisoformat(scope['interval_end'])-now).total_seconds()>60,'strict original60 Source reserve')
+    return pin(Path(SCOPE['path']),raw)
+
+def save(path,raw):
+    need(path.is_relative_to(OUT)and type(raw)is bytes and len(raw)<=CAP and not os.path.lexists(path),'fresh contained bounded metadata output')
+    for parent in path.parents:
+        if os.path.lexists(parent):
+            q=parent.lstat();need(parent.is_dir()and not parent.is_symlink()and not getattr(q,'st_file_attributes',0)&1024,'ordinary existing parent')
+    fresh();path.parent.mkdir(parents=True,exist_ok=True)
+    for parent in path.parents:
+        q=parent.lstat();need(parent.is_dir()and not parent.is_symlink()and not getattr(q,'st_file_attributes',0)&1024,'ordinary output lineage')
+    need(not os.path.lexists(path),'still absent output')
+    fresh()
+    with path.open('xb')as f:
+        need(f.write(raw)==len(raw),'complete metadata write');f.flush();os.fsync(f.fileno())
+    need(body(path)==raw,'whole output readback')
+    return pin(path,raw)
+
+def create(source_adoption):
+    scope=fresh();own=pin(Path(__file__));adoption_raw=body(source_adoption)
+    adoption(decode(adoption_raw),own);own_adoption=pin(source_adoption,adoption_raw)
+    plan=decode(exact(PLAN));adoption(decode(exact(PLAN_ADOPTION)),PLAN)
+    need(plan['author']=='/root'and plan['member_count']==160 and plan['member_bytes']==1353151 and plan['maximum_metadata_file_bytes']==CAP and plan['maximum_actual_copy_rows']==512 and plan['maximum_actual_copy_payload_bytes']==67108864,'fixed adopted plan bounds')
+    need(plan['old_files_modified']is False and plan['target_execution']is False and plan['operational_authority']is False,'inert plan')
+    members=plan['members'];need(type(members)is list and len(members)==160,'exact member list')
+    paths=[fact(p)['path']for p in members]
+    need(paths==sorted(paths,key=str.casefold)and len(set(x.casefold()for x in paths))==160,'unique ordered fixed membership')
+    encoded=[]
+    for subject in members:
+        path=Path(subject['path'])
+        need(path.is_relative_to(ROOT)and not path.is_relative_to(SUBJECTS)and not path.is_relative_to(PUB)and path.suffix=='.py'and '..'not in path.parts,'metadata helper selection only')
+        raw=exact(subject);text=base64.b64encode(raw).decode('ascii')
+        need(base64.b64decode(text,validate=True)==raw,'complete strict Base64 inverse')
+        encoded.append(dict(original=subject,canonical_base64=text))
+    need(sum(p['bytes']for p in members)==1353151,'all whole original member bytes')
+    created=dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds')
+    def bundle(number,items):
+        return dict(schema_version=1,record_type='I13_complete_inert_metadata_helper_Source_bundle',author='/root',actual_helper_Source_editor='/root/project_architecture',created_utc=created,
+            packaging_plan=PLAN,packaging_plan_Root_adoption=PLAN_ADOPTION,Source_scope=scope,bundle_ordinal=number,members=items,
+            target_execution=False,operational_authority=False,scientific_authority=False,actual_family_publication=False)
+    groups=[];current=[]
+    for member in encoded:
+        tentative=current+[member]
+        if len(wire(bundle(len(groups)+1,tentative)))>CAP:
+            need(bool(current),'single complete member cannot fit metadata cap');groups.append(current);current=[member]
+        else:current=tentative
+        need(len(wire(bundle(len(groups)+1,current)))<=CAP,'no split or oversized member bundle')
+    if current:groups.append(current)
+    outputs=[(OUT/('I13_METADATA_HELPER_SOURCE_BUNDLE_'+str(i+1).zfill(3)+'.json'),wire(bundle(i+1,group)))for i,group in enumerate(groups)]
+    need(not os.path.lexists(OUT)and not os.path.lexists(INDEX)and all(not os.path.lexists(path)for path,_ in outputs),'entire bundle output set unused before first mutation')
+    need(len(outputs)+1<=512 and sum(len(raw)for _,raw in outputs)<=67108864,'unchanged publication bounds no waiver')
+    actual=[];mapping=[]
+    for (path,raw),group in zip(outputs,groups):
+        for member in group:need(exact(member['original'])==base64.b64decode(member['canonical_base64'],validate=True),'original still exact before bundle write')
+        saved=save(path,raw);actual.append(saved)
+        recorded=decode(body(path));need(recorded==bundle(len(actual),group),'saved complete bundle structure')
+        for i,member in enumerate(recorded['members']):
+            decoded=base64.b64decode(member['canonical_base64'],validate=True)
+            need(decoded==exact(member['original'])and base64.b64encode(decoded).decode('ascii')==member['canonical_base64'],'saved exact canonical inverse')
+            mapping.append(dict(original=member['original'],bundle=saved,member_ordinal=i))
+    need([m['original']for m in mapping]==members and len(mapping)==160,'every exact original once')
+    value=dict(schema_version=1,record_type='I13_inert_metadata_helper_Source_bundle_index',author='/root',actual_helper_Source_editor='/root/project_architecture',created_utc=created,
+        packaging_plan=PLAN,packaging_plan_Root_adoption=PLAN_ADOPTION,Source_scope=scope,bundle_author_Source=own,bundle_author_Source_Root_adoption=own_adoption,
+        bundles=actual,members=mapping,member_count=160,original_member_bytes=1353151,bundle_count=len(actual),member_ordinal_base=0,
+        all_complete_original_bytes_reconstruct_exactly=True,original_files_modified=False,actual_bundles_created=True,
+        target_execution=False,operational_authority=False,scientific_authority=False,actual_family_publication=False,
+        actual_bundle_reconstruction_requires_different_saved_review_and_Root_adoption=True)
+    index=save(INDEX,wire(value));fresh()
+    print(json.dumps(dict(bundle_index=index,bundles=actual,members=len(mapping),original_member_bytes=1353151,actual_bundle_reconstruction_review_pending=True),sort_keys=True))
+
+if __name__=='__main__':
+    need(len(sys.argv)==2,'one exact Root helper Source adoption path')
+    create(Path(sys.argv[1]))

@@ -1,0 +1,242 @@
+"""Own stdlib metadata preparation only. Never import or call a subject module."""
+import ast
+import hashlib
+import json
+from pathlib import Path
+
+ROOT = Path(r'D:\Aenv\pro2')
+OUT = Path(__file__).parent
+W2 = ROOT / r'WORK\resume-20261025-002\receipt_caller_integration_015'
+OLD = ROOT / r'WORK\resume-20261007-001\generation\observer010_lease009_root_001'
+BASE = ROOT / 'resume-2026-10-03-continuation001'
+SOURCES = {
+    'I2_006': W2 / r'i2\build_M3_metadata_current_owner_deferred_006.py',
+    'caller003': W2 / r'caller\compose_current_owner_receipt_caller_003.py',
+    'I7_002': ROOT / r'WORK\resume-20261015-001\native_publisher_implementation_010\i7\publish_current_owner_M3_finite8_002.py',
+    'I8_003': ROOT / r'WORK\resume-20261015-001\native_publisher_admission_011\i8\validate_current_owner_M3_prewrite_admission_003.py',
+    'I9_007': ROOT / r'WORK\resume-20261017-001\m3_prewrite_validation_012\i9\validate_recorded_M3_semantics_007.py',
+}
+
+def sha(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+def fact(path, raw=None):
+    raw = path.read_bytes() if raw is None else raw
+    return {'path': str(path), 'bytes': len(raw), 'sha256': sha(raw)}
+
+def pairs(items):
+    result = {}
+    for key, value in items:
+        if key in result:
+            raise ValueError('duplicate JSON key: ' + key)
+        result[key] = value
+    return result
+
+def reject(token):
+    raise ValueError('noninteger JSON token: ' + token)
+
+def decode(raw):
+    return json.loads(raw.decode('utf-8'), object_pairs_hook=pairs,
+                      parse_float=reject, parse_constant=reject)
+
+def read_pin(pin):
+    if type(pin) is not dict or set(pin) != {'path', 'bytes', 'sha256'}:
+        raise ValueError('not closed fact3')
+    path = Path(pin['path'])
+    raw = path.read_bytes()
+    if fact(path, raw) != pin:
+        raise ValueError('pin mismatch: ' + str(path))
+    return raw
+
+def save(name, value):
+    raw = (json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2,
+                      allow_nan=False) + '\n').encode('utf-8')
+    if len(raw) > 2097152:
+        raise ValueError('metadata cap')
+    with (OUT / name).open('xb') as handle:
+        handle.write(raw)
+    if (OUT / name).read_bytes() != raw:
+        raise ValueError('own metadata readback')
+    return fact(OUT / name, raw)
+
+def source_data(path):
+    raw = path.read_bytes()
+    tree = ast.parse(raw, filename=str(path))
+    lines = raw.splitlines(keepends=True)
+    constants = {}
+    functions = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            try:
+                value = ast.literal_eval(node.value)
+            except (ValueError, TypeError):
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    constants[target.id] = value
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+            part = b''.join(lines[node.lineno-1:node.end_lineno])
+            functions[node.name] = {'first_line': node.lineno, 'last_line': node.end_lineno,
+                                    'bytes': len(part), 'sha256': sha(part),
+                                    'AST_sha256': sha(ast.dump(node, include_attributes=False).encode())}
+    return {'Source': fact(path, raw), 'functions_or_classes': functions}, constants
+
+def body_summary(path):
+    raw = path.read_bytes()
+    body = decode(raw)
+    result = {'subject': fact(path, raw), 'keys': list(body), 'field_count': len(body),
+              'record_type': body.get('record_type'), 'schema_version': body.get('schema_version')}
+    for key in ('author', 'actual_physical_Source_editor', 'retained_semantic_Source_author',
+                'reviewer', 'source_author', 'created_utc', 'stage', 'scope', 'verdict',
+                'canonical_publication', 'operational_authority', 'target_execution',
+                'native_authority', 'tests_executed', 'target_definitions_executed',
+                'actual_binding', 'lease_is_owner_deadline', 'live_fullQA_native_fit_Git_authority',
+                'original_fixtures_and_runtime_admission', 'prepared_source_actions_executed',
+                'target_capture_executed', 'source_approval_issued'):
+        if key in body:
+            result[key] = body[key]
+    for key in ('published', 'rows', 'artifacts'):
+        if key in body:
+            result[key + '_row_shapes'] = [{'role': row.get('role'), 'keys': list(row)} for row in body[key]]
+    return result, body
+
+def main():
+    extracted = {}
+    constants = {}
+    for name, path in SOURCES.items():
+        extracted[name], constants[name] = source_data(path)
+    i2 = constants['I2_006']
+    raw_schema_names = ('FACT_KEYS', 'RECEIPT_KEYS', 'DEPENDENCY_KEYS', 'LEASE_SUPPORT_KEYS',
+                        'SELECTION_SUPPORT_KEYS', 'ROW_KEYS', 'ROLE_SOURCE_CAPS', 'TEMPLATE_ROLES',
+                        'PHASE_BOUND_ROLES', 'CAPTURE_SLOTS', 'BINDING_KEYS', 'CURRENT_PLAN_BINDINGS',
+                        'CURRENT_PLAN_ROLE_SELECTIONS', 'GENERATED_ROLES', 'PEER_ROLES', 'STAGES')
+    selected_constants = {key: value for key, value in i2.items() if key in raw_schema_names}
+    schema_aliases = {key: value for key, value in i2.items()
+                      if any(word in key for word in ('KEYS', 'SUPPORT')) and isinstance(value, (list, tuple))}
+    selected_constants.update(schema_aliases)
+    inventory_pin = i2['INVENTORY_PIN']
+    inventory = decode(read_pin(inventory_pin))
+    selection_pin = i2['CURRENT_ROOT_SELECTION']
+    selection = decode(read_pin(selection_pin))
+    inventory_roles = inventory.get('roles', inventory.get('rows'))
+    if isinstance(inventory_roles, list):
+        inventory_roles = {row['role']: row for row in inventory_roles}
+    canonical_names = {
+        'capture_template': r'metadata3-producer-core-prep001\capture-root-metadata004-corrected018.TEMPLATE.py',
+        'metadata_manifest': r'metadata3-producer-core-prep001\STAGED_MANIFEST_012.json',
+        'plan': r'metadata3-producer-core-prep001\SOURCE_BINDING_PLAN_017.json',
+        'metadata_binding': r'metadata3-producer-core-prep001\ACTUAL_SOURCE_BINDING_019.json',
+        'capture_bound': r'metadata3-producer-core-prep001\capture-root-metadata016.BOUND.py',
+        'phase_binding': r'metadata3-producer-core-prep001\PHASE_PS_SOURCE_BINDING_019.json',
+        'profile': r'consumer005-guard006-runtime-prep001\GUARD_RUNTIME_PROFILE_006-rev010.json',
+        'static': r'consumer005-guard006-runtime-prep001\INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_013.json',
+    }
+    canonical = {}
+    for role, name in canonical_names.items():
+        path = BASE / name
+        raw = path.read_bytes()
+        item = {'actual_body_read': True, 'subject': fact(path, raw),
+                'current_dated_selected_row': next(row for row in selection['rows'] if row['role'] == role)}
+        if path.suffix == '.json':
+            item['body'], body = body_summary(path)
+            if role == 'metadata_manifest':
+                item['payload_count'] = body['payload_count']
+                item['active_source_count'] = body['active_source_count']
+                item['payloads'] = body['payloads']
+            elif role in ('plan', 'metadata_binding', 'phase_binding'):
+                item['actual_body_values'] = body
+            elif role == 'profile':
+                item['selected_contract_values'] = {k: body[k] for k in
+                    ('schema_version', 'record_type', 'scope', 'planned_budgets', 'output_caps',
+                     'observer_limits', 'lease_is_owner_deadline', 'live_fullQA_native_fit_Git_authority',
+                     'fixed_runtime_leaves', 'execution_lease', 'preparation_limitations')}
+            elif role == 'static':
+                item['actual_body_values'] = body
+        else:
+            tree = ast.parse(raw, filename=str(path))
+            item['parse_only_no_import'] = True
+            item['function_class_AST_sha256'] = sha('\n'.join(ast.dump(n, include_attributes=False)
+                for n in tree.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))).encode())
+        canonical[role] = item
+    historical = []
+    names = [
+        'ROOT_SOURCE022_SELECTED45_ROLE_SOURCE_PUBLICATION_REQUEST_PROFILE010_001.json',
+        'ROOT_SOURCE022_SELECTED45_ROLE_SOURCE_PUBLICATION_REQUEST_STATIC013_001.json',
+        'ROOT_SOURCE022_SELECTED45_ROLE_SOURCE_PUBLICATION_REQUEST_MANIFEST012_001.json',
+        'ROOT_SOURCE022_SELECTED45_ROLE_SOURCE_PUBLICATION_REQUEST_PLAN017_CAPTURE_BOUND016_001.json',
+        'ROOT_SOURCE022_SELECTED45_ROLE_SOURCE_PUBLICATION_REQUEST_METADATA_BINDING019_001.json',
+    ]
+    for name in names:
+        summary, request = body_summary(OLD / name)
+        summary['actual_rows'] = request['rows']
+        historical.append(summary)
+        for row in request['rows']:
+            author_raw = read_pin(row['author_receipt'])
+            author_body = decode(author_raw)
+            historical.append({'subject': row['author_receipt'], 'actual_body_read': True,
+                               'keys': list(author_body), 'field_count': len(author_body),
+                               'record_type': author_body.get('record_type'),
+                               'schema_version': author_body.get('schema_version'),
+                               'role': row['role'], 'selected_flags': {k: v for k, v in author_body.items()
+                               if type(v) is bool or k in ('author', 'actual_physical_Source_editor', 'retained_semantic_Source_author')}})
+        pub_name = name.replace('PUBLICATION_REQUEST', 'CANONICAL_PUBLICATION_RECEIPT')
+        summary, publication = body_summary(OLD / pub_name)
+        summary['actual_request_pin_join'] = publication['actual_Root_request'] == fact(OLD / name)
+        summary['actual_publication_rows'] = publication['published']
+        historical.append(summary)
+    for tag in ('PROFILE010', 'STATIC013', 'CAPTURE_TEMPLATE', 'MANIFEST012', 'PLAN017', 'CAPTURE_BOUND016', 'METADATA_BINDING019'):
+        path = OLD / ('ROOT_SOURCE022_' + tag + '_ACTUAL_CANONICAL_SOURCE_VERIFIED_PRIOR_PUBLICATION_RECONCILIATION_001.json')
+        summary, body = body_summary(path)
+        summary['actual_dependency_tuple_pins'] = {k: body[k] for k in
+            ('initial_actual_Root_request', 'initial_actual_canonical_publication_receipt', 'initial_actual_execution_witness',
+             'canonical_Source', 'exact_draft_Source', 'actual_canonical_delta_Source_review', 'canonical_delta_Root_adoption')}
+        summary['referenced_bytes_verified'] = []
+        for key, pin in summary['actual_dependency_tuple_pins'].items():
+            read_pin(pin)
+            summary['referenced_bytes_verified'].append(key)
+        historical.append(summary)
+    phase_dir = ROOT / r'WORK\resume-20261012-001\generation\source027_phasebinding019_static_writer_001'
+    for name in ('ROOT_SOURCE027_PHASEBINDING019_STATIC_DRAFT_AUTHOR_RECEIPT_001.json',
+                 'ROOT_SOURCE027_PHASEBINDING019_STATIC_CANONICAL_SOURCE_PUBLICATION_RECEIPT_001.json'):
+        summary, body = body_summary(phase_dir / name)
+        summary['selected_body_fields'] = {key: value for key, value in body.items()
+            if key not in ('checks', 'complete_predecessor_bytes_b64', 'predecessor_bytes_base64') and
+               (type(value) in (str, bool, int) or value is None or
+                (type(value) is dict and set(value) == {'path', 'bytes', 'sha256'}))}
+        historical.append(summary)
+    agg = ROOT / r'WORK\resume-20261007-001\generation\observer010_lease009_m3_prep_001'
+    for name in ('M3_LEASE009_TEMPLATES_SOURCE_DRAFT_RECEIPT_001.json',
+                 'M3_LEASE009_CAPTURE_SOURCE_DRAFT_RECEIPT_001.json',
+                 'M3_LEASE009_PHASES_SOURCE_DRAFT_RECEIPT_001.json'):
+        summary, body = body_summary(agg / name)
+        summary['receipt22_format_claim'] = False
+        historical.append(summary)
+    audit = {
+        'schema_version': 1, 'record_type': 'Independent_I13_M3_actual_bytes_AST_contract_audit_and_proposal_basis',
+        'author': '/root/project_architecture', 'state': 'READ_HASH_STRICT_JSON_AST_ONLY_NO_TARGET_ENTRY',
+        'Source_scope': fact(ROOT / r'WORK\resume-20261025-003\ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_001.json'),
+        'subjects': extracted, 'I2_literal_contracts': selected_constants,
+        'inventory': {'subject': inventory_pin, 'top_keys': list(inventory)},
+        'selection': {'subject': selection_pin, 'top_keys': list(selection)},
+        'actual_canonical_body_samples': canonical, 'actual_historical_records': historical,
+        'findings': [
+            'Six outside-eight I2 outputs use the exact facts21/receipt22 contract, not I12 generic stage29.',
+            'Original templates stage is five coupled roles; capture stage is exactly plan,capture_bound,metadata_binding; manifest and phase_binding are each singleton stages. Four finite8 template/bound roles retain their existing I11 publication route and ABI.',
+            'Actual retained legacy requests are19 and publications41 at version1, not owner-v2 finite8request21/publication43 or new I13 envelopes. Historical author receipts are not uniformly closed22. They remain raw dated evidence and are not silently migrated.',
+            'Profile/static canonical bodies exist and are real original M3 dependencies; I2 has no profile/static renderer. New metadata graph contracts cannot issue a producer or physical publisher route.',
+            'I7 physical public entries are literal-false plus unconditional hold; finite8 structural/receipt constructors do not perform I2 rerender/I9 semantics or I8 eligibility.',
+            'Source packet purpose6 is a generation grant, publication purpose12 follows the already-born publication request. Each earlier canonical dependency retains its own original request and publication graph.',
+            'A separate new held composition module avoids widening or dropping guards from caller003, whose65523byte Source leaves13bytes under the unchanged65536cap.'
+        ],
+        'target_Source_authored': False, 'tests_executed': False, 'target_execution': False,
+        'operational_authority': False, 'scientific_authority': False,
+        'actual_family_publication': False, 'physical_provenance_qualified': False,
+        'human_origin_authenticated': False, 'authentic_loader_qualified': False,
+        'original_render_algorithms_executed_or_reimplemented': False,
+        'no_whole_host_quiet_or_absence_claim': True,
+    }
+    pin = save('I13_M3_SIX_ROLE_PROFILE_STATIC_ACTUAL_BYTES_AND_AST_AUDIT_001.json', audit)
+    print(json.dumps(pin))
+
+if __name__ == '__main__':
+    main()

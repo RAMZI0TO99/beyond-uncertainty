@@ -1,0 +1,172 @@
+"""Independent saved caller/refusal review. No subject or native call is performed."""
+import datetime as dt
+import hashlib
+import json
+import os
+import re
+import stat
+from fractions import Fraction
+from pathlib import Path
+
+OUT=Path(__file__).parent
+R=OUT.parent.parent
+P=Path('D:/Aenv/pro3/runs/coordination/cho51_p3_contracts_20261027_v1')
+checks=[]
+buffers={}
+numeric_tokens=[]
+class NumericLiteral(str):pass
+def need(v,m):
+    if not v:raise ValueError(m)
+def ck(name,passed,evidence=None):
+    need(type(passed) is bool,'builtin Boolean check');checks.append(dict(name=name,passed=passed,evidence=evidence))
+def raw(p):
+    p=Path(p)
+    for q in (p,*p.parents):need(not q.is_symlink() and not getattr(q.lstat(),'st_file_attributes',0)&1024,'direct nonreparse metadata lineage')
+    a=p.stat();need(stat.S_ISREG(a.st_mode) and a.st_nlink==1 and 0<=a.st_size<=2097152,'bounded regular singlelink metadata')
+    with p.open('rb') as h:
+        b=os.fstat(h.fileno());data=h.read(2097153);c=os.fstat(h.fileno())
+    d=p.stat();k=lambda x:(x.st_dev,x.st_ino,x.st_mode,x.st_nlink,x.st_size,x.st_mtime_ns)
+    need(k(a)==k(b)==k(c)==k(d) and len(data)==a.st_size,'stable samebuffer');return data
+def fact(p,b):return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def get(p,n=None,sha=None):
+    p=Path(p);b=raw(p);fp=fact(p,b);need(n is None or fp['bytes']==n,'announced size');need(sha is None or fp['sha256']==sha,'announced SHA');buffers[str(p)]=b;return b,fp
+def pairs(xs):
+    d={}
+    for k,v in xs:need(k not in d,'duplicate exact JSON key');d[k]=v
+    return d
+def bad(x):raise ValueError('nonfinite JSON')
+def shape(v,allow_literals=False):
+    todo=[(v,0)];n=depth=0
+    while todo:
+        x,d=todo.pop();n+=1;depth=max(depth,d);need(n<=50000 and d<=48,'fullkey nodes/depth')
+        if type(x) is NumericLiteral:need(allow_literals and re.fullmatch(r'-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?',x),'exact original fractional token');continue
+        need(x is None or type(x) in (str,int,bool,list,dict),'builtin JSON only')
+        if type(x) is str:need(not any(55296<=ord(c)<=57343 for c in x),'surrogate refusal')
+        elif type(x) is list:todo.extend((e,d+1) for e in x)
+        elif type(x) is dict:
+            for k,e in x.items():need(type(k) is str,'string key');todo.extend(((k,d+1),(e,d+1)))
+    return dict(nodes_including_keys=n,maximum_depth=depth)
+def scan_numbers(v,path):
+    if type(v) is NumericLiteral:numeric_tokens.append(dict(path=path,original_decimal_token=str(v)))
+    elif type(v) is list:
+        for i,x in enumerate(v):scan_numbers(x,path+'/'+str(i))
+    elif type(v) is dict:
+        for k,x in v.items():scan_numbers(x,path+'/'+k)
+def parse(b,path):
+    v=json.loads(b,object_pairs_hook=pairs,parse_float=NumericLiteral,parse_constant=bad);shape(v,True);scan_numbers(v,path);return v
+def doc(p,n=None,sha=None):
+    b,fp=get(p,n,sha);return parse(b.decode('utf-8'),Path(p).name),fp
+def pd(fp):return doc(fp['path'],fp['bytes'],fp['sha256'])
+def rational(v):
+    need(type(v) in (int,NumericLiteral),'exact integer or decimal token');return Fraction(str(v))
+def rt(v):
+    q=Fraction(v);return dict(numerator=q.numerator,denominator=q.denominator)
+def utc_ticks(s):
+    m=re.fullmatch(r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,7}))?(Z|[+]00:00)',s);need(m is not None,'exact UTC up to100ns')
+    t=dt.datetime.fromisoformat(m[1]+'+00:00')-dt.datetime(1970,1,1,tzinfo=dt.timezone.utc)
+    return (t.days*86400+t.seconds)*10000000+int((m[2] or '').ljust(7,'0'))
+
+scope,sp=doc(R/'ROOT_CURRENT_BOOTSTRAP004_ACTUAL_EVIDENCE_AND_CONDITIONAL_NATIVE_REQUEST_SOURCE_SCOPE_012.json',6453,'faeb9b3037c5f5e157ae7f77056caf29f7ace78ce59e932a8a859400de9eea63')
+sa,sap=doc(R/'ROOT_SOURCE012_DIFFERENT_METADATA_REVIEW_ADOPTION_001.json',3537,'a10be1e14b821bbcecc8da9cfeaedcdf128df3c2912dae9a01491261ce4fb215')
+def fresh():
+    n=dt.datetime.now(dt.timezone.utc);need(dt.datetime.fromisoformat(scope['interval_start'])<=n and (dt.datetime.fromisoformat(scope['interval_end'])-n).total_seconds()>60,'actual Source012 effective strict60');return n.isoformat()
+fresh()
+ck('actual Source012 genuinely adopted current saved-evidence metadata only',sa['Source_only_saved_evidence_review_scope_adopted'] is True and sa['Source_only_scope']==sp and scope['operational_authority'] is False,dict(scope=sp,adoption=sap))
+packet,pp=pd(dict(path=str(R/'ROOT_BOOTSTRAP004_SAVED_PACKET_AND_D01_MISSING_SUCCESS_EVIDENCE_001.json'),bytes=7148,sha256='e39a4403f685a641fa5125384647a58c9d1d145bbf99a303e5f0c3bed93edd9e'))
+audit,eap=pd(packet['actual_external_audit'])
+request,rp=pd(packet['request'])
+admission,adp=pd(packet['Root_admission'])
+peer,pep=pd(packet['actual_peer_decision'])
+witness,wp=doc(OUT/'TRUSTED_APP_BOOTSTRAP004_ACTUAL_SAVED_COMMAND_RECORDS_001.json',17927,'048bc1a3a942cd9564406f081c732f17d244fbc7f89c35bf95e81b3252971b83')
+arts=[pp,eap,rp,adp,pep,wp]
+outputs={}
+pins={}
+for fp in packet['saved_source_outputs']:
+    name=Path(fp['path']).name
+    if name.endswith('.json'):v,actual=pd(fp)
+    else:
+        b,actual=get(fp['path'],fp['bytes'],fp['sha256']);v=b
+    outputs[name]=v;pins[name]=actual;arts.append(actual)
+    ck('exact frozen saved output '+name,actual==fp,actual)
+dispatch=outputs['bootstrap-dispatch_004.json'];attempt=outputs['bootstrap-attempt_004.json'];failure=outputs['bootstrap-failure_004.json'];completion=outputs['bootstrap-caller-completion_004.json'];release=outputs['bootstrap-release_004.json']
+sourceb,sourcep=get(P/'bootstrap-supervise_004.ps1',39178,'689f91d080a1a335324e01156a3962d34e9855ed630042befa66e9d6a3aa5970')
+source=sourceb.decode('utf-8')
+protocolb,protocolp=get(P/'bootstrap-protocol_004.md',16429,'c2bdf423e8616db01e1f862c5c7f9b65da3ac8cd3e3e8f7f0dffccbbe8028524')
+arts.extend([sourcep,protocolp])
+ck('all original actual files read exact without rewrite or operation',len(outputs)==7 and packet['original_saved_bytes_rewritten'] is False,dict(original_fractional_tokens_are_preserved=True,metadata_review_only=True))
+ck('Root supplement uses actual adopted review scope and not result acceptance',packet['scope']==sp and packet['scope_adoption']==sap and packet['observational_manifest_accepted'] is packet['full_caller_accepted'] is False)
+ck('audit exact request admission operative peer decision joins',audit['request_sha256']==rp['sha256'] and audit['root_admission_sha256']==adp['sha256'] and audit['peer_decision_sha256']==pep['sha256'])
+ck('actual peer decision is adopted final not candidate metadata',peer['schema']=='pro2_pro3_bootstrap_observation_decision_v1' and peer['record_is_candidate'] is False and peer['Root_peer_decision_adopted'] is True and peer['accepted'] is peer['released'] is True)
+ck('actual Pro3 separate admission follows request and final peer disposition',admission['schema']=='cho51_p3_bootstrap_observation_admission_v1' and admission['accepted'] is True and admission['peer_decision_path']==pep['path'] and admission['peer_decision_sha256']==pep['sha256'] and admission['request_sha256']==rp['sha256'] and utc_ticks(request['created_utc'])<=utc_ticks(peer['observed_utc'])<=utc_ticks(admission['observed_utc'])<=utc_ticks(audit['external_entry']['utc']))
+ck('peer permission is not physical custody release or current result acceptance',peer['physical_custody_release_claimed'] is peer['peer_result_accepted'] is peer['observational_manifest_accepted'] is False)
+common=['source_sha256','supervisor_sha256','protocol_sha256','source_review_sha256','owner_resource_amendment_sha256','source_scope_path','source_scope_sha256','source_adoption_path','source_adoption_sha256','runtime_executable_sha256','process_dll_sha256','window_start_utc','window_end_utc','expected_numerical_budget']
+ck('request peer and Pro3 admission preserve exact common Source runtime window and budget identities',all(peer[k]==admission[k]==request[k] for k in common))
+ck('all common actual Source outputs join same scope request and admission',all(x['scope']==request['scope'] and x['request_sha256']==rp['sha256'] and x['root_admission_sha256']==adp['sha256'] and x['scientific_admission'] is False for x in [dispatch,attempt,failure,completion,release]))
+ck('actual seven output pins agree with exact external audit map',audit['source_defined_output_pins']=={name:{k:v for k,v in fp.items() if k!='path'} for name,fp in pins.items()})
+ck('attempt completion and release whole artifact link chain exact',attempt['dispatch_sha256']==completion['dispatch_sha256']==release['dispatch_sha256']==pins['bootstrap-dispatch_004.json']['sha256'] and completion['failure_sha256']==pins['bootstrap-failure_004.json']['sha256'] and release['caller_completion_sha256']==pins['bootstrap-caller-completion_004.json']['sha256'] and completion['supervision_sha256'] is None)
+
+closed={
+ 'bootstrap-dispatch_004.json': ['schema','scope','observed_utc','request_sha256','root_admission_sha256','scientific_admission','external_entry_qpc','external_entry_utc','qpc_frequency','begin_entry_qpc','begin_entry_utc','maximum_seconds','caller_return_observed','automatic_retry_permitted'],
+ 'bootstrap-attempt_004.json':['schema','scope','observed_utc','request_sha256','root_admission_sha256','scientific_admission','dispatch_sha256','helper_invocations','automatic_retry_permitted'],
+ 'bootstrap-failure_004.json':['schema','scope','observed_utc','request_sha256','root_admission_sha256','scientific_admission','mode','failure','start_attempted','start_outcome','child_started','child_pid','child_reaped','custody_closed','stdout_eof','stderr_eof','stdout','stderr','partial_outputs_preserved','automatic_retry_permitted','full_caller_accepted'],
+ 'bootstrap-caller-completion_004.json':['schema','scope','observed_utc','request_sha256','root_admission_sha256','scientific_admission','dispatch_sha256','supervision_sha256','failure_sha256','invoke_tool_call_id','post_invoke_return_upper_bound_qpc','post_invoke_return_upper_bound_utc','invoke_tool_exit_code','start_attempted','start_outcome','qpc_frequency','external_entry_qpc','elapsed_upper_bound_seconds','observation_semantics','invoke_tool_return_observed_by_root','operation_succeeded','custody_closed','closure_guard_passed','closure_guard_refusal','release_published','full_caller_accepted'],
+ 'bootstrap-release_004.json':['schema','scope','observed_utc','request_sha256','root_admission_sha256','scientific_admission','dispatch_sha256','caller_completion_sha256','external_entry_qpc','qpc_frequency','release_publication_elapsed_seconds','start_attempted','start_outcome','complete_tool_exit_code','operation_succeeded','custody_closed','operation_released','closure_guard_passed','closure_guard_refusal','release_tool_return_observed','post_release_external_audit_required','full_caller_accepted','observational_manifest_accepted']}
+for name,keys in closed.items():ck('saved closed receipt keyset '+name,set(outputs[name])==set(keys) and len(outputs[name])==len(keys))
+
+commands=witness['six_actual_records_in_thread_order']
+ck('six trusted app actual command records complete ordered and untruncated',len(commands)==6 and len({x['id'] for x in commands})==6 and all(x['type']=='commandExecution' and x['output']['truncated'] is False for x in commands),[dict(app_exec_id=x['id'],exit_code=x['exitCode'],status=x['status'],duration_ms=x['durationMs']) for x in commands])
+pre=parse(commands[0]['output']['text'],'trusted_app/pre_native_output')
+post=parse(commands[-1]['output']['text'],'trusted_app/post_native_output')
+ck('actual trusted preBegin native output matches external audit',all(pre[k]==audit['external_entry'][k] for k in ['qpc','frequency','utc']) and commands[0]['exitCode']==0)
+ck('actual trusted postRelease native output matches external audit',all(post[k]==audit['post_release_actual_tool_return_upper_bound'][k] for k in ['qpc','frequency','utc']) and commands[-1]['exitCode']==0)
+ck('actual four mode exit vector corroborated not merely transcribed',[x['exitCode'] for x in commands[1:5]]==[0,1,0,0] and [x['exit_code'] for x in audit['actual_modes']]==[0,1,0,0] and audit['four_modes_all_exit_zero'] is False)
+for i,mode in enumerate(['Begin','Invoke','Complete','Release']):
+    cmd=commands[i+1];row=audit['actual_modes'][i]
+    ck('trusted actual '+mode+' command source request admission and exact output',('-Mode '+mode) in cmd['command'] and request['supervisor_sha256'] in cmd['command'] and rp['sha256'] in cmd['command'] and adp['sha256'] in cmd['command'] and cmd['exitCode']==row['exit_code'] and cmd['output']['text']==row['output'] and cmd['cwd']==str(Path('D:/Aenv/pro3')))
+    ms=rational(row['tool_wall_time_seconds'])*1000
+    ck('tool walltime rounded app milliseconds consistent '+mode,abs(ms-cmd['durationMs'])<1,dict(original_audit_decimal=str(row['tool_wall_time_seconds']),app_duration_ms=cmd['durationMs'],precision_limit='App only corroborates rounded milliseconds; exact fractional tool walltime and original chunk label are peer audit metadata.'))
+ck('actual Complete command carries Invoke failure exit and original audit chunk label',"-InvokeToolExitCode 1" in commands[3]['command'] and "exec_command/chunk:b74257;session:none" in commands[3]['command'] and completion['invoke_tool_call_id']=='exec_command/chunk:b74257;session:none' and completion['invoke_tool_exit_code']==1)
+ck('actual Release command carries completed Complete exit0',"-CompleteToolExitCode 0" in commands[4]['command'] and release['complete_tool_exit_code']==0)
+ck('internal mode console outputs never claim full caller or science acceptance',all(parse(commands[i]['output']['text'],'trusted_app/'+str(i))['full_caller_accepted'] is False for i in [1,3,4]))
+ck('Invoke actual exception message agrees with saved failure','Unexpected descendant; no authority to kill it' in commands[2]['output']['text'] and failure['failure']==audit['reported_failure']=='Unexpected descendant; no authority to kill it' and failure['mode']=='Invoke')
+delta=post['qpc']-pre['qpc'];freq=pre['frequency'];elapsed=Fraction(delta,freq)
+ck('exact common QPC domain positive and nonregressing',type(freq) is int and freq==post['frequency']==dispatch['qpc_frequency']==completion['qpc_frequency']==release['qpc_frequency']==10000000 and pre['qpc']<post['qpc'])
+ck('external whole caller exact111606095ticks equals original11point1606095 token',delta==111606095 and rational(audit['whole_caller_elapsed_upper_bound_seconds'])==elapsed==Fraction(111606095,10000000),dict(delta_ticks=delta,frequency=freq,exact_seconds_decimal=str(audit['whole_caller_elapsed_upper_bound_seconds']),exact_rational=rt(elapsed)))
+ck('actual postRelease external upper bound is strictly within90 by QPC and UTC',elapsed<90 and 0<utc_ticks(post['utc'])-utc_ticks(pre['utc'])<900000000,dict(utc_elapsed_100ns=utc_ticks(post['utc'])-utc_ticks(pre['utc']),utc_exact_seconds=rt(Fraction(utc_ticks(post['utc'])-utc_ticks(pre['utc']),10000000)),not_a_success_or_custody_pass=True))
+ck('actual Begin received the exact common preBegin clock data',str(pre['qpc']) in commands[1]['command'] and pre['utc'] in commands[1]['command'] and str(freq) in commands[1]['command'] and dispatch['external_entry_qpc']==pre['qpc'] and dispatch['external_entry_utc']==pre['utc'])
+ck('actual Begin entry fresh within5seconds in both saved clocks',0<=dispatch['begin_entry_qpc']-pre['qpc']<5*freq and 0<=utc_ticks(dispatch['begin_entry_utc'])-utc_ticks(pre['utc'])<50000000)
+ck('actual Complete first entry is a postInvoke return upper bound exact rational',completion['external_entry_qpc']==pre['qpc'] and pre['qpc']<completion['post_invoke_return_upper_bound_qpc']<post['qpc'] and rational(completion['elapsed_upper_bound_seconds'])==Fraction(completion['post_invoke_return_upper_bound_qpc']-pre['qpc'],freq) and completion['invoke_tool_return_observed_by_root'] is True and 'upper bound' in completion['observation_semantics'])
+ck('release internal publication time is not treated as actual final tool return',rational(release['release_publication_elapsed_seconds'])<elapsed and release['release_tool_return_observed'] is False and release['post_release_external_audit_required'] is True)
+ck('all saved output observations precede external postRelease upper bound and respect windows reserve',all(utc_ticks(pre['utc'])<=utc_ticks(x['observed_utc'])<=utc_ticks(post['utc']) for x in [dispatch,attempt,failure,completion,release]) and utc_ticks(request['window_start_utc'])<=utc_ticks(pre['utc']) and utc_ticks(post['utc'])<utc_ticks(request['window_end_utc'])-600000000 and utc_ticks(post['utc'])<utc_ticks(peer['Source_only_scope_adoption']['path'] and '2026-10-27T18:30:00+00:00')-600000000)
+ck('Source011 alone governed actual entry Source012 is only later saved review',utc_ticks(peer['window_start_utc'])<=utc_ticks(pre['utc'])<utc_ticks(scope['interval_start']) and peer['source_scope_sha256']=='c52dbbfc4a5202bc5476e6b41071d72a1163b339e8bcaad29acf2a6dae70a540' and sp['sha256']=='faeb9b3037c5f5e157ae7f77056caf29f7ace78ce59e932a8a859400de9eea63')
+ck('attempt marker is consumed preStart snapshot not a no-helper claim',type(attempt['helper_invocations']) is int and attempt['helper_invocations']==0 and utc_ticks(attempt['observed_utc'])<utc_ticks(failure['observed_utc']) and failure['start_attempted'] is failure['child_started'] is True and failure['start_outcome']=='started' and '$attempt.helper_invocations=0' in source and source.index('$attempt.helper_invocations=0')<source.index('$startAttempted=$true'),dict(Source_lines=[306,320],saved_failure_supersedes_preStart_zero=True))
+ck('known started state and PID are preserved without inventing unknown actual identity fields',failure['start_attempted'] is completion['start_attempted'] is release['start_attempted'] is True and failure['start_outcome']==completion['start_outcome']==release['start_outcome']=='started' and type(failure['child_pid']) is int and failure['child_pid']==302124)
+ck('literal original child unreaped and custody unclosed across all saved outcomes',failure['child_reaped'] is failure['custody_closed'] is completion['custody_closed'] is release['custody_closed'] is False)
+ck('literal failed operation remains unreleased despite successful bookkeeping modes',completion['operation_succeeded'] is release['operation_succeeded'] is release['operation_released'] is False and release['complete_tool_exit_code']==0)
+ck('no fullcaller or observational success accepted in any saved outcome',all(x['full_caller_accepted'] is False for x in [failure,completion,release,audit]) and release['observational_manifest_accepted'] is audit['observational_manifest_accepted'] is False)
+ck('closure guards true do not repair failed operation or original custody',completion['closure_guard_passed'] is release['closure_guard_passed'] is True and completion['closure_guard_refusal'] is release['closure_guard_refusal'] is None and release['custody_closed'] is False)
+for channel in ['stdout','stderr']:
+    fp=pins['bootstrap-'+channel+'_004.txt']
+    ck('bounded actual empty '+channel+' with exact hash and asserted EOF',outputs['bootstrap-'+channel+'_004.txt']==b'' and fp['bytes']==0 and failure[channel]==fp and failure[channel+'_eof'] is True and fp['sha256']=='e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
+ck('both EOF assertions never treated as retained-handle reap proof',failure['stdout_eof'] is failure['stderr_eof'] is True and failure['child_reaped'] is False)
+ck('failure partial consumed outputs preserved with automatic retry forbidden',failure['partial_outputs_preserved'] is True and failure['automatic_retry_permitted'] is attempt['automatic_retry_permitted'] is dispatch['automatic_retry_permitted'] is audit['automatic_retry_permitted'] is False and audit['used_identity_preserved'] is True)
+ck('unexpected row identity and cleanup exception or stage are genuinely unknown',packet['unexpected_process_identity']==packet['cleanup_exception_or_stage']=='UNKNOWN_NOT_SAVED',dict(no_actual_process_table_rows_retained=True,no_consolehost_or_cause_hypothesis_accepted=True,no_actual_kill_or_reap_inferred=True))
+later=witness['later_readonly_sample_record'][0]
+ck('later PID sample is separately dated limited audit claim never original reap',later['exitCode']==0 and later['output']['truncated'] is True and audit['later_cim_observation']['returned_rows']==0 and 'cannot retroactively establish original retained-handle reap' in audit['later_cim_observation']['limitation'],dict(app_exec_id=later['id'],app_output_truncated=True,zero_rows_independently_verified_by_this_reviewer=False,not_an_original_identity_or_release_witness=True))
+ck('missing success payloads remain explicit Root listing evidence not invented data',packet['D01_status']=='NOT_REACHED_MISSING_REQUIRED_SUCCESS_ARTIFACTS' and packet['accessible_directory_listing']['missing_success_artifact_names']==audit['missing_success_artifacts_at_later_listing'] and packet['D01_full_manifest_schema_payload_coverage_acceptance'] is False and packet['full_success_manifest_or_helper_attempt_payload_available'] is False,dict(Root_point_in_time_listing=packet['accessible_directory_listing'],reviewer_performed_no_new_listing_or_native_query=True))
+ck('all original decimal tokens preserved as exact strings and rational arithmetic',all(type(x['original_decimal_token']) is str for x in numeric_tokens) and len(numeric_tokens)>=10,numeric_tokens)
+ck('conditional native request cannot advance from failed unclosed unreleased bootstrap',scope['native_pin_preparation_admitted'] is False and packet['native_preparation_request_prepared'] is packet['native_preparation_request_review_advanced'] is False and release['operation_succeeded'] is release['operation_released'] is False)
+for p,b in list(buffers.items()):need(raw(p)==b,'saved input changed before seal')
+ck('all exact saved and Source input buffers reread unchanged before sealing',True,dict(file_count=len(buffers)))
+need(len(checks)>0 and len(checks)==len({x['name'] for x in checks}) and all(x['passed'] is True for x in checks),'actual integrity findings require explicit refusal not artificial PASS')
+blockers=[dict(id='ACTUAL_INVOKE_FAILED',evidence='Actual Invoke exit1; Unexpected descendant; no authority to kill it.'),dict(id='ORIGINAL_CUSTODY_UNCLOSED',evidence='Actual saved child_reaped=false/custody_closed=false; later PID-based report is not original retained-handle reap.'),dict(id='ACTUAL_OPERATION_UNRELEASED',evidence='Complete and Release metadata exits0 but operation_succeeded=false and operation_released=false.'),dict(id='SUCCESS_PAYLOAD_D01_NOT_REACHED',evidence='No saved success supervision/helper-attempt/manifest available in retained Root listing; full payload/runtime coverage unaccepted.')]
+need(len(arts)==len({x['path'].casefold() for x in arts}),'unique actual reviewed artifact list')
+def save(name,v):
+    shape(v);b=(json.dumps(v,sort_keys=True,indent=2,ensure_ascii=False,allow_nan=False)+'\n').encode('utf-8');need(len(b)<=2097152,'own proof cap');fresh();p=OUT/name
+    with p.open('xb') as h:need(h.write(b)==len(b),'whole CreateNew');h.flush();os.fsync(h.fileno())
+    need(raw(p)==b,'actual own proof readback');return fact(p,b)
+v=dict(record_type='genuine_independent_saved_bootstrap004_caller_clock_failure_and_unclosed_custody_review',reviewer='/root/i13_final_review',verdict='PASS_SAVED_BOOTSTRAP004_REFUSAL_INTEGRITY_REVIEW_UNCLOSED_CUSTODY',observed_utc=fresh(),scope=sp,scope_adoption=sap,reviewed_artifacts=arts,checks_passed=len(checks),checks_failed=0,checks=checks,remaining_actionable_findings=[],actual_result_blockers=blockers,actual_operation_accepted=False,full_caller_accepted=False,observational_manifest_accepted=False,peer_result_accepted=False,physical_custody_release_accepted=False,cleanup_or_reap_or_process_identity_resolved=False,bootstrap004_identity_consumed=True,retry_or_replay_admitted=False,native_request_advancement_admitted=False,native_preparation_execution_admitted=False,source_only=True,saved_evidence_only=True,subject_execution_performed=False,subject_PS_parsed_loaded_compiled_or_called=False,live_native_or_process_resource_pause_queries_performed=False,current_physical_host_absence_or_quiet_claimed=False,scientific_admission=False,exact_outer_qpc=dict(pre=pre['qpc'],post=post['qpc'],delta_ticks=delta,frequency=freq,seconds_literal=str(audit['whole_caller_elapsed_upper_bound_seconds']),rational=rt(elapsed)),actual_mode_exit_vector=[0,1,0,0],original_fractional_numeric_tokens=numeric_tokens,tool_identity_precision_limit=witness['limitations'],review_boundary='PASS concerns independent saved-evidence integrity only. The actual bootstrap FAILED and remains UNREAPED/UNCLOSED/UNRELEASED in its original receipts. Timing below90 and successful Complete/Release bookkeeping never establish successful observation or physical release. Failed row identity and cleanup cause/stage remain unknown, later PID absence cannot repair custody, and no native request may advance. No rerun, query, kill, admission or subject call was performed. Full success payload/D01/runtime/native acceptance is absent and separate.',own_review_Source=fact(Path(__file__),raw(Path(__file__))))
+fp=save('INDEPENDENT_BOOTSTRAP004_SAVED_CALLER_REFUSAL_UNCLOSED_CUSTODY_FULL_PROOF_001.json',v)
+c={k:x for k,x in v.items() if k!='checks'};c['full_proof']=fp
+cap=save('INDEPENDENT_BOOTSTRAP004_SAVED_CALLER_REFUSAL_UNCLOSED_CUSTODY_CAPSULE_001.json',c)
+print(json.dumps(dict(capsule=cap,full_proof=fp,checks_passed=len(checks),checks_failed=0,actual_operation_accepted=False,actual_result_blockers=blockers,native_request_advancement_admitted=False)))

@@ -1,0 +1,81 @@
+"""Own additive static fixture predicate correction; never runs fixture/validator."""
+import ast
+import base64
+import copy
+import hashlib
+import json
+from pathlib import Path
+ROOT=Path(__file__).parent;OUT=ROOT/'m3_peer_contracts_016'/'i13'
+old=OUT/'exercise_selected_peer_author_metadata_memory_001.py';before=old.read_bytes();tree=ast.parse(before);text=before.decode()
+catalog_node=next(n for n in tree.body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='CASE_CATALOGUE'for t in n.targets));cases=ast.literal_eval(catalog_node.value)
+fixed=ast.literal_eval(next(n.value for n in tree.body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='FIXED'for t in n.targets)))
+base=json.loads(base64.b64decode(fixed['base_catalogue']['base64']));policy=json.loads(base64.b64decode(fixed['role_data']['base64']));historical=json.loads(base64.b64decode(fixed['historical45']['base64']))
+def add(name,role='metadata_peer',handler='positive',expected=None,**kw):cases.append(dict(name='peer_'+name,role=role,handler=handler,expected_error=expected,**kw))
+for label,schema in [('constructor_API','constructor_API13'),('selection','selection13')]:
+    fields=list(base['schemas'][schema]['fields'])if schema in base['schemas']else['author','created_utc','current_complete45_inventory','current_owner_scope','current_selection','derived_launcher_runtime_path','new_canonical_lease','operational_authority','record_type','rows','schema_version','selected_Source_nonce','target_execution']
+    for key in fields:add('closed_'+schema+'_missing_'+key,handler='delete',expected='E_SCHEMA',label=label,field=key)
+    add('closed_'+schema+'_unknown',handler='extra',expected='E_SCHEMA',label=label)
+for key in base['schemas']['phase_parser_support9_v2']['fields']:
+    add('closed_phase_parser_support9_missing_'+key,role='phase_peer',handler='delete',expected='E_SCHEMA',label='context',field='fresh_parser_support.'+key)
+index=next(i for i,r in enumerate(historical['rows'])if r['role']=='metadata_peer')
+for key in historical['rows'][index]:add('closed_selected_row9_missing_'+key,handler='delete',expected='E_SCHEMA',label='selection',field='rows.'+str(index)+'.'+key)
+for field in ('Source','API','different_review','Root_adoption','editor'):
+    add('producer_support_missing_'+field,handler='delete',expected='E_SCHEMA',label='wrapper',field='producer_support.'+field)
+for variant in ('content','worker','retained','caller','fixed_other_editor','outside_selected_role'):
+    add('actor_union_'+variant,handler='union_actor',expected='E_REVIEWER',variant=variant)
+add('nominal_is_not_retained_phase',role='phase_peer',handler='nominal',expected='E_ACTOR_JOIN')
+add('nominal_is_not_retained_pipeline',role='pipeline_peer',handler='nominal',expected='E_ACTOR_JOIN')
+for variant,expected in [('dependency_at_cap',None),('dependency_over_cap','E_PIN_BYTES'),('draft_at_cap',None),('draft_over_cap','E_PIN_BYTES')]:
+    add('cap_'+variant,role='metadata_bound_review'if variant.startswith('draft')else'metadata_peer',handler='cap',expected=expected,variant=variant)
+for label in ('wrapper','now'):
+    add('UTC6_rejects_UTC7_'+label,handler='utc7',expected='E_TIME',label=label)
+add('wrapper_chronology_one_microsecond',handler='microsecond',expected='E_CHRONOLOGY')
+add('inherited_decision_chronology100ns',handler='native100ns',expected='E_CHRONOLOGY')
+for label in ('receipt','predecessor_checker_peer','predecessor_metadata_peer'):
+    add('unsupported_actual_body_'+label,handler='unsupported',expected='E_UNSUPPORTED_AUTHOR_PACKET_ABI',label=label)
+assert len(cases)==len({s['name']for s in cases})
+lines=text.splitlines(keepends=True);oldcat=''.join(lines[catalog_node.lineno-1:catalog_node.end_lineno]);text=text.replace(oldcat,'CASE_CATALOGUE = '+repr(cases)+'\n',1)
+text=text.replace("    if type(v)is list:return('list',tuple(_fingerprint(x)for x in v))", "    if type(v)is list:return('list',tuple(_fingerprint(x)for x in v))\n    if type(v)is tuple:return('tuple',tuple(_fingerprint(x)for x in v))")
+text=text.replace("row['body']=_wire(v);row['pin']=_pin(old['path'],row['body'])", "row['body']=v if type(v)is bytes else _wire(v);row['pin']=_pin(old['path'],row['body'])",1)
+text=text.replace("r['pin']['path']=r['pin']['path'].lower()", "r['pin']['path']=r['pin']['path'][:3]+r['pin']['path'][3:].swapcase()")
+text=text.replace("v['reviewer']=actor.upper()if spec['variant']=='case_alias'", "v['reviewer']='/root/'+actor[len('/root/'):].upper()if spec['variant']=='case_alias'")
+text=text.replace("        v['subjects']=[]", "        v['subjects']=[copy.deepcopy(_row(b,'owner')['pin'])]")
+needle="    _rewrite(b,label,v)\n\n"
+replacement="    _rewrite(b,label,v)\n    if handler=='reviewer' and label.endswith('_full'):\n        other=label[:-len('_full')]+'_capsule';capsule=_json(_row(b,other)['body']);capsule['reviewer']=v['reviewer'];_rewrite(b,other,capsule)\n\n"
+assert needle in text;text=text.replace(needle,replacement,1)
+needle="    if handler=='strict':\n"
+new=r'''    if handler=='unsupported':b['packet']=_row(b,label)['body'];return
+    if handler=='utc7':
+        if label=='now':b['now_utc']='2026-10-25T11:00:20.0000001+00:00';return
+        v=_json(_row(b,'wrapper')['body']);v['created_utc']='2026-10-25T11:00:11.0000001+00:00';_rewrite(b,'wrapper',v);return
+    if handler=='microsecond':
+        v=_json(_row(b,'wrapper')['body']);v['created_utc']='2026-10-25T11:00:09.999999+00:00';_rewrite(b,'wrapper',v);return
+    if handler=='native100ns':
+        v=_json(_row(b,'decision')['body']);v['created_utc']='2026-10-25T11:00:04.0000001+00:00';_rewrite(b,'decision',v);return
+    if handler=='cap':
+        size=65537 if 'over_cap'in spec['variant']else65536
+        if spec['variant'].startswith('dependency'):_rewrite(b,'input_capture_template',b'x'*size)
+        else:
+            raw=_row(b,'draft')['body'];assert len(raw)<size;raw=raw+b' '*(size-len(raw));_rewrite(b,'draft',raw);_rewrite(b,'proposal',raw)
+        return
+    if handler=='nominal':
+        inner=_json(_row(b,'inner')['body']);selection=_json(_row(b,'selection')['body']);selected=next(r for r in selection['rows']if r['role']==inner['role'])
+        v=_json(_row(b,'receipt')['body']);v['original_peer_source_author_nominal']=selected['retained_semantic_Source_author'];_rewrite(b,'receipt',v);return
+    if handler=='union_actor':
+        actors=dict(content='/root/i13_peer_content/metadata_peer',worker='/root/i13_peer_preparer/metadata_peer',retained='/root/selector_prep',caller=EDITOR,fixed_other_editor='/root/project_architecture',outside_selected_role='/root/i13_peer_preparer/selector')
+        v=_json(_row(b,'producer_capsule')['body']);v['reviewer']=actors[spec['variant']];_rewrite(b,'producer_capsule',v);return
+'''
+assert needle in text;text=text.replace(needle,new+needle,1)
+text=text.replace('source_editor=EDITOR,now_utc=NOW)','source_editor=EDITOR,now_utc=b.get(\'now_utc\',NOW))')
+path=OUT/'exercise_selected_peer_author_metadata_memory_002.py';raw=text.encode();assert len(raw)<=2097152;nt=ast.parse(raw);compile(raw,str(path),'exec',dont_inherit=True)
+with path.open('xb')as f:f.write(raw)
+def pin(p,b=None):
+    b=p.read_bytes()if b is None else b
+    return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def save(p,v):
+    b=(json.dumps(v,sort_keys=True,indent=2)+'\n').encode();assert len(b)<=2097152
+    with p.open('xb')as f:f.write(b)
+    return pin(p,b)
+cp=save(OUT/'I13_PEER_FRESH_LITERAL_CASE_CATALOGUE_002.json',dict(schema_version=1,record_type='I13_fresh_peer_literal_case_catalogue',author='/root/i2_resume_gap',Source=pin(path,raw),cases=cases,count=len(cases),names_json_sha256=hashlib.sha256(json.dumps([s['name']for s in cases],separators=(',',':')).encode()).hexdigest(),target_execution=False,tests_executed=False,operational_authority=False,scientific_authority=False))
+receipt=save(OUT/'I13_PEER_FRESH_MEMORY_FIXTURE_SOURCE_AUTHOR_RECEIPT_002.json',dict(schema_version=1,record_type='I13_fresh_peer_fixture002_Source_author_receipt',author='/root/i2_resume_gap',Source=pin(path,raw),literal_catalogue=cp,kernel=pin(OUT/'validate_selected_peer_author_packet_metadata_005.py'),API=pin(OUT/'CURRENT_OWNER_SELECTED_PEER_CANONICAL_AUTHOR_METADATA_INERT_API_005.json'),before_Source=pin(old,before),before_Source_bytes_base64=base64.b64encode(before).decode(),prior_receipt=pin(OUT/'I13_PEER_FRESH_MEMORY_FIXTURE_SOURCE_AUTHOR_RECEIPT_001.json'),case_count=len(cases),method='Own static source authoring/AST/compile only, no fixture/target imports/calls. Coherent reviewer/full/capsule mutation, valid nonempty coverage witness, casefold preserving Root/drive grammar, typed global tuple fingerprint; added finite missing schemas/actorunion/cap/UTC/actualwrongshape controls.',target_execution=False,tests_executed=False,operational_authority=False,scientific_authority=False,actual_family_publication=False))
+print(json.dumps(dict(Source=pin(path,raw),catalogue=cp,receipt=receipt,cases=len(cases)),sort_keys=True))

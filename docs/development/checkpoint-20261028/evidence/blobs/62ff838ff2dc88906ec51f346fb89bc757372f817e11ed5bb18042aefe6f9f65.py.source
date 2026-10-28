@@ -1,0 +1,189 @@
+"""Source-only fixture construction repair from saved004/005; invokes no fixture."""
+import ast
+import base64
+import copy
+import datetime
+import hashlib
+import json
+import os
+from pathlib import Path
+import zlib
+R=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003');C=R/'m3_peer_contracts_016';T=C/'i13'
+END=datetime.datetime.fromisoformat('2026-10-25T18:03:03.861408+00:00')
+def pin(p):
+ b=p.read_bytes();return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def wire(v):return(json.dumps(v,sort_keys=True,ensure_ascii=True,indent=2,allow_nan=False)+'\n').encode('utf8')
+def save(p,b):
+ assert END-datetime.datetime.now(datetime.timezone.utc)>datetime.timedelta(seconds=60)and len(b)<=2097152
+ with p.open('xb')as f:f.write(b);f.flush();os.fsync(f.fileno())
+ assert p.read_bytes()==b;print(json.dumps(pin(p),sort_keys=True));return p
+def sj(n,v):return save(T/n,wire(v))
+def dump(n):return ast.dump(n,include_attributes=False)
+def ah(n):return hashlib.sha256(dump(n).encode('utf8')).hexdigest()
+def defs(n):return{x.name:x for x in n.body if isinstance(x,(ast.FunctionDef,ast.ClassDef))}
+def literal(n,name):return ast.literal_eval(next(x.value for x in n.body if isinstance(x,ast.Assign)and any(isinstance(a,ast.Name)and a.id==name for a in x.targets)))
+FLAGS=dict(target_execution=False,operational_authority=False,scientific_authority=False,native_Parser_executed=False,actual_family_publication=False)
+
+REWRITE=r'''    def rewrite(self, label, value, path=None):
+        # A bounded snapshot and topological pass avoids repeated dense-DAG rehash.
+        records=self.b['records'];assert type(records)is list and len(records)<=256
+        target=next(i for i,r in enumerate(records)if r['pin']['path']==self.b['labels'][label])
+        snapshot=copy.deepcopy(records);old=snapshot[target]['pin'];path=path or old['path']
+        raw=value if type(value)is bytes else _ow_wire(value)
+        bypath={r['pin']['path']:i for i,r in enumerate(snapshot)}
+        assert len(bypath)==len(snapshot)
+        values={}
+        for i,r in enumerate(snapshot):
+            if r['pin']['path'] in self.mutable or i==target:
+                try:values[i]=_ow_json(raw if i==target else r['body'])
+                except (ValueError,UnicodeError):pass
+        dependencies={}
+        for i,v in values.items():
+            dependencies[i]=set()
+            for ref in _ow_pins(v):
+                key=ref.get('path')
+                if type(key)is str and key in bypath:
+                    j=bypath[key]
+                    if ref==snapshot[j]['pin']:dependencies[i].add(j)
+        affected={target}
+        for unused in range(len(snapshot)):
+            more={i for i,d in dependencies.items()if d & affected}
+            if more<=affected:break
+            affected|=more
+        pending=set(affected);resolved={};bodies={}
+        def rebind(v):
+            if type(v)is dict:
+                if set(v)=={'path','bytes','sha256'}:
+                    key=v.get('path')
+                    if type(key)is str and key in bypath:
+                        j=bypath[key]
+                        if j in resolved and v==snapshot[j]['pin']:return copy.deepcopy(resolved[j])
+                    return copy.deepcopy(v)
+                return{k:rebind(child)for k,child in v.items()}
+            if type(v)is list:return[rebind(child)for child in v]
+            return v
+        for unused in range(len(snapshot)):
+            ready=sorted(i for i in pending if not(dependencies.get(i,set()) & pending))
+            if not ready:break
+            for i in ready:
+                if i in values:
+                    updated=rebind(values[i])
+                    body=(_ow_wire(updated)if i==target or updated!=values[i]else snapshot[i]['body'])
+                else:body=raw if i==target else snapshot[i]['body']
+                destination=path if i==target else snapshot[i]['pin']['path']
+                bodies[i]=body;resolved[i]=_ow_pin(destination,body);pending.remove(i)
+        assert not pending,'fixture mutable fact3 dependency cycle; no target result claimed'
+        for i in sorted(affected):records[i].update(pin=resolved[i],body=bodies[i])
+        for name,oldpath in tuple(self.b['labels'].items()):
+            if oldpath==old['path']:self.b['labels'][name]=path
+        self.mutable.discard(old['path']);self.mutable.add(path)
+        return self.p(label)
+'''
+
+old_helper=T/'I13_NEW_OUTER_ENVELOPE_FIXTURE_HELPER_007.py.source';helper=T/'I13_NEW_OUTER_ENVELOPE_FIXTURE_HELPER_008.py.source'
+oldtext=old_helper.read_bytes().decode('utf8');oldtree=ast.parse(oldtext);outer=defs(oldtree)['_Outer'];rewrite=defs(outer)['rewrite']
+lines=oldtext.splitlines(keepends=True);lines[rewrite.lineno-1:rewrite.end_lineno]=[REWRITE]
+newtext=''.join(lines)
+a="full['checks'] = [dict(name='whole_bytes_and_declared_metadata',passed=True,evidence=subjects)]"
+b="full['checks'] = [dict(name='whole_bytes_and_declared_metadata',passed=True,evidence='synthetic metadata only; complete subjects retained above')]"
+assert newtext.count(a)==1;newtext=newtext.replace(a,b)
+a="for subject in decoded['subjects']:result[subject['path']]=copy.deepcopy(subject)"
+b="""for subject in (decoded.get('subjects',[]) if type(decoded)is dict and type(decoded.get('subjects',[]))is list else []):
+                            if type(subject)is dict and set(subject)=={'path','bytes','sha256'}and type(subject.get('path'))is str:result[subject['path']]=copy.deepcopy(subject)"""
+assert newtext.count(a)==1;newtext=newtext.replace(a,b)
+ht=ast.parse(newtext);compile(ht,str(helper),'exec',dont_inherit=True)
+save(helper,newtext.encode('utf8'))
+hrec=sj('I13_HELPER008_BOUNDED_DAG_PROPAGATION_REFERENCE_CLOSURE_AND_WHOLE007_INVERSE_AUTHOR_RECEIPT_001.json',dict(
+ schema_version=2,record_type='I13_saved_refusal_fixture_helper_Source_repair',author='/root/project_architecture',Source=pin(helper),predecessor_Source=pin(old_helper),
+ whole_predecessor_Source_bytes_base64=base64.b64encode(old_helper.read_bytes()).decode('ascii'),
+ changed_methods=['rewrite','proof','input_closure'],rewrite_bound_records=256,rewrite_policy='Original whole-pin identities only; affected mutable JSON records each processed once in topological order from a complete snapshot. Fixed/unaffected/nonJSON bytes remain opaque and byte exact. Genuine cycles yield failed fixture case before target, never expected target-code PASS.',
+ proof_evidence_policy='Finite strict-metadata string; complete exact subject lists, closed check3, counts, purpose copies and Root adoption lists remain.',
+ reference_marker_policy='Optional subjects only while collecting input closure of non-proof raw prior reference markers; actual kernel general proof/adoption required fields and all Source guards unchanged.',
+ source_only_AST_compile=True,fixture_helper_or_target_invocations=0,**FLAGS))
+
+products=[];sets=[]
+for kind,ov,nv,on,nn in[
+ ('M3','010','011','exercise_M3_guard_and_publisher_metadata_memory_010.py','exercise_M3_guard_and_publisher_metadata_memory_011.py'),
+ ('PEER','008','009','exercise_selected_peer_author_metadata_memory_008.py','exercise_selected_peer_author_metadata_memory_009.py')]:
+ prior=T/on;path=T/nn;text=prior.read_bytes().decode('utf8');tree=ast.parse(text);d=defs(tree)
+ for name,node in sorted(defs(oldtree).items(),key=lambda x:x[1].lineno,reverse=True):
+  oldnode=d[name];replacement=ast.get_source_segment(newtext,defs(ht)[name])
+  lines=text.splitlines(keepends=True);lines[oldnode.lineno-1:oldnode.end_lineno]=[replacement+'\n'];text=''.join(lines)
+  d=defs(ast.parse(text))
+ if kind=='M3':
+  a="self.o=_new_base(m3,catalogue_bytes);o=self.o;self.cat=_ow_json(catalogue_bytes);self.owner,self.lease,self.selection=o.context();self.rows={r['role']:r for r in o.value('selection')['rows']}"
+  b="""self.o=_new_base(m3,catalogue_bytes);o=self.o;self.cat=_ow_json(catalogue_bytes)
+        if stage=='manifest':
+            selected=o.value('selection')
+            next(r for r in selected['rows']if r['role']=='metadata_manifest')['canonical_path']=_fixed('predecessor_metadata_manifest')[0]['path'].rsplit('\\\\',1)[0]+'\\\\I13_NEW_MANIFEST_001.json'
+            o.rewrite('selection',selected)
+        self.owner,self.lease,self.selection=o.context();self.rows={r['role']:r for r in o.value('selection')['rows']}"""
+  assert text.count(a)==1;text=text.replace(a,b)
+  a="""            self.rows['metadata_manifest']['canonical_path']=_fixed('predecessor_metadata_manifest')[0]['path'].rsplit('\\\\',1)[0]+'\\\\I13_NEW_MANIFEST_001.json'
+            selection=o.value('selection');next(r for r in selection['rows']if r['role']=='metadata_manifest')['canonical_path']=self.rows['metadata_manifest']['canonical_path'];o.rewrite('selection',selection);o.selection=o.p('selection');self.selection['selection']=o.p('selection')
+            sr,sa=o.proof('selection_after_manifest',[self.selection['selection']],7,8);self.selection.update(different_review=sr,Root_adoption=sa)
+"""
+  assert text.count(a)==1;text=text.replace(a,'')
+  assert text.count("body['selected_source_revision']='synthetic_unissued_I13_profile'")==1
+  text=text.replace("body['selected_source_revision']='synthetic_unissued_I13_profile'","body['preparation_limitations'][0]+=' Synthetic metadata descriptor only; unissued.'")
+  assert text.count("profile['selected_source_revision']='synthetic_unissued_I13_profile'")==1
+  text=text.replace("profile['selected_source_revision']='synthetic_unissued_I13_profile'","profile['preparation_limitations'][0]+=' Synthetic metadata descriptor only; unissued.'")
+  a="sr,sa=o.proof('stage_facts_review',[facts_pin]+inputs,14,15,extra);stage_support=dict(facts=facts_pin,different_review=sr,Root_adoption=sa)"
+  b="stage_support=dict(facts=facts_pin,different_review=pr,Root_adoption=pa) # Same exact synthetic general Source proof event, subjects/purpose/actor/time."
+  assert text.count(a)==1;text=text.replace(a,b)
+ newtree=ast.parse(text);compile(newtree,str(path),'exec',dont_inherit=True);nd=defs(newtree)
+ for name in('run','run_diagnostic','run_diagnostic_cases','_diagnostic_one'):
+  assert dump(nd[name])==dump(defs(tree)[name])
+ assert literal(newtree,'CASE_CATALOGUE')==literal(tree,'CASE_CATALOGUE')
+ assert all(dump(nd[name])==dump(defs(ht)[name])for name in defs(ht))
+ save(path,text.encode('utf8'))
+ catold=T/('I13_'+kind+'_FIXTURE_LITERAL_CASE_CATALOGUE_'+ov+'.json');cat=json.loads(catold.read_bytes().decode('utf8'))
+ cat.update(Source=pin(path),previous_Source=pin(prior),previous_catalogue=pin(catold),helper=pin(helper),added_control_count=0,added_controls=[],prior_literal_case_prefix_exact=True,
+  saved004_005_construction_repair=True,strict_full_and_partition_runners_AST_unchanged=True,case_results=None,partition_case_results=None,**FLAGS)
+ cp=sj('I13_'+kind+'_FIXTURE_LITERAL_CASE_CATALOGUE_'+nv+'.json',cat)
+ rec=sj('I13_'+kind+'_FIXTURE_SOURCE'+nv+'_SAVED004_005_CONSTRUCTION_REPAIR_AND_WHOLE_PREDECESSOR_AUTHOR_RECEIPT_001.json',dict(
+  schema_version=2,record_type='I13_fixture_saved_refusal_bounded_construction_repair_Source',author='/root/project_architecture',actual_successor_Source_editor='/root/project_architecture',original_peer_fixture_author='/root/i2_resume_gap'if kind=='PEER'else None,
+  Source=pin(path),predecessor_Source=pin(prior),whole_predecessor_Source_bytes_base64=base64.b64encode(prior.read_bytes()).decode('ascii'),helper=pin(helper),helper_receipt=pin(hrec),catalogue=pin(cp),
+  strict_full_and_partition_runners_AST_exact=True,original_CASE_CATALOGUE_AST_exact=True,
+  runner_AST_sha256={name:ah(nd[name])for name in('run','run_diagnostic','run_diagnostic_cases','_diagnostic_one')},
+  proof_reuse='M3 only: one synthetic general Source proof triple already has identical facts+input subject set, exact_M3_Source_stage_purpose, reviewer, source-author absence, created14/adopt15 and same generic proof/adoption record types for both consumed slots. No normative distinct-record/event inequality exists in these two Source call predicates. No historical genuine proof or publisher-purpose event collapsed.'if kind=='M3'else None,
+  original_subject_rosters_and_counts_preserved=True,no_kernel_Source_API_counter_or_budget_change=True,no_fixed_catalogue_or_input_trimming=True,
+  global_metadata_and_kernel_hold_seals_unchanged=True,all_fixture_helper_builder_export_or_target_invocations=0,case_results=None,**FLAGS))
+ sets.append(dict(kind=kind,Source=pin(path),catalogue=pin(cp),receipt=pin(rec)));products +=[pin(path),pin(cp),pin(rec)]
+
+oldplan=T/'I13_EXACT936_DISJOINT_MAX32_CASE_PARTITION_SOURCE_PLAN_002.json';plan=json.loads(oldplan.read_bytes().decode('utf8'))
+substitutions={str(T/'exercise_M3_guard_and_publisher_metadata_memory_010.py'):sets[0]['Source'],str(T/'exercise_selected_peer_author_metadata_memory_008.py'):sets[1]['Source']}
+for partition in plan['partitions']:
+ for selection in partition['fixture_selections']:selection['Source']=substitutions[selection['Source']['path']]
+plan['subjects']=products
+newplan=sj('I13_EXACT936_DISJOINT_MAX32_CASE_PARTITION_SOURCE_PLAN_003.json',plan)
+pj=sj('I13_PARTITION_PLAN003_SOURCESET2_AND_WHOLE002_INVERSE_AUTHOR_RECEIPT_001.json',dict(schema_version=2,record_type='I13_same936_partition_plan_Source_pin_successor_only',author='/root/project_architecture',Source=pin(newplan),predecessor_Source=pin(oldplan),whole_predecessor_Source_bytes_base64=base64.b64encode(oldplan.read_bytes()).decode('ascii'),changed_fields=['subjects','partitions[*].fixture_selections[*].Source'],all936_names_ordinals_groups_budgets_and_policy_exact=True,case_results=None,**FLAGS))
+
+fixture=ast.parse((T/'exercise_M3_guard_and_publisher_metadata_memory_010.py').read_bytes().decode('utf8'));fixed=literal(fixture,'FIXED')
+def nodes(v):
+ if type(v)is dict:return 1+sum(1+nodes(x)for x in v.values())
+ if type(v)is list:return 1+sum(nodes(x)for x in v)
+ return 1
+counts={}
+for name in('base_catalogue','M3_inventory17','historical45','full_historical45','I2_API','predecessor_plan','predecessor_metadata_binding','predecessor_metadata_manifest','predecessor_phase_binding','predecessor_profile','predecessor_static'):
+ item=fixed[name];b=zlib.decompress(base64.b64decode(item['compressed_base64']));assert len(b)==item['pin']['bytes']and hashlib.sha256(b).hexdigest()==item['pin']['sha256'];counts[name]=dict(pin=item['pin'],nodes=nodes(json.loads(b.decode('utf8'))))
+catpath=C/'m3_protocol_audit_001'/'I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_007.json'
+counts['common_catalogue']=dict(pin=pin(catpath),nodes=nodes(json.loads(catpath.read_bytes().decode('utf8'))))
+saved=[]
+for attempt in('attempt004','attempt005'):
+ d=C/'owned_memory_runs'/attempt
+ saved +=[pin(x)for x in sorted(d.iterdir())if x.is_file()]
+note=sj('I13_SAVED004_005_SOURCE_CAUSE_MINIMIZATION_AND_UNCHANGED_NODE_BUDGET_NOTE_001.json',dict(
+ schema_version=2,record_type='I13_saved004_005_Source_only_fixture_diagnosis_and_bounded_repair',author='/root/project_architecture',saved_inputs=saved,Source_products=products,helper=pin(helper),partition_plan=pin(newplan),
+ saved004='Complete32 diagnostic;15PASS17FAIL, childexit0/parentrefusal, no partition acceptance. Templates/phase/static saved pass evidence does not qualify failing captures/profile/manifest or original runtime.',
+ saved005='WAIT50 timeout with12events8PASS4StopIterationFAIL and no child result; next raw-profile control uncompleted. Source queue amplification is consistent with timeout, not an observed deadlock or proved cycle.',
+ manifest_fix='Canonical manifest path chosen before context/proofs/prior dependencies; no stale local pin graph from a later selection rewrite.',
+ profile_fix='Keep exact selected_source_revision int3; modify permitted preparation_limitations string for synthetic distinct-byte metadata, including static profile input.',
+ reference_marker_fix='Optional typed subject-list extraction only in fixture consuming-read closure; actual kernel strict proof fields remain unchanged.',
+ rewrite_fix='At most256 existing store records; one complete snapshot; dependencies from original whole fact3 equality only; only affected mutable JSON records serialized once in topological order. Fixed/unaffected/nonJSON bodies remain opaque. Explicit cycles fail fixture before target and stay failed, not relabeled expected typed refusals.',
+ proof_minimization='One finite strict-metadata check evidence string with all full/capsule/adoption subject rosters intact. Reuse only exact identical synthetic stage/generation general-proof event; all mandatory exact purpose copies, source/actor/chronology/counts/closedcheck3 retained.',
+ fixed_JSON_tree_node_counts=counts,fixed_M3_floor_arithmetic_only=20365,
+ node_budget_policy='Every designated full JSON body still charged once per cache; publisher charges own full cache plus actual direct child counts, including full result parse.50000 unchanged. No fixed input trimming, skipped body, counter reset, shared-context allowance or cap waiver. Dynamic final graph cost and combined feasibility are unmeasured until separately admitted new Source; no positive claim from minimization.',
+ runtime_policy='Bounded rewrite removes an unbounded queue; no execution or guaranteed elapsed claimed.60total/50wait/10cleanup/5reap and2MiB streams unchanged.',
+ all_kernels_and_APIs_unchanged=True,all_helper_fixture_builder_export_or_target_invocations=0,case_results=None,**FLAGS))
+sj('I13_HELPER008_FIXTURES011_009_SOURCESET2_FREEZE_001.json',dict(schema_version=2,record_type='I13_saved004_005_fixture_Source_successor_freeze_unrun',author='/root/project_architecture',helper=pin(helper),helper_receipt=pin(hrec),products=products,partition_plan=pin(newplan),partition_plan_receipt=pin(pj),diagnosis=pin(note),original936_names_unchanged=True,all_kernel_API_bytes_unchanged=True,all_fixtures_helpers_builders_exports_targets_unrun_by_author=True,case_results=None,**FLAGS))

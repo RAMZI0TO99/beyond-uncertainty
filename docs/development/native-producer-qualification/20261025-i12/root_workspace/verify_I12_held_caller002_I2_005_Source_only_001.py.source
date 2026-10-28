@@ -1,0 +1,126 @@
+"""Root own hash/JSON/AST/compile verification; target buffers are never executed."""
+import ast
+import base64
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+
+W = Path(r'D:\Aenv\pro2\WORK\resume-20261025-002\receipt_caller_integration_015')
+checks = []
+
+
+def need(ok, name):
+    checks.append(dict(name=name, passed=bool(ok)))
+    if not ok:
+        raise ValueError(name)
+
+
+def pin(path, raw=None):
+    if raw is None:
+        raw = path.read_bytes()
+    return dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+
+
+def whole(fact):
+    path = Path(fact['path'])
+    raw = path.read_bytes()
+    need(pin(path, raw) == fact, 'whole pin ' + str(path))
+    return raw
+
+
+def named(tree, cls):
+    return {n.name: n for n in tree.body if isinstance(n, cls)}
+
+
+def assignments(tree):
+    return {n.targets[0].id: n for n in tree.body if isinstance(n, ast.Assign) and
+            len(n.targets) == 1 and isinstance(n.targets[0], ast.Name)}
+
+
+def piece(raw, node):
+    return b''.join(raw.splitlines(keepends=True)[node.lineno-1:node.end_lineno])
+
+
+def dump(value):
+    return ast.dump(value, include_attributes=False)
+
+
+inv_path = W / 'i2/I2_SOURCE003_TO005_COMPLETE_INVERSE_AND_PROTECTED_BYTES_AST_001.json'
+inv = json.loads(inv_path.read_bytes())
+need(pin(inv_path)['sha256'] == '95bc763b08e4b23547e4a584a7d1f6a517b5d438722ea133e20d4dd2f14f3fde', 'exact complete inverse inventory')
+old = whole(inv['prior_Source'])
+old_api = whole(inv['prior_API'])
+prior4 = whole(inv['previous_held_Source004'])
+prior4_api = whole(inv['previous_held_API004'])
+for key, raw in [('complete_prior_Source_base64', old), ('complete_prior_API_base64', old_api),
+                 ('complete_previous_held_Source004_base64', prior4), ('complete_previous_held_API004_base64', prior4_api)]:
+    rebuilt = base64.b64decode(inv[key], validate=True)
+    need(base64.b64encode(rebuilt).decode('ascii') == inv[key] and rebuilt == raw, 'exact inverse ' + key)
+need(whole(inv['managed_read_Source']) == old and whole(inv['managed_read_API']) == old_api, 'declared working paths byte equal managed predecessor copies')
+new = whole(inv['new_Source'])
+need(len(new) == 126615 and hashlib.sha256(new).hexdigest() == 'd520058d0ecdff02fa2f19b492fd0169ef511c40ceb9388bf17a98a6e7f43af8', 'exact I2 Source005')
+text = old.decode()
+need(len(inv['transformations']) == 10, 'ten exact declared transformations')
+for i, t in enumerate(inv['transformations']):
+    need(text.count(t['removed_utf8']) == 1, 'unique removed region ' + str(i))
+    text = text.replace(t['removed_utf8'], t['inserted_utf8'], 1)
+need(text.encode() == new, 'whole forward transformations exactly reconstruct005')
+for i, t in enumerate(reversed(inv['transformations'])):
+    need(text.count(t['inserted_utf8']) == 1, 'unique inverse region ' + str(i))
+    text = text.replace(t['inserted_utf8'], t['removed_utf8'], 1)
+need(text.encode() == old, 'whole inverse transformations exactly reconstruct003')
+ot, nt = ast.parse(old), ast.parse(new)
+compile(new, inv['new_Source']['path'], 'exec')
+of, nf = named(ot, (ast.FunctionDef, ast.ClassDef)), named(nt, (ast.FunctionDef, ast.ClassDef))
+need(len(of) == 69, '69 original top-level functions/classes')
+protected = set(of) - {'canonical_dependency', 'admit'}
+need(len(protected) == 67, '67 protected functions/classes')
+for name in sorted(protected):
+    need(dump(of[name]) == dump(nf[name]) and piece(old, of[name]) == piece(new, nf[name]), 'protected raw bytes and AST ' + name)
+need(dump(ast.Module(body=of['admit'].body, type_ignores=[])) ==
+     dump(ast.Module(body=nf['admit'].body[2:], type_ignores=[])), 'original admit body exact AST after unconditional holds')
+need(piece(old, of['admit']).splitlines()[1:] == piece(new, nf['admit']).splitlines()[4:], 'original admit body exact complete raw lines')
+old_c = piece(old, of['canonical_dependency'])
+new_c = piece(new, nf['canonical_dependency'])
+prefix = old_c[:old_c.index(b'    receipt = strict_source_json')]
+need(new_c.startswith(prefix), 'original external ABI false guard and selected-path/pin/cap/read prefix exact')
+oa, na = assignments(ot), assignments(nt)
+allowed = {'HERE', 'SELF', 'API_PATH', 'EDITOR', 'BINDING_SOURCE_EDITOR'}
+need(len(oa) == 95, '95 original assignments')
+for name in sorted(set(oa) - allowed):
+    need(dump(oa[name]) == dump(na[name]) and piece(old, oa[name]) == piece(new, na[name]), 'protected original assignment ' + name)
+for name in ('EXTERNAL_CANONICAL_RECEIPT_ABI_QUALIFIED', 'I2_RECEIPT_CALLER_OPERATIONAL_ENTRY_QUALIFIED'):
+    need(ast.literal_eval(na[name].value) is False, 'I2 literal false ' + name)
+need(type(nf['admit'].body[0]) is ast.If and type(nf['admit'].body[1]) is ast.Raise, 'I2 hold plus unconditional second refusal precede original body')
+caller = W / 'caller/compose_current_owner_receipt_caller_002.py'
+cr = caller.read_bytes()
+need(len(cr) == 65259 and hashlib.sha256(cr).hexdigest() == '1e5d98aaf4dfbb403cd72a156e10594b1fee448dcfd928568defb1fad76c2a0f', 'exact caller002 within original65536 cap')
+ct = ast.parse(cr)
+compile(cr, str(caller), 'exec')
+cf, ca = named(ct, ast.FunctionDef), assignments(ct)
+for name in ('CALLER_OPERATIONAL_ENTRY_QUALIFIED', 'REAL_IO_BINDINGS_QUALIFIED', 'AUTHENTIC_LOADER_QUALIFIED', 'PHYSICAL_PROVENANCE_QUALIFIED'):
+    need(ast.literal_eval(ca[name].value) is False, 'caller literal false ' + name)
+for name in ('generate_current_owner_stage', 'validate_current_prewrite_and_publish', 'reconcile_current_publication', 'require_actual_receipt_caller_admission'):
+    fn = cf[name]
+    need(len(fn.body) == 2 and type(fn.body[0]) is ast.If and type(fn.body[1]) is ast.Raise and
+         not any(isinstance(n, (ast.Import, ast.ImportFrom)) for n in ast.walk(fn)), 'public hold before inspection/call ' + name)
+need(ast.literal_eval(na['_I12_HELD_CALLER_SOURCE'].value) == pin(caller), 'I2 fixed caller Source pin exact')
+caller_api = W / 'caller/CURRENT_OWNER_HELD_RECEIPT_CALLER_INERT_API_002.json'
+need(ast.literal_eval(na['_I12_HELD_CALLER_API'].value) == pin(caller_api), 'I2 fixed caller API pin exact')
+api_path = W / 'i2/CURRENT_OWNER_M3_DEFERRED_METADATA_INERT_API_005.json'
+api = json.loads(api_path.read_bytes())
+need(api['Source'] == inv['new_Source'] and api['author'] == '/root/project_architecture', 'I2 exact Source and truthful new physical author')
+need(json.loads(caller_api.read_bytes())['Source'] == pin(caller), 'caller API exact Source pin')
+need(all(c['passed'] is True for c in checks), 'all own Source checks pass')
+value = dict(schema_version=1, record_type='Root_I12_held_caller002_I2_005_own_Source_only_verification', author='/root',
+    created_utc=dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds'),
+    method='Whole read/hash/strict metadata/AST/compile only; neither old nor new caller/I2 target buffer is executed.',
+    Source=inv['new_Source'], API=pin(api_path), caller_Source=pin(caller), caller_API=pin(caller_api), complete_inverse=pin(inv_path),
+    checks=checks, checks_passed=len(checks), checks_failed=0, protected_functions_and_classes=67, protected_original_assignments=90,
+    caller_and_I2_remain_unrun=True, authentic_loader_qualified=False, full_I2_G01_closed=False,
+    target_execution=False, tests_executed=False, actual_family_publication=False, operational_authority=False, scientific_authority=False)
+out = W / 'ROOT_I12_CALLER002_I2_005_WHOLE_PROTECTED_BYTES_AST_VERIFICATION_001.json'
+with out.open('xb') as h:
+    h.write((json.dumps(value, indent=2, sort_keys=True) + '\n').encode())
+print(json.dumps(dict(result=pin(out), checks_passed=len(checks), checks_failed=0)))

@@ -1,0 +1,93 @@
+"""Own Source-only additive fixture authoring. No target import or call."""
+import ast
+import base64
+import datetime
+import hashlib
+import json
+from pathlib import Path
+
+ROOT = Path(r'D:\Aenv\pro2\WORK\resume-20261025-003')
+OUT = ROOT / 'm3_peer_contracts_016' / 'i13'
+old = OUT / 'exercise_selected_peer_author_metadata_memory_002.py'
+new = OUT / 'exercise_selected_peer_author_metadata_memory_003.py'
+before = old.read_bytes()
+assert hashlib.sha256(before).hexdigest() == '1abaad4c07d0cbba08b2b20c5c20c01b4d9358179aa2e4e05e69b096f6775fbe'
+tree = ast.parse(before)
+node = next(n for n in tree.body if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'CASE_CATALOGUE' for t in n.targets))
+cases = ast.literal_eval(node.value)
+assert len(cases) == 491
+additions = []
+for variant in ('missing_name', 'missing_passed', 'missing_evidence', 'unknown',
+                'name_empty', 'name512', 'name513', 'name_bool',
+                'passed_false', 'passed_int', 'checks_missing', 'checks_empty', 'checks_bool'):
+    row = dict(name='peer_new_producer_check3_' + variant, role='metadata_peer',
+               handler='producer_check3', variant=variant,
+               expected_error=None if variant == 'name512' else 'E_REVIEW')
+    cases.append(row)
+    additions.append(row)
+assert len(cases) == 504 and len({c['name'] for c in cases}) == 504
+lines = before.decode().splitlines(keepends=True)
+oldcat = ''.join(lines[node.lineno - 1:node.end_lineno])
+text = before.decode().replace(oldcat, 'CASE_CATALOGUE = ' + repr(cases) + '\n', 1)
+needle = "    if handler=='unsupported':b['packet']=_row(b,label)['body'];return\n"
+insert = """    if handler=='producer_check3':
+        label='producer_full';v=_json(_row(b,label)['body']);variant=spec['variant']
+        if variant=='checks_missing':del v['checks']
+        elif variant=='checks_empty':v['checks']=[]
+        elif variant=='checks_bool':v['checks']=True
+        else:
+            check=v['checks'][0]
+            if variant.startswith('missing_'):del check[variant[len('missing_'):]]
+            elif variant=='unknown':check['unexpected_field']=False
+            elif variant=='name_empty':check['name']=''
+            elif variant=='name512':check['name']='N'*512
+            elif variant=='name513':check['name']='N'*513
+            elif variant=='name_bool':check['name']=True
+            elif variant=='passed_false':check['passed']=False
+            elif variant=='passed_int':check['passed']=1
+            else:raise AssertionError('unowned producer check3 variant')
+        _rewrite(b,label,v);return
+"""
+assert text.count(needle) == 1
+text = text.replace(needle, insert + needle, 1)
+raw = text.encode()
+assert len(raw) <= 2097152
+ast.parse(raw)
+compile(raw, str(new), 'exec', dont_inherit=True)
+
+def pin(path, body=None):
+    body = path.read_bytes() if body is None else body
+    return dict(path=str(path), bytes=len(body), sha256=hashlib.sha256(body).hexdigest())
+
+def save(path, value):
+    body = (json.dumps(value, ensure_ascii=True, sort_keys=True, indent=2) + '\n').encode()
+    assert len(body) <= 2097152 and not path.exists()
+    with path.open('xb') as stream:
+        stream.write(body)
+    assert path.read_bytes() == body
+    return pin(path, body)
+
+assert not new.exists()
+with new.open('xb') as stream:
+    stream.write(raw)
+assert new.read_bytes() == raw
+catalogue = save(OUT / 'I13_PEER_FRESH_LITERAL_CASE_CATALOGUE_003.json', dict(
+    schema_version=1, record_type='I13_fresh_peer_literal_case_catalogue', author='/root/i2_resume_gap',
+    Source=pin(new, raw), cases=cases, count=len(cases),
+    names_json_sha256=hashlib.sha256(json.dumps([c['name'] for c in cases], separators=(',', ':')).encode()).hexdigest(),
+    target_execution=False, tests_executed=False, operational_authority=False, scientific_authority=False))
+receipt = save(OUT / 'I13_PEER_FRESH_MEMORY_FIXTURE_SOURCE_AUTHOR_RECEIPT_003.json', dict(
+    schema_version=1, record_type='I13_fresh_peer_fixture003_new_producer_check3_Source_successor',
+    author='/root/i2_resume_gap', created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds'),
+    Source=pin(new, raw), literal_catalogue=catalogue,
+    kernel=pin(OUT / 'validate_selected_peer_author_packet_metadata_006.py'),
+    API=pin(OUT / 'CURRENT_OWNER_SELECTED_PEER_CANONICAL_AUTHOR_METADATA_INERT_API_006.json'),
+    before_Source=pin(old, before), before_Source_bytes_base64=base64.b64encode(before).decode(),
+    prior_receipt=pin(OUT / 'I13_PEER_FRESH_MEMORY_FIXTURE_SOURCE_AUTHOR_RECEIPT_002.json'),
+    before_case_count=491, case_count=504, added_cases=additions,
+    exact_delta='Only CASE_CATALOGUE adds thirteen producer_full.check3 variants and _mutate adds corresponding closed handler. Prior491 literal cases and every other function/class are unchanged. Global detachment/fingerprint and changed-input witnesses retained.',
+    intended_first_guard='New producer-only _i13_new_code_proofs checks list and closed3/name512/passedTrue; expected E_REVIEW. The name512 positive changes only the sole full check name and preserves count/coverage/chronology.',
+    pending_source_work='Five canonical publisher peer-kind positives await copied new outer-builder Source. No publisher-positive claim is made by this504-case intermediate fixture.',
+    target_execution=False, tests_executed=False, operational_authority=False, scientific_authority=False,
+    native_Parser_executed=False, actual_family_publication=False))
+print(json.dumps(dict(Source=pin(new), catalogue=catalogue, receipt=receipt, cases=len(cases)), sort_keys=True))

@@ -1,0 +1,132 @@
+"""Own static helper/data-plane reviewer. No subject parser, loader, compiler or invocation."""
+import datetime as dt,hashlib,json,os,re,stat
+from pathlib import Path
+O=Path(__file__).parent;R=O.parent;C=R.parent
+P=Path(r'D:\Aenv\pro3\runs\coordination\cho51_p3_contracts_20261027_v1')
+S11=C/'pro3_bootstrap002_source_review_001/ROOT_PRO3_NEW_FINITE_SOURCE_ONLY_COEXISTENCE_SCOPE_011_001.json'
+A11=C/'pro3_bootstrap002_source_review_001/ROOT_PRO3_SOURCE_ONLY_COEXISTENCE011_DIFFERENT_REVIEW_ADOPTION_001.json'
+S9=C/'ROOT_PRO3_NEW_FINITE_SOURCE_ONLY_COEXISTENCE_SCOPE_009_001.json'
+A9=C/'ROOT_PRO3_SOURCE_ONLY_COEXISTENCE009_DIFFERENT_REVIEW_ADOPTION_001.json'
+EXPECTED={
+ str(S11):(9049,'c52dbbfc4a5202bc5476e6b41071d72a1163b339e8bcaad29acf2a6dae70a540'),
+ str(A11):(4571,'6994cedd8c25318563d4aa398d6681c00e61e91f61bccd8d5ca67c75b554e378'),
+ str(S9):(7516,'b04507102cc00306e99ce9992cd0a526da03101e7d972e79eed6d20aab354739'),
+ str(A9):(3543,'29dce6bd6b7767449b0bc28d8daeed1023581748d82be41d4eb82cabcf8804ab'),
+ str(P/'bootstrap-observation_004.ps1'):(16938,'9e6869e4f8b4a5fe832382f4987313684e1d9064839ff32135555de06069e425'),
+ str(P/'bootstrap-protocol_004.md'):(16429,'c2bdf423e8616db01e1f862c5c7f9b65da3ac8cd3e3e8f7f0dffccbbe8028524'),
+ str(P/'bootstrap-source-review_004.json'):(6242,'a6901c928517e475f28544544f18af2f922af1281a2b9a095a1bfad4b8f2dc34'),
+ str(P/'bootstrap-supervise_004.ps1'):(39178,'689f91d080a1a335324e01156a3962d34e9855ed630042befa66e9d6a3aa5970'),
+ str(P/'owner-resource-amendment.json'):(1876,'733d6505fb24ee552ae0abd7e1bec46c14f6fc33e66a71d1adb3cf2f30c9fe75'),
+}
+CACHE={};CHECKS=[]
+def need(v,m):
+ if not v:raise ValueError(m)
+def ck(n,v,e):
+ need(n and n not in {x['name'] for x in CHECKS},'unique nonempty check');CHECKS.append(dict(name=n,passed=v is True,evidence=e))
+def positive(n,v,e):ck(n,v,e);need(v is True,'own metadata review predicate: '+n)
+def raw(p):
+ p=Path(p)
+ for q in (p,*p.parents):need(not q.is_symlink() and not getattr(q.lstat(),'st_file_attributes',0)&1024,'ordinary nonreparse lineage')
+ a=p.stat();need(stat.S_ISREG(a.st_mode) and a.st_nlink==1 and 0<=a.st_size<=2097152,'bounded regular singlelink metadata')
+ with p.open('rb') as h:d=os.fstat(h.fileno());b=h.read(2097153);e=os.fstat(h.fileno())
+ z=p.stat();key=lambda x:(x.st_dev,x.st_ino,x.st_mode,x.st_nlink,x.st_size,x.st_mtime_ns)
+ need(key(a)==key(d)==key(e)==key(z) and len(b)==a.st_size,'stable retained buffer');return b
+def fact(p,b):return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def pairs(xs):
+ d={}
+ for k,v in xs:need(k not in d,'duplicate metadata JSON');d[k]=v
+ return d
+def bad(_):raise ValueError('noninteger/nonfinite metadata JSON')
+def shape(v):
+ todo=[(v,0)];n=0;depth=0
+ while todo:
+  x,d=todo.pop();n+=1;depth=max(depth,d);need(n<=50000 and d<=48,'own full-key/value node/depth caps');need(x is None or type(x) in (bool,int,str,list,dict),'builtin JSON value')
+  if type(x) is str:need(not any(55296<=ord(c)<=57343 for c in x),'no surrogate text')
+  elif type(x) is list:todo.extend((y,d+1) for y in x)
+  elif type(x) is dict:
+   need(all(type(k) is str for k in x),'builtin keys')
+   for k,y in x.items():todo.extend(((k,d+1),(y,d+1)))
+ return dict(nodes=n,depth=depth)
+def load(p,doc=True):
+ p=Path(p);b=raw(p);f=fact(p,b);need((len(b),f['sha256'])==EXPECTED[str(p)],'exact pinned input');CACHE[str(p)]=b
+ positive('whole_pinned_input_'+p.name,True,f)
+ if not doc:return b.decode('utf8'),f
+ v=json.loads(b.decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad);positive('strict_JSON_full_caps_'+p.name,True,shape(v));return v,f
+s,sp=load(S11);a,ap=load(A11);old,op=load(S9);oa,oap=load(A9)
+def fresh():
+ n=dt.datetime.now(dt.timezone.utc)
+ need(dt.datetime.fromisoformat(s['interval_start'])<=n and (dt.datetime.fromisoformat(s['interval_end'])-n).total_seconds()>60,'actual effective adopted011 with strict >60 reserve')
+ need(raw(S11)==CACHE[str(S11)] and raw(A11)==CACHE[str(A11)],'unchanged active Source011 buffers');return n.isoformat()
+fresh()
+positive('effective_Source011_separate_Root_adoption',a['Source_only_scope']==sp and a['Source_only_coexistence_adopted'] is True and a['not_effective_before_interval_start'] is True,'Actual current UTC was checked >=16:20; no earlier reliance on future011.')
+positive('Source009_and_all_old_periods_unchanged',s['Source009_end_unchanged']==old['interval_end']=='2026-10-27T16:30:00+00:00' and a['Source009_end_unchanged']==old['interval_end'] and s['Source010_retention_metadata_scope_not_extended'] is True and oa['Source_only_scope']==op,'No extension of009/008/010 or permission to run old-boundSource002 under011.')
+positive('active_Source_only_original_caps',s['Pro2_max_including_Root']==3 and s['Pro3_max_including_Root_and_reviewer']==2 and s['shared_max_including_both_roots_and_overlap']==5 and s['metadata_cap_bytes']==2097152 and s['metadata_nodes']==50000 and s['metadata_depth']==48 and s['publication_reserve_seconds']==60,'No nested agents or extra slots; own metadata writes only.')
+positive('active_Source_no_execution_or_custody_grant',all(s[k] is False and a[k] is False for k in ('target_execution','new_compute_grant_issued','new_once_admission_issued','native_pin_preparation_admitted','raw_capture_admitted','runtime','science','physical_custody_release_claimed','whole_host_quiet_claimed','peer_Source_or_review_results_accepted')),'No bootstrap/request/admission decision, live resource observation or operation acceptance follows.')
+h,hp=load(P/'bootstrap-observation_004.ps1',False);t,tp=load(P/'bootstrap-protocol_004.md',False);rv,rp=load(P/'bootstrap-source-review_004.json');sup,supp=load(P/'bootstrap-supervise_004.ps1',False);am,amp=load(P/'owner-resource-amendment.json')
+hl=h.splitlines();tl=t.splitlines();sl=sup.splitlines();scope='cho51_p3_contracts_20261027_v1_bootstrap_observation_004'
+def H(*xs):return all(x in h for x in xs)
+def T(*xs):return all(' '.join(x.split()) in ' '.join(t.split()) for x in xs)
+positive('peer_review_exact_three_Source_map',rv['schema']=='cho51_p3_bootstrap_source_review_v4' and rv['scope']==scope and rv['files']=={hp['path']:hp['sha256'],supp['path']:supp['sha256'],tp['path']:tp['sha256']} and rv['file_bytes']=={'bootstrap-observation_004.ps1':16938,'bootstrap-supervise_004.ps1':39178,'bootstrap-protocol_004.md':16429},rv['files'])
+positive('peer_review_static_claim_is_dated_provenance_only',rv['source_only'] is True and rv['independent_review'] is True and rv['remaining_actionable_findings']==[] and rv['source_sha256']==hp['sha256'] and '/root/p3_mapping_finish' in rv['reviewer'],'Peer reports author-of-none and zero PS parser errors; this reviewer does not adopt that clean verdict, parse PowerShell or treat it as runtime evidence.')
+positive('peer_review_execution_and_results_all_unproved',all(rv['limitations'][k] is False for k in ('bootstrap_helper_or_mode_executed','process_start_or_kill_executed','native_helper_loaded_or_compiled','python_or_tests_executed','job_created','runtime_pause_error_or_presence_probe_test_pass_claimed','full_caller_timing_custody_or_runtime_coverage_established','observational_manifest_or_pins_accepted','request_or_peer_or_root_admission_issued','scientific_admission','synchronous_os_tool_interruptibility_established')),'No complete Source004/request003/operation qualification is inherited from peer metadata.')
+
+items=[
+('fixed_helper_paths_and_two_SHA_parameters',H("[string]$RequestSha256","[string]$RootAdmissionSha256","$scope='"+scope+"'","$PSCommandPath -cne (Join-Path $run 'bootstrap-observation_004.ps1')","$PSHOME -ceq $runtime"),'helper1–12,122; two mandatory64-hex SHA args, fixed own run/runtime; no caller-supplied output path.'),
+('whole_metadata_SHA_before_strict_decode',H('$stream.Length -gt 0 -and $stream.Length -le 1048576','$stream.ReadExactly($raw)','$observed -ceq $expected','[Text.Json.JsonDocument]::Parse','[Text.UTF8Encoding]::new($false,$true).GetString($raw)|ConvertFrom-Json -AsHashtable -DateKind String'),'helper39–61; held read-only raw buffer/hash before metadata decoding.'),
+('metadata_duplicate_depth_and_finite_value_guards',H('$depth -le 32 -and $script:jsonNodes -le 50000','$names.Add($property.Name)','[double]::IsInfinity($number)','[double]::IsNaN($number)'),'helper48–57; counter counts JsonElement values, not property-name nodes. No full-key/value equivalence is claimed.'),
+('helper_50second_effect_clocks_strict_publication_reserve',H('$watch.Elapsed.TotalSeconds -lt 50','$now -lt $entry.AddSeconds(50)','$now -lt $end.AddSeconds(-60)',"$now -lt (Utc $sourceScope 'interval_end').AddSeconds(-60)"),'helper62–67; explicit clocks do not prove blocking IO returns by the deadline.'),
+('fixed_CreateNew_writer_pre_post_flush_readback_clocks',H('[IO.FileMode]::CreateNew','$raw.Length -le 1048576','$stream.Flush($true)','[void](Read-Metadata $path $expected)') and all(hl[i-1].strip()=='Effect-Clock' for i in (69,72,75,78)),'helper68–79; pause error-aware predicate is separately rechecked below.'),
+('request_admission_peer_exact_scope_and_request_joins',H("'bootstrap-request_004.json'","'bootstrap-admission_004.json'","'cho51_p3_bootstrap_observation_request_v1'","$admission.accepted -is [bool] -and $admission.accepted","$admission.request_sha256 -ceq $RequestSha256","$peer.released -is [bool] -and $peer.released"),'helper80–101; exact request003 audit/admission is not performed or granted here.'),
+('typed_90s_inventory_child_and_zero_authority_controls',H('$record.maximum_seconds -is [long] -and $record.maximum_seconds -eq 90','$record.maximum_files -is [long] -and $record.maximum_files -eq 2500','$record.maximum_code_bytes -is [long] -and $record.maximum_code_bytes -eq 1073741824','$record.outer_child_processes -is [long] -and $record.outer_child_processes -eq 1',"@('python_invocations','jobs','helper_child_processes')","@('automatic_retry_permitted','native_helper_compilation_admitted','scientific_admission')"),'helper87–98; no helper process is started by this review.'),
+('dynamic_control_path_normalization_and_all_three_record_joins',H("$admission.peer_decision_path.StartsWith('D:\\Aenv\\pro2\\WORK\\resume-20261027-002\\coordination\\',[StringComparison]::Ordinal)",'[IO.Path]::GetFullPath($admission.peer_decision_path) -ceq $admission.peer_decision_path','$record.source_scope_path -ceq $request.source_scope_path','$record.source_adoption_path -ceq $request.source_adoption_path','$record.source_scope_sha256 -ceq $request.source_scope_sha256','$record.source_adoption_sha256 -ceq $request.source_adoption_sha256'),'helper85–97; lexical normalized actual coordination paths, not native-ID qualification.'),
+('dynamic_Source_adoption_paths_pins_caps_and_effective_entry',H("foreach($path in @($request.source_scope_path,$request.source_adoption_path))","[IO.Path]::GetFullPath($path) -ceq $path",'$sourceScope=Read-Metadata $request.source_scope_path $sourceScopeSha','$sourceAdoption=Read-Metadata $request.source_adoption_path $sourceAdoptionSha','$sourceAdoption.Source_only_scope.sha256 -ceq $sourceScopeSha','$sourceScope.Pro2_max_including_Root -eq 3','$sourceScope.Pro3_max_including_Root_and_reviewer -eq 2','$sourceScope.shared_max_including_both_roots_and_overlap -eq 5',"$entry -ge (Utc $sourceScope 'interval_start')", "$entry.AddSeconds(90) -lt (Utc $sourceScope 'interval_end').AddSeconds(-60)"),'helper114–121; actual Source011 request/adoption binding is still a future exact request/decision duty.'),
+('advance_dispositions_request_born_before_entry_and_live_window',H("(Utc $record 'observed_utc') -le $entry","(Utc $record 'observed_utc') -ge (Utc $request 'created_utc')","$entry -ge $start -and $entry.AddSeconds(90) -lt $end.AddSeconds(-60)") and T('This permits honest advance metadata decisions for a future window, never operation before that window or the Source interval starts.'),'helper109–113/protocol43–54; no future timestamp or operation-before-window permission.'),
+('Source_review_and_exact_phase_amendment_joins',H("'bootstrap-source-review_004.json'","'cho51_p3_bootstrap_source_review_v4'",'$review.source_sha256 -ceq $request.source_sha256',"'owner-resource-amendment.json'","$amendment.applies_to -ceq 'metadata_profile_mapping_and_telemetry_contract_tests_only'","@('canonical_guard_modified','scientific_admission')"),'helper102–108; original Root floors not amended by Source-only metadata.'),
+('floors_45second_work_native4_4_20_and_five_pauses',H('$watch.Elapsed.TotalSeconds -lt 45','$available -ge 4GB -and $disk -ge 20GB','Get-CimInstance -ClassName Win32_OperatingSystem -OperationTimeoutSec 3',"foreach($pausePath in $pauses){Need (-not (Present $pausePath))", "@('20261007','20261012','20261013','20261015','20261025')"),'helper13,124–132; observations not reservations. All immediate effect, floor and once-path observations use the new error-aware Present predicate.'),
+('two_distinct_startup_samples_and_new_once_output_names',H('$startup.Add((Floors));[Threading.Thread]::Sleep(200);$startup.Add((Floors))',"@('bootstrap-helper-attempt_004.json','preparation-bootstrap-pins_004.json')"),'helper133–135; fresh identities/no automatic retry, no001/002 overwrite route.'),
+('bounded_lazy_entries_depth_extensions_and_files',H('$options.MaxRecursionDepth=16','$options.AttributesToSkip=[IO.FileAttributes]::ReparsePoint','$enumerated -le 10000',"@('.dll','.exe','.json','.ps1','.psm1','.psd1')",'$files.Count -lt 2500'),'helper136–145; extension/depth/reparse exclusions limit coverage explicitly.'),
+('aggregate1GiB_and_64KiB_incremental_whole_hash',H('$total+$stream.Length -le 1GB','$buffer=[byte[]]::new(65536)','$counted -le $before.Length','$digest.AppendData($buffer,0,$read)','$sinceFloor -ge 4MB','$counted -eq $before.Length','$total+=$counted'),'helper147–162; whole selected file read/hash, growth/short-read refusal, no runtime code loading.'),
+('observational_lastwrite_size_checks_disposal_and_false_flags',H('$after.LastWriteTimeUtc.Ticks -eq $before.LastWriteTimeUtc.Ticks','$digest.Dispose()','$stream.Dispose()','$enumerator.Dispose()','native_same_handle_identity_verified=$false;full_pro3_pins_created=$false','python_executed=$false;child_process_started=$false;job_created=$false;native_helper_compiled=$false;scientific_admission=$false'),'helper159–167; not native same-handle identity, full Pro3 pins or complete loaded runtime coverage.'),
+('helper_no_process_spawn_or_code_loader_route',not any(x in h for x in ('Start-Process','ProcessStartInfo','[Diagnostics.Process]::Start','Add-Type','Invoke-Expression','Start-Job','python.exe','Import-Module','Assembly]::Load')),'Whole helper text read; this is a manual Source closure observation, not a PowerShell grammar/runtime certificate.'),
+('helper_stdout_does_not_certify_actual_caller_return',H('full_caller_release_still_requires_external_evidence=$true') and T('Helper independently stops work45s/effects50s from its entry; it never claims actual whole-caller return.'),'helper170/protocol117–123; internal helper elapsed is not external actual caller bound.'),
+('protocol_separate_frozen_three_Source_graph_and_actual_admission',T('The genuine different reviewer must review all three, having authored none of these or their PowerShell bases.','Source review -> exact request -> actual peer decision -> Root admission -> outputs.','An acknowledgment, Source coexistence, silence or available RAM is not admission.'),'protocol10–34; peer review declaration joined as provenance, not current operational acceptance.'),
+('protocol_dynamic_new_scope_does_not_extend_old_scope',T('Dynamic paths permit a separately adopted NEW finite interval, not editing/extending an expired scope or reusing old grants.','Its start must already be effective at dispatch.'),'protocol43–54; metadata decisions can precede the interval but operation cannot.'),
+('protocol_numeric_caps_zero_budget_and_cleanup_only_policy',T('| maximum_files |2500|','| maximum_code_bytes |1073741824|','| maximum_enumerated_entries |10000|','| maximum_directory_depth |16|','| maximum_manifest_bytes |1048576|','only stop/retained-owned cleanup and honest stream/failure/caller/release metadata may follow a guard refusal, never continued observation or a pass.'),'protocol56–79; no grant or current resource-clearance conclusion.'),
+('protocol_external_65_80_85_90_clock_and_stall_limit',T('Normal outer work stops65s, drain/reap/table cleanup80s, effects85s, actual whole caller/return/release must fit90s.','actual external acceptance rather than pretending90s.','Engineering-only Source proposal, not admission.'),'protocol81–123; outer clock/custody details are owned by i13 reviewer, not certified here.'),
+('protocol_exact_once_namespace_and_honest_partial_failure',T('Begin requires the entire namespace absent.','Every output uses CreateNew, flush and bounded SHA readback','Partial files/used identities remain.','Unknown outcome cannot be released.'),'protocol155–218; no actual output or once admission is created by reviewer.'),
+('D01_entire_payload_acceptance_is_explicitly_deferred',T('Its header is not full payload validation: later actual acceptance must validate the entire bounded roster, integer counts, aggregate bytes, paths, extensions, exclusions, file digests, startup/minima and all source/caller/evidence joins and coverage limitations.','No same-handle native file identity, full Pro3 pins or complete runtime coverage is claimed.'),'protocol220–231; not an independent current bootstrap-execution blocker merely because data acceptance is deferred.'),
+]
+for n,v,e in items:positive(n,v,e)
+def fields(line):return re.findall(r'(?:^|[;{])([A-Za-z_][A-Za-z_0-9]*)=',line)
+payload=dict(helper_attempt=fields(hl[133]),manifest=fields(hl[166]),helper_startup_sample=fields(hl[130]),file_row=fields(hl[160]),stdout_summary=fields(hl[169]))
+positive('actual_complete_Source_generated_payload_field_rosters',[len(payload[k]) for k in ('helper_attempt','manifest','helper_startup_sample','file_row','stdout_summary')]==[7,24,4,2,8],payload)
+positive('current_consumer_retains_hashes_not_full_payload_acceptance',"$helperAttempt=Existing 'bootstrap-helper-attempt_004.json';$manifest=Existing 'preparation-bootstrap-pins_004.json'" in sl[336] and all(x in sl[337] for x in ('$manifest.value.schema','$manifest.value.scope','$manifest.value.request_sha256','$manifest.value.root_admission_sha256')) and '$record.observational_manifest_accepted=$false' in sl[345],'supervisor337–347 inspected only as helper/protocol interface basis; independent whole supervisor review remains separate.')
+regions=[]
+for name,start,end in [('fixed_parameters_paths',1,14),('Missing_Path',15,22),('Present',23,38),('metadata_read_decoder',39,61),('effect_clock_writer',62,79),('exact_admission_and_Source_joins',80,122),('floors_startup_once',123,135),('whole_bounded_runtime_hash_inventory',136,166),('result_stdout',167,170)]:
+ b=('\n'.join(hl[start-1:end])+'\n').encode('utf8');regions.append(dict(path=hp['path'],name=name,line=start,end_line=end,normalized_LF_UTF8_region_sha256=hashlib.sha256(b).hexdigest()))
+# Independent complete error-aware presence review; no presence probe performed.
+positive('S003_repair_no_boolean_Exists_or_Test_Path_fallback', '[IO.File]::Exists' not in h and 'Test-Path' not in h, 'Whole helper004 text has no false-on-error clear-state fallback.')
+positive('Present_exact_normalized_path_success_means_PRESENT', H('[IO.Path]::IsPathFullyQualified($path)', '[IO.Path]::GetFullPath($path) -ceq $path', 'try{[void][IO.File]::GetAttributes($path);return $true}'), 'helper23–26; successful attrs means present even for directory or reparse final entry; pauses and reused outputs refuse.')
+positive('Missing_Path_only_recognized_wrapper_types_maximum4', H('$exception -is [Management.Automation.RuntimeException] -or $exception -is [Reflection.TargetInvocationException]', '$depth++;if($depth -gt 4)', '$exception=$exception.InnerException'), 'helper15–22; unsupported/excessive wrappers never become known missing.')
+positive('Missing_Path_only_typed_notfound_codes2_and3', H('$exception -is [IO.FileNotFoundException] -and ($exception.HResult -band 65535) -eq 2', '$exception -is [IO.DirectoryNotFoundException] -and ($exception.HResult -band 65535) -eq 3'), 'Exact recognized exception type plus corresponding low HRESULT; denied/IO/unknown do not return ABSENT.')
+positive('Present_ancestor_walk_bounded16_accessible_direct_anchor', H('$depth++;Need ($depth -le 16)', '$attributes=[IO.File]::GetAttributes($parent)', '($attributes -band [IO.FileAttributes]::Directory) -ne 0 -and ($attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0', "throw 'No accessible directory ancestor establishes known absence'"), 'helper27–38; tentative absence requires an observed accessible direct directory anchor, not missing/unavailable drive or unknown ancestry.')
+positive('Present_unknown_propagates_before_any_known_absence', h.count('catch{if(-not (Missing-Path $_.Exception)){throw}}')==2 and hl[32].strip()=='return $false', 'helper26,30–37; the only false return is after a successful valid anchor observation; all other errors throw.')
+positive('Present_all_helper_effect_floor_and_once_calls', 'Need (-not (Present $pausePath))' in hl[65] and 'Need (-not (Present $pausePath))' in hl[129] and 'Need (-not (Present (Join-Path $run $name)))' in hl[132], 'helper66/130/133; all five pauses and output reuse paths share the same error-aware predicate.')
+shared_presence=[]
+for name in ('Missing-Path','Present'):
+ pattern=r'(?ms)^function '+re.escape(name)+r'\([^\n]*\).*?(?=^function |\Z)'
+ ha=re.search(pattern,h).group();sa=re.search(pattern,sup).group()
+ positive('same_whole_presence_function_as_supervisor_'+name, ha==sa, dict(function=name,LF_UTF8_sha256=hashlib.sha256(ha.encode('utf8')).hexdigest()))
+ shared_presence.append(dict(name=name,LF_UTF8_sha256=hashlib.sha256(ha.encode('utf8')).hexdigest()))
+positive('protocol_presence_fix_matches_throwing_Source_and_limits', T('Only explicit FileNotFoundException/HRESULT2 or DirectoryNotFoundException/HRESULT3 may establish tentative absence.', 'bounded<=16-level parent walk', 'bounded<=4 exception unwrapping', 'Every other exception/error is UNKNOWN and propagates', 'not C# compilation, native file-ID measurement, pause-content parsing or proof of atomic future absence.'), 'protocol233–255; bounded ordinary managed point-in-time observation, not physical identity/runtime/ACL-test or atomic future absence.')
+deferred=[dict(id='D01_HELPER_PAYLOAD_SCHEMA_AND_SEMANTIC_CONSUMPTION',status='UNRESOLVED_BEFORE_OBSERVATIONAL_ACCEPTANCE',current_execution_blocker_asserted=False,current_wrong_output_acceptance_asserted=False,evidence=[dict(path=tp['path'],line=220,end_line=231),dict(path=supp['path'],line=337,end_line=347)],duty='Before accepting actual observational bytes, independently validate complete helper-attempt/manifest payload types and evidence joins, full roster/count/aggregate bytes/paths/extensions/exclusions/digests/startups/minima/false flags and coverage limitations. Header hashes and Source review are not that later acceptance.')]
+for p,b in list(CACHE.items()):positive('final_unchanged_wholebuffer_'+str(len(CHECKS)),raw(p)==b,p)
+passed=sum(x['passed'] is True for x in CHECKS);failed=sum(x['passed'] is False for x in CHECKS);need(failed==0,'all current whole-helper Source checks must pass')
+def save(name,v):
+ shape(v);b=(json.dumps(v,sort_keys=True,indent=2,ensure_ascii=False,allow_nan=False)+'\n').encode('utf8');need(len(b)<=2097152,'own evidence2MiB cap');fresh();p=O/name
+ with p.open('xb') as h:need(h.write(b)==len(b),'whole exclusive metadata evidence');h.flush();os.fsync(h.fileno())
+ need(raw(p)==b,'whole evidence readback');return fact(p,b)
+base=dict(schema_version=1,record_type='Independent_Pro3_bootstrap004_complete_helper_and_protocol_data_plane_Source_review',reviewer='/root/project_architecture',created_utc=fresh(),scope=sp,scope_adoption=ap,historical_Source009=op,scope009_adoption=oap,reviewed_artifacts=[hp,tp,rp],basis=[sp,ap,op,oap,supp,amp],verdict='PASS_WHOLE_HELPER004_PROTOCOL004_STATIC_SOURCE_ONLY_NO_OPERATIONAL_ACCEPTANCE',checks_passed=passed,checks_failed=failed,remaining_actionable_findings=[],deferred_observational_acceptance_requirements=deferred,source_only=True,subject_execution_performed=False,PowerShell_Source_AST_parsed_or_compiled=False,subject_imported_or_loaded=False,helper_or_supervisor_invoked=False,native_queries_or_runtime_binary_inventory_performed=False,Python_target_or_children_or_tests_or_Jobs_run=False,exact_request003_qualified=False,Root_operation_or_compute_or_admission_issued=False,observational_manifest_accepted=False,peer_result_accepted=False,physical_custody_release_claimed=False,whole_host_quiet_claimed=False,resource_availability_measured=False,operational_authority=False,raw_capture_admitted=False,scientific_authority=False,ready_for_execution=False,helper_Source_generated_payload_fields=payload,Source_regions=regions,claim_limit='Whole helper004 and protocol004 text read and exact Source/review metadata pins joined. The error-aware Missing-Path/Present repair is checked completely and matches both supervisor function texts. All previous helper budgets, raw observations, Source/current-window/typed guard and deferred-output duties were independently reread, not accepted from a diff. No subject PowerShell parser/compile/import/load/call or native/process/resource/runtime binary inventory/child/test/Job operation was performed. No timing/ACL/pause/presence-probe runtime pass or atomic future absence/native-ID claim. D01 remains explicitly deferred before actual payload acceptance and is not a current operation blocker. Supervisor internals, exact request004/peer decision/Root admission and every execution gate remain separate and held',own_metadata_reviewer_Source=fact(Path(__file__),raw(__file__)))
+pp=save('INDEPENDENT_PRO3_BOOTSTRAP003_HELPER_PROTOCOL_SOURCE_FULL_PROOF_001.json',dict(base,checks=CHECKS))
+cp=save('INDEPENDENT_PRO3_BOOTSTRAP003_HELPER_PROTOCOL_SOURCE_CAPSULE_001.json',dict(base,full_proof=pp))
+print(json.dumps(dict(full_proof=pp,capsule=cp,checks_passed=passed,checks_failed=failed,remaining_actionable_findings=[],subject_calls=0),ensure_ascii=True))

@@ -1,0 +1,31 @@
+"""Root Git/read/hash metadata preservation check only; no target execution."""
+import datetime as dt,hashlib,json,subprocess
+from pathlib import Path
+R=Path(__file__).parent;REPO=Path(r'D:\Aenv\pro2\github-portable-20261012-001')
+def pin(p):
+ b=p.read_bytes();return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def git(*args):return subprocess.check_output(['git','-c','safe.directory=D:/Aenv/pro2/github-portable-20261012-001',*args],cwd=REPO).decode()
+base_path=R/'ROOT_I13_INITIAL_REPOSITORY_BYTES_BASELINE_001.json';base=json.loads(base_path.read_bytes())
+expected=[row['pin'] for row in base['status_records']]+base['primary_documents']+base['canonical_manifests']+[base['current_workspace_pointer'],base['current_I12_navigation']]
+unique={row['path']:row for row in expected};assert len(unique)==418
+for path,wanted in unique.items():assert pin(Path(path))==wanted,path
+status=[x for x in git('status','--porcelain=v1','-z','--untracked-files=all').split(chr(0)) if x]
+assert status==[x['status']+' '+x['relative_path'] for x in base['status_records']]
+assert git('rev-parse','HEAD').strip()==base['HEAD'] and git('rev-parse','origin/main').strip()==base['refreshed_origin_main']
+assert git('diff','--check')==''
+retained_path=R/'ROOT_I13_RETAINED_I2_006_CALLER003_WHOLE_SOURCE_AND_AST_BASELINE_001.json'
+retained=json.loads(retained_path.read_bytes())
+old_pins=[v['Source'] for v in retained['subjects'].values()]
+old_dir=Path(r'D:\Aenv\pro2\WORK\resume-20261025-002\receipt_caller_integration_015')
+for relative,sha in [
+ ('i12/receipt_contract_formats_003.py','d446e4018df9ca37afc234b16cf7ac264c01e28a3aaa55b8c753cf236641ef42'),
+ ('i12/validate_generic_single_receipt_metadata_003.py','0badfa9012cd1809aead5ecf9f6a44bb0872280df35915d6757f8365d31d8da2'),
+ ('i12/validate_selected_peer_receipt_metadata_004.py','e21b14859bf6e128afb87452aff49f096ebc396d4885525bb59df6012cbf6a4c'),
+ ('ROOT_I12_ONCE_MEMORY_SUPERVISOR_003.py','d665d6ae908866575e63b989c4a6b2afe7cce46fdbe267bfa598c5835d1b0817')]:
+ q=pin(old_dir/relative);assert q['sha256']==sha;old_pins.append(q)
+for wanted in old_pins:assert pin(Path(wanted['path']))==wanted
+out=R/'ROOT_I13_PRE_ONCE_BASELINE_AND_OLD_SOURCE_PRESERVATION_002.json'
+value=dict(schema_version=1,record_type='Root_I13_pre_once_after_Source_repairs_baseline_and_old_Source_preservation',author='/root',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),baseline=pin(base_path),unique_repository_baseline_pins_verified=len(unique),all_original_repository_status_identities_unchanged=True,status_identity_count=len(status),tracked_modified=2,untracked=407,staged=0,HEAD=base['HEAD'],cached_origin_main=base['refreshed_origin_main'],Git_diff_check_exit=0,old_Source_pins=old_pins,old_Source_imports=0,old_Source_calls=0,old_tests_replayed=0,primary_six_document_bytes_preserved=True,canonical_manifests_preserved=True,current_workspace_pointer_preserved=True,current_I12_navigation_preserved=True,target_execution=False,operational_authority=False,scientific_authority=False)
+raw=(json.dumps(value,indent=2,sort_keys=True,allow_nan=False)+'\n').encode()
+with out.open('xb') as h:assert h.write(raw)==len(raw)
+print(json.dumps(dict(result=pin(out),unique_repository_pins=len(unique),old_Source_pins=len(old_pins),status_identities=len(status))))

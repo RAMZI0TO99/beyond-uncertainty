@@ -1,0 +1,51 @@
+"""Retain exact peer aggregate/caller/full-release metadata, no result acceptance."""
+import datetime as dt,hashlib,json,os
+from decimal import Decimal
+from pathlib import Path
+R=Path(__file__).parent.parent;D=Path('D:/Aenv/pro3/runs/coordination/cho51_canonical_boundary_20261025_v5_aggregate')
+def need(v,m):
+ if not v:raise ValueError(m)
+def read(path,sha):
+ path=Path(path)
+ for p in (path,*path.parents):need(not p.is_symlink() and not getattr(p.lstat(),'st_file_attributes',0)&1024,'nonreparse ordinary lineage')
+ a=path.stat();need(path.is_file() and a.st_nlink==1 and a.st_size<=2097152,'unchanged2MiB regular singlelink metadata')
+ with path.open('rb') as f:raw=f.read(2097153)
+ z=path.stat();need(len(raw)<=2097152 and len(raw)==a.st_size==z.st_size and a.st_ino==z.st_ino and a.st_mtime_ns==z.st_mtime_ns,'stable bounded metadata read')
+ digest=hashlib.sha256(raw).hexdigest();need(digest==sha,'exact saved metadata pin')
+ return json.loads(raw,parse_float=Decimal),dict(path=str(path),bytes=len(raw),sha256=digest)
+scope,scopep=read(R/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_006.json','9196eaca8c1988c357abfa72881b3e505317ce7faff50dc352b700407848d821')
+now=dt.datetime.now(dt.timezone.utc);need((dt.datetime.fromisoformat(scope['interval_end'])-now).total_seconds()>60,'current Source006 original reserve')
+grant,gp=read(R/'coordination/PRO2_PRO3_COMPUTE_RELEASE_20261025_020.json','beaaa42788a3a172704093b77ca938f61261e57520f34e4afbc2db15a5b92c1f')
+result,rp=read(D/'result.json','e657df21c2bfc48b5aa907dce1a859f6c7fa3737798626bc421ad7d9ad1e60dc')
+superv,sp=read(D/'supervision_001.json','9168285fc69476943bcf37d78fa6190be64f67be8b7baf48afdf79d17120ef11')
+caller,cp=read(D/'caller-completion_001.json','87064f0206f5f34990b27561b2b39056e301e7451c011e9055947cf217517587')
+start,startp=read(D/'caller-start_001.json','f96ca0f14fa0dd28c688236bc033b6bcd90887d2b4dc59bd728b50065a10946e')
+lease,lp=read(D/'lease-closeout_001.json','1521f9dd906bfc9944e583f7d0c7bb0b701aca302f1abc13f33d7ef14d425cbf')
+admission,adp=read(D/'admission.json',lease['admission_sha256'])
+need(lease['peer_release_path']==gp['path'] and lease['peer_release_sha256']==caller['peer_release_sha256']==start['peer_release_sha256']==gp['sha256'],'exact grant/caller/lease joins')
+for key,meta in (('result_sha256',rp),('supervision_sha256',sp),('caller_completion_sha256',cp),('admission_sha256',adp)):need(lease[key]==meta['sha256'],'lease exact output join '+key)
+need(caller['caller_start_sha256']==startp['sha256'] and caller['supervision_sha256']==sp['sha256'] and caller['result_sha256']==rp['sha256'] and caller['admission_sha256']==start['admission_sha256']==superv['admission_sha256']==adp['sha256'],'full caller/source/supervision joins')
+for k in ('proofs_sha256','aggregate_source_sha256','supervisor_sha256','supervisor_review_sha256'):need(lease[k]==grant[k]==superv[k],'unchanged exact operative pin '+k)
+need(lease['request_sha256']==grant['request']['sha256'] and lease['input_review_sha256']==grant['input_review_sha256'],'exact request002/input_v2 joins')
+need(type(lease['jobs_created']) is int and lease['jobs_created']==grant['maximum_jobs']==0 and type(lease['interpreter_invocations']) is int and lease['interpreter_invocations']==grant['maximum_interpreter_invocations']==1,'reported0Jobs/1interpreter')
+need(lease['normal_exit']==superv['exit_code']==caller['tool_exit_code']==0 and superv['errors']==[] and superv['timed_out'] is False,'normal reported completion, no timeout/errors')
+need(superv['interpreter_started'] is superv['owned_tree_discovery_complete'] is superv['owned_tree_reaped'] is superv['stdout_eof'] is superv['stderr_eof'] is lease['full_compute_custody_released'] is lease['caller_tool_reaped'] is lease['caller_pipes_complete'] is True,'reported complete owned cleanup/release')
+need(caller['tool_completed_inline'] is caller['tool_session_reaped'] is caller['tool_output_streams_complete'] is caller['internal_timer_alone_not_used'] is caller['final_supervisor_evidence_write_included'] is True and caller['tool_session_id'] is None,'actual caller terminal proof separately retained')
+need(caller['conservative_dispatch_to_terminal_seconds']<=300 and lease['dispatch_to_full_release_elapsed_seconds_upper_bound']<=300 and superv['elapsed_seconds']<=300 and caller['tool_wall_seconds']<=300,'complete reported timing bounds')
+times={k:dt.datetime.fromisoformat(v) for k,v in dict(window_start=grant['window_start_utc'],window_end=grant['window_end_utc'],dispatch=caller['before_dispatch_utc_lower_bound'],terminal=caller['terminal_completion_utc_upper_bound'],released=lease['released_utc']).items()}
+need(times['window_start']<=times['dispatch']<=times['terminal']<=times['released']<=times['window_end'] and (times['released']-times['dispatch']).total_seconds()<=300,'complete actual chronology within allocation')
+need(superv['minimum_available_ram_bytes']>=4*1073741824 and superv['minimum_available_disk_bytes']>=20*1073741824,'reported4/4/20floors')
+identities=superv['observed_owned_identities'];absence=caller['owned_generation_absence'];need(len({x['pid'] for x in identities})==len(identities),'unique owned identity metadata')
+expected={(x['pid'],x['creation_filetime']) for x in identities}|{(start['caller_pid'],start['caller_creation_filetime'])}
+need({(x['pid'],x['expected_creation_filetime']) for x in absence}==expected and all(x['owned_generation_absent'] is True for x in absence),'exact reported scoped generation-absence joins')
+zero={k:0 for k in ('source_updates','restore_count','support_updates','gradient_updates','target_inference_calls','query_count','model_constructions','measured_cells')}
+need(result['current_numerical_ledger']==lease['current_numerical_ledger']==zero and all(type(v) is int for v in result['current_numerical_ledger'].values()) and all(type(v) is int for v in lease['current_numerical_ledger'].values()),'reported exact eight integer-zero metadata counters')
+need(result['passed'] is True and result['tests']==lease['tests']==133 and result['distinct_stdlib_controls']==lease['distinct_stdlib_controls']==34 and result['stdlib_control_instances']==lease['stdlib_control_instances']==102 and result['metadata_proof_reads']==196 and result['metadata_proof_bytes']==25648747,'reported aggregate historical metadata agreement')
+need(result['execution_admitted'] is result['measured_publication_allowed'] is result['runtime_for_future_execution_qualified'] is result['scientific_admission'] is lease['scientific_admission'] is False,'held authorities preserved')
+v=dict(schema_version=1,record_type='Root_retained_peer_020_aggregate_reported_full_custody_release_only',author='/root',created_utc=now.isoformat(),Source_scope=scopep,compute_grant=gp,peer_result=rp,peer_supervision=sp,peer_caller_start=startp,peer_caller_completion=cp,peer_lease_closeout=lp,peer_admission=adp,reported_full_compute_custody_released=True,grant=20,grant_consumed_closed=True,
+ peer_reported_jobs_created=0,peer_reported_interpreter_invocations=1,peer_reported_aggregate_historical_cases=133,peer_reported_distinct_controls=34,peer_reported_control_instances=102,peer_reported_metadata_reads=196,peer_reported_metadata_bytes=25648747,peer_reported_counter_ledger=zero,peer_reported_internal_elapsed_decimal=str(superv['elapsed_seconds']),peer_reported_caller_terminal_upper_seconds_decimal=str(caller['conservative_dispatch_to_terminal_seconds']),peer_reported_dispatch_to_full_release_upper_seconds_decimal=str(lease['dispatch_to_full_release_elapsed_seconds_upper_bound']),peer_explicit_released_utc=lease['released_utc'],peer_reported_owned_PIDs=[x['pid'] for x in identities],peer_reported_caller_PID=start['caller_pid'],
+ Root_acceptance=dict(peer_result_accepted=False,aggregate_result_accepted=False,scientific_acceptance=False,independent_runtime_counter_observation_claimed=False,whole_host_quiet_proved=False,physical_handle_absence_proved=False),independent_saved_results_review_still_required=True,new_Job_retry_or_interpreter_authorized=False,old_grant_reuse_authorized=False,new_peer_grant_issued=False,target_execution=False,operational_authority=False,scientific_authority=False,Pro2_actual_family_Native8_Parser_runtime_science_admission=False,
+ original_Pro2_I13_result_unchanged=dict(passed=20,failed=12,remaining_current_cases_unestablished=904,full936_pass=False),compact_ABI_NOT_READY=True,own_future_pure_metadata_calls_still_require_separate_Source_review_adoption_and_fresh_once_scope=True)
+out=R/'coordination/ROOT_RETAINED_PRO3_020_AGGREGATE_AND_FULL_CUSTODY_RELEASE_REPORT_001.json';raw=(json.dumps(v,sort_keys=True,indent=2,allow_nan=False)+'\n').encode('ascii');need(len(raw)<=2097152,'unchanged2MiBoutputcap')
+with out.open('xb') as f:need(f.write(raw)==len(raw),'completeCreateNew');f.flush();os.fsync(f.fileno())
+need(out.read_bytes()==raw,'whole custody report readback');print(json.dumps(dict(report=dict(path=str(out),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest()),grant_consumed_closed=True,peer_result_accepted=False)))

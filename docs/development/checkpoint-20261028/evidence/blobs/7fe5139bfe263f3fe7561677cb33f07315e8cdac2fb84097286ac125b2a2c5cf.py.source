@@ -1,0 +1,126 @@
+"""Genuine Root-created WORK handoff review; no protocol/notes selfacceptance."""
+import ast,base64,datetime,hashlib,json,os,pathlib,stat,subprocess
+D=pathlib.Path(__file__).parent;R=D.parent;checks=[]
+def need(v,m):
+    if not v:raise ValueError(m)
+def check(n,v,e):checks.append(dict(name=n,passed=v is True,evidence=e))
+def raw(p):
+    p=pathlib.Path(p)
+    for q in (p,*p.parents):need(not q.is_symlink()and not getattr(q.lstat(),'st_file_attributes',0)&1024,'ordinary nonreparse lineage')
+    a=p.stat();need(stat.S_ISREG(a.st_mode)and a.st_nlink==1 and 0<=a.st_size<=2097152,'bounded complete ordinary singlelink bytes')
+    with p.open('rb')as h:b0=os.fstat(h.fileno());b=h.read(2097153);b1=os.fstat(h.fileno())
+    z=p.stat();key=lambda x:(x.st_dev,x.st_ino,x.st_mode,x.st_nlink,x.st_size,x.st_mtime_ns)
+    need(key(a)==key(b0)==key(b1)==key(z)and len(b)==a.st_size,'stable samehandle whole bytes');return b
+def pin(p,b=None):
+    if b is None:b=raw(p)
+    return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def pairs(xs):
+    d={}
+    for k,v in xs:need(k not in d,'duplicateJSON');d[k]=v
+    return d
+def bad(v):raise ValueError('noninteger/nonfiniteJSON')
+def doc(p):return json.loads(raw(p).decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def linked(p):need(pin(p['path'])==p,'exact linked complete fact3');return doc(p['path'])
+S=R/'ROOT_CURRENT_I13_CAPTURE_PROTOCOL_REQUEST_SOURCE_SCOPE_010.json';SA=R/'ROOT_I13_SOURCE010_PROTOCOL_REQUEST_METADATA_ONLY_ADOPTION_001.json'
+def fresh():
+    s=doc(S);a=doc(SA);need(pin(S)['sha256']=='00ddd9f1bd02db47d23c77b5794b8c4bf3faa64a1ee7a22d82dbf81dcffdfada'and pin(SA)['sha256']=='0b3fb3e5e6bd4368b97ae1067549fc0e549b5e1d1344ea640987e69303088e19'and a['Source_scope']==pin(S),'exact adopted metadata-only Source010')
+    now=datetime.datetime.now(datetime.timezone.utc);need(datetime.datetime.fromisoformat(s['interval_start'])<=now<datetime.datetime.fromisoformat(s['interval_end'])-datetime.timedelta(seconds=60),'fresh strict60reserve');return now.isoformat(timespec='microseconds')
+def shape(v):
+    todo=[(v,0)];count=0
+    while todo:
+        x,d=todo.pop();count+=1;need(count<=50000 and d<=48,'review50000/depth48');need(x is None or type(x)in(bool,int,str,list,dict),'builtin metadata')
+        if type(x)is dict:
+            for k,v in x.items():need(type(k)is str,'builtin key');todo.extend(((k,d+1),(v,d+1)))
+        elif type(x)is list:todo.extend((v,d+1)for v in x)
+    return count
+def save(name,v):
+    shape(v);b=(json.dumps(v,sort_keys=True,indent=2,ensure_ascii=False,allow_nan=False)+'\n').encode('utf8');p=D/name;need(len(b)<=2097152 and not os.path.lexists(p),'unused2MiBoutput');fresh()
+    with p.open('xb')as f:need(f.write(b)==len(b),'whole write');f.flush();os.fsync(f.fileno())
+    need(raw(p)==b,'whole readback');return pin(p,b)
+specs=[('ROOT_I13_CURRENT_CAPTURE_PROTOCOL_AND_EXACT_REQUEST_HANDOFF_006.json',8309,'5fe0c2a3fbb254c82fdbcb2613b4abb67e9c109f0372b5657a4e808c74ef5d9a'),('ROOT_I13_CAPTURE_PROTOCOL_AND_EXACT_REQUEST_DIFFERENT_REVIEW_ADOPTION_001.json',9679,'7bba6668cf717c97f9174f941eadc53ca29175623ac15b3dc52f7222c7e22bf7'),('ROOT_I13_HANDOFF006_COMPLETE005_PREDECESSOR_INVERSE_001.json',11830,'0f0bf2650c316094035d1177931e91020ee3fcbbff20c18fa5f7c6df6631aa15'),('adopt_handoff006_creation_review_001.py',7679,'059c105a94ddd877e367e690ea7e922c94722a499aad1a45c3561c3df57c8dce')]
+arts=[]
+for name,size,sha in specs:
+    p=pin(R/name);check('exact_current_Root_'+name,p['bytes']==size and p['sha256']==sha,p);arts.append(p)
+h,a,i=[doc(R/x[0])for x in specs[:3]];sp=pin(S);sap=pin(SA)
+check('Root_created_handoff_adoption_inverse',h['author']==a['author']==i['author']=='/root','Reviewer's architecture notes are not Rootprotocol semantics acceptance.')
+check('RootH6_links_actual_adoption_and_inverse',h['static_protocol_request_adoption']==arts[1]and h['complete005inverse']==arts[2],'Exact created outputs, not proposed filenames.')
+b=base64.b64decode(i['complete_predecessor_base64'],validate=True)
+check('complete_canonical005_inverse',base64.b64encode(b).decode('ascii')==i['complete_predecessor_base64']and pin(i['complete_predecessor']['path'],b)==i['complete_predecessor']==h['previous_handoff'],i['complete_predecessor'])
+check('oldH5_actual_bytes_unchanged',raw(i['complete_predecessor']['path'])==b and i['predecessor_retained_unchanged']is True and i['all_capture_and_execution_gates_held']is True,'Full8532-byte predecessor preserved exactly.')
+s=doc(S);sa=doc(SA)
+check('Source010_and_adoption_exact_joins',h['Source_scope']==a['Source_scope']==sp and h['Source_scope_adoption']==a['Source_scope_adoption']==sap and sa['Source_scope']==sp,'Fresh metadata-only scope, not capture authority.')
+check('finite_current_Source010_Riyadh_UTC_end',h['Source_window_end_utc']==s['interval_end']=='2026-10-27T16:50:59.695463+00:00'and datetime.datetime.fromisoformat(h['Source_window_end_Riyadh'])==datetime.datetime.fromisoformat(s['interval_end']),'19:50:59.695463Riyadh same instant.')
+for k in ['raw_capture_admitted','new_raw_retention_operation_admitted','subject_Source_authoring_or_activation_admitted','old_or_new_subject_Source_compile_admitted','old_or_new_subject_import_or_call_admitted','native_preparation_admitted','new_once_admission_issued','target_execution','operational_authority','scientific_authority']:check('Source010_metadata_hold_'+k,s[k]is False,'Current scope expressly excludes this action.')
+check('Source010_only_protocol_request_preparation',s['Source_only_protocol_and_request_metadata_preparation_admitted']is True and h['Source_only_preparation']is True,'No operational interpretation of Source refresh.')
+check('original_agent_reserve_caps',h['maximum_local_agents_including_Root']==3 and h['Pro3_reserved_overlap_max']==2 and h['maximum_shared_including_both_roots_and_overlap']==5 and h['publication_reserve_seconds']==60,'3local/2reserved/5shared/strict60; no extra slots.')
+held=('raw_capture_admitted','new_raw_retention_operation_admitted','exact_admission_issued','new_once_admission_issued','new_operational_execution_lease_issued','subject_Source_activation_issued','subject_Source_compiled','subject_Source_imported','subject_execution_performed','supervisor_or_child_process_launched','native_preparation_or_observation_performed','target_execution','operational_authority','scientific_authority','actual_family_publication','Native8','Parser','runtime','actual6','science','compact_ABI_qualified','ready_for_execution','Git_commit_or_push_admitted','primary_six_document_publication')
+for k in held:check('H6_adoption_held_'+k,h[k]is a[k]is False,'Exact literalFalse in actual RootH6 and actual design-only adoption.')
+check('design_request_only_no_execution_protocol',h['protocol_and_request_design_review_adopted']is a['protocol_and_request_design_review_adopted']is True and h['capture_protocol_adopted_for_execution']is a['capture_protocol_adopted_for_execution']is False and h['creation_review_pending']is True,'Externaldesign adoption does not activate or mutate immutable pendingcreation wording.')
+main=dict(completed=32,passed=20,failed=12,remaining_unestablished=904)
+check('original936_and11_NOT_READY_unchanged',h['current_main936']==main and h['implementation_blockers_remain']==11 and h['compact_ABI_status']=='NOT_READY','No case replay/count promotion/causal/semanticfit claim.')
+rc=linked(a['genuine_different_review']);rf=linked(a['full_proof']);xs=rf['checks']
+check('semantic_review_genuinely_other',rc['reviewer']==rf['reviewer']=='/root/i13_final_review'and rc['reviewer']!='/root/project_architecture','This review joins genuine130semanticreview; never selfaccepts architecture notes.')
+check('semantic_review_exact_delivery',rc['full_proof']==a['full_proof']and rc['scope']==rf['scope']==sp and rc['reviewed_artifacts']==rf['reviewed_artifacts']==a['reviewed_artifacts'],'Same exact genuine fullproof/Source010/artifact roster.')
+check('semantic130_allclear_unique_complete',type(xs)is list and len(xs)==130 and len({x['name']for x in xs})==130 and all(type(x['name'])is str and x['name']and x['passed']is True for x in xs)and rc['checks_passed']==rf['checks_passed']==a['checks_passed']==h['checks_passed']==130 and rc['checks_failed']==rf['checks_failed']==a['checks_failed']==h['checks_failed']==0 and rc['remaining_actionable_findings']==rf['remaining_actionable_findings']==[],'Metadata review only; no actualcapture result.')
+check('H6_genuine130_review_pointers',h['genuine_different_review']==a['genuine_different_review']and h['full_proof']==a['full_proof'],'Current semantic review handed off exactly.')
+reviewed={p['path']:p for p in rc['reviewed_artifacts']}
+for p in a['reviewed_artifacts']:check('genuine_reviewed_exact_'+pathlib.Path(p['path']).name,pin(p['path'])==p and reviewed.get(p['path'])==p,'Wholepin and prior genuine semantic coverage only.')
+for k in ['protocol','exact_request','request_payload','author_freeze']:
+    p=h[k];check('current_critical_join_'+k,p==a[k]and pin(p['path'])==p and reviewed.get(p['path'])==p,'Root current002s/payload001 precisely delivered.');arts.append(p)
+request=linked(h['exact_request']);protocol=linked(h['protocol']);payload_raw=raw(h['request_payload']['path']);payload=doc(h['request_payload']['path']);freeze=linked(h['author_freeze'])
+check('exact_payload407_three_fields',len(payload_raw)==407 and set(payload)=={'capture_id','partition_id','selection_plan'}and payload_raw==(json.dumps(payload,sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False)+'\n').encode('utf8'),'Exact407B canonical payload; no33-key operativeadmission emitted.')
+check('request_creation_only_status',request['status']=='REQUEST_ONLY_UNISSUED_CAPTURE_HELD'and request['exact_admission_issued']is False and request['maximum_invocations_requested']==1 and request['operational_execution_interval']is None,'Request identity is not permission or issuedinterval.')
+check('request_current17_preentry_NULL',len(request['future_facts_UNISSUED'])==17 and all(v is None for v in request['future_facts_UNISSUED'].values())and 'outer_parent_custody_witness'not in request['future_facts_UNISSUED'],'No futurepostcapturehash/preentrycyclic requirement.')
+check('request_one_postcapture_NULL',request['post_capture_facts_UNISSUED']=={'outer_parent_custody_witness':None},'Outer completedcustody can only exist after futureoperation, never a currenteligibilityfact.')
+check('payload_request_exact_identity_joins',payload['capture_id']==request['capture_id']==h['summary']['proposed_capture_id']=='d44c114e-cb86-45b2-8443-c560ea44e626'and payload['partition_id']==request['proposed_partition']['partition_id']==h['summary']['proposed_partition'],'Metadata UUID identity only; fixed first whole-record partition.')
+check('request_logicalkey_stable',request['logical_once_key_sha256']==h['summary']['logical_once_key']=='835a7a8310d92420310873982e3211b0671b164184a3f8cc0f5ba07f7c6d0e5f','UUID/scope/metadatawrapper do not permit replay.')
+check('H6_transport_sizing_not_capture',h['summary']['selected_records']==7 and h['summary']['selected_raw_bytes']==583894 and h['summary']['output_sizing_upper_bound']==846234 and h['summary']['node_sizing_upper_bound']==4201 and h['summary']['unissued_preentry_facts']==17 and h['summary']['unissued_postcapture_completion_facts']==1,'Sizing/count bounds only, no actualraw bodies or runtimefit.')
+for k in held:check('current_request_hold_'+k,request[k]is False,'Request cannot issue this gate.')
+for p in h['qualified_held_subjects']:check('qualified_held_prior_Source_unchanged_'+pathlib.Path(p['path']).name,pin(p['path'])==p,'Existing heldSource set unmodified, no Sourceactivation.')
+h5=linked(h['previous_handoff']);check('qualified_held_roster_sameH5',h['qualified_held_subjects']==h5['qualified_subjects']and len(h['qualified_held_subjects'])==4,'Prior staticSourcequalification not reissued or relabeled.')
+history=linked(request['complete_predecessor_history']);check('protocol002_complete001_history_preserved',request['complete_predecessor_history']in a['reviewed_artifacts']and history is not None,'Exact genuine-reviewed whole-three001 history retained; no discarded rank/timing clarification.')
+check('future_capture_still_independently_blocked','UNISSUED'in h['next_step']and 'closed native/prelaunch witness formats'in h['next_step']and 'fresh unused33-key'in h['next_step'],'Native formats/activatedSources/externalcaller/clock/once admission remain future prerequisites.')
+namespace_observation=[]
+for name,path in request['prospective_outputs'].items():
+    absent=not os.path.lexists(path);check('no_actual_output_or_claim_'+name,absent,'Filesystem namespace observation only, no runtime/hostquiet/unusedauthority inference.');namespace_observation.append(dict(name=name,path=path,present=not absent))
+
+# Final adopter is Rootmetadata Source; inspected only, never executed.
+p=R/specs[3][0];text=raw(p).decode('utf8');t=ast.parse(text);calls={ast.unparse(n.func)for n in ast.walk(t)if isinstance(n,ast.Call)}
+for n,v,e in [
+('samebuffer_pin_JSON',"b=raw(p);f=pin(p,b)"in text and 'json.loads(b,object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)'in text,'Exact retainedbuffer identity plus strictJSON.'),
+('genuine_our_creation_reviewer',"c['reviewer']==f['reviewer']=='/root/project_architecture'"in text and "c['remaining_actionable_findings']==f['remaining_actionable_findings']==[]"in text,'Currentdifferentreview/verdict/allclear enforced.'),
+('nonempty_unique_named_allpass',"type(xs) is list and len(xs)>0"in text and "all(type(x['name']) is str and x['name'] for x in xs)"in text and "len({x['name'] for x in xs})"in text and "all(x['passed'] is True for x in xs)"in text,'No empty/duplicate/unnamed/nonpass proof.'),
+('handoff_pin_in_both_full_capsule',"c['handoff']==f['handoff']==hp"in text and "by.get(hp['path'])==hp"in text,'Direct currentH6 delivery in both outputs.'),
+('all_critical_creation_artifacts_direct',all(q in text for q in ["by.get(selfpin['path'])==selfpin","by.get(ap['path'])==ap","by.get(ip['path'])==ip"]),'H6/adoption/inverse/selfSource direct coverage.'),
+('complete005_inverse_rechecked',"base64.b64decode(i['complete_predecessor_base64'],validate=True)"in text and "raw(i['complete_predecessor']['path'])==b"in text,'Actualwhole predecessor and canonicalinverse rejoined.'),
+('semantic_acceptance_other_reviewer',"rc['reviewer']==rf['reviewer']=='/root/i13_final_review'"in text and "rc['reviewer']!=c['reviewer']"in text,'Ownership separation is mechanically rechecked.'),
+('every_current_semantic_pin_rehashed',"for p in a['reviewed_artifacts']:need(pin(p['path'])==p"in text and "for k in ('protocol','exact_request','request_payload','author_freeze')"in text,'No stale/alternativeprotocol/request delivery.'),
+('all_held_current_gates',all("'"+k+"'"in text for k in held)and "h[k] is a[k] is False"in text,'Creation closesmetadataonly.'),
+('fresh010_strict60_final_WriteNew',"fresh010strict60reserveatfinalCreateNew"in text and "dt.datetime.fromisoformat(s['interval_start'])<=now"in text and "(dt.datetime.fromisoformat(s['interval_end'])-now).total_seconds()>60"in text and text.index('fresh010strict60reserveatfinalCreateNew')<text.index("with p.open('xb') as h:"),'ActualUTCSourcecheck immediatelybeforefixedexclusiveoutput.'),
+('fixed_only_output_fsync_readback',text.count("with p.open('xb') as h:")==1 and "p=R/'ROOT_I13_HANDOFF006_DIFFERENT_CREATION_REVIEW_ADOPTION_001.json'"in text and 'os.fsync(h.fileno())'in text and "raw(p)==w"in text,'CreateNew/wholewrite/fsync/readback.'),
+('no_subject_execution',not(calls&{'exec','eval','compile','__import__','run','Popen','open'})and not any(q in text for q in ['subprocess','ctypes','importlib','git push','git commit']),'No effect beyond ownmetadataread/fixedadoptionwrite.'),
+('not_invoked_or_accepted_yet',not os.path.lexists(R/'ROOT_I13_HANDOFF006_DIFFERENT_CREATION_REVIEW_ADOPTION_001.json'),'Finalcreationadoption absent beforethisreview.')]:check('final_adopter_'+n,v,e)
+
+# Fresh read/hash and readonly local Git preservation; no remotequery.
+w=linked(h['workspace_refresh']);initial=linked(w['initial_workspace_refresh']);baseline=linked(w['initial_baseline'])
+check('workspace10_baseline_chain',w['current_handoff']==h['previous_handoff']and w['initial_baseline']==initial['baseline']and w['repository_baseline_pins_verified']==418 and w['working_Source_and_evidence_pins_verified']==60,'Datedinitialactualremote retained separately.')
+for j,p in enumerate(initial['repository_pins'],1):check('repository_current_%03d'%j,pin(p['path'])==p,p)
+for j,p in enumerate(initial['working_Source_and_evidence_pins'],1):check('working_current_%03d'%j,pin(p['path'])==p,p)
+for j,p in enumerate(initial['old_I2_caller_I12_Sources'],1):check('old_six_Source_%d'%j,pin(p['path'])==p,p)
+for j,p in enumerate(baseline['primary_documents'],1):check('primary_document_%d'%j,pin(p['path'])==p,p)
+for j,p in enumerate(baseline['canonical_manifests'],1):check('canonical_manifest_%d'%j,pin(p['path'])==p,p)
+for k in ('current_workspace_pointer','current_I12_navigation'):check(k+'_unchanged',pin(baseline[k]['path'])==baseline[k],baseline[k])
+index=pin(w['index_pin_before_and_after']['path']);env=dict(os.environ);env['GIT_OPTIONAL_LOCKS']='0';checkout=initial['managed_checkout']
+def git(*args):
+    r=subprocess.run(['git','-C',checkout,*args],env=env,capture_output=True,timeout=30,check=False);need(r.returncode==0,'readonlylocalGit');return r.stdout
+statusraw=git('-c','core.quotepath=false','status','--porcelain=v1','-z','--untracked-files=all');ss=statusraw.decode('utf8').split('\0');need(ss[-1]=='','completeNULstatus');ss.pop();actual=[]
+for row in ss:need(len(row)>=4 and row[2]==' 'and row[0]not in 'RC'and row[1]not in 'RC','originalnonrenamegrammar');actual.append((row[:2],row[3:]))
+check('409_exact_current_status_identities',actual==[(r['status'],r['relative_path'])for r in baseline['status_records']],dict(count=len(actual),raw_SHA256=hashlib.sha256(statusraw).hexdigest(),GIT_OPTIONAL_LOCKS='0'))
+check('local_HEAD_cached_refs_c6e_unchanged',git('rev-parse','HEAD').decode('ascii').strip()==git('rev-parse','refs/remotes/origin/main').decode('ascii').strip()==baseline['HEAD']==w['HEAD']=='c6e9173c82190db9f077f3251ba99ac90c834355','No fetch/newremotequery orpublication.')
+check('index_before_after_unchanged',index==pin(index['path'])==w['index_pin_before_and_after']==initial['index_pin_before_and_after'],'Read only optional-lock-free Git.')
+check('two_modified407untracked0staged',len(actual)==409 and sum(x[0]=='??'for x in actual)==407 and sum(x[0]!='??'and x[0][0]!=' 'for x in actual)==0,'Existing modificationspreserved; no cleanworktreeclaim.')
+success=all(x['passed']for x in checks);verdict='PASS_ROOT_WORK_HANDOFF006_REQUEST_ONLY_CREATION_AND_WORKSPACE'if success else'REFUSE_ROOT_WORK_HANDOFF006_CREATION'
+common=dict(schema_version=1,reviewer='/root/project_architecture',created_utc=fresh(),verdict=verdict,scope=sp,handoff=arts[0],reviewed_artifacts=arts,basis=[sp,sap,h['previous_handoff'],h['workspace_refresh'],w['initial_workspace_refresh'],w['initial_baseline'],a['genuine_different_review'],a['full_proof'],a['adopter_Source']],checks_passed=sum(x['passed']for x in checks),checks_failed=sum(not x['passed']for x in checks),remaining_actionable_findings=[x['name']for x in checks if not x['passed']],ready_for_execution=False,capture_protocol_adopted_for_execution=False,claim_limit='Root-createdH6/adoption/inverse/finaladopter/currentdelivery and freshworkspacecreationreview ONLY. Protocol/requestsemanticacceptance is the separate genuinei13PASS130, not thisverdict. Author owns advisory architecture notes and prior exporter/API, which are NOT selfaccepted.',subject_Source_compiled=False,subject_Source_imported=False,subject_functions_called=0,native_preparation_or_observation_performed=False,raw_capture_admitted=False,exact_admission_issued=False,new_once_admission_issued=False,subject_Source_activation_issued=False,target_execution=False,operational_authority=False,scientific_authority=False,compact_ABI_status='NOT_READY',implementation_blockers_remain=11,current_main936=main)
+fullpin=save('INDEPENDENT_I13_ROOT_WORK_HANDOFF006_CREATION_FULL_PROOF_001.json',dict(common,record_type='Independent_Root_handoff006_creation_and_workspace_full_proof',checks=checks,review_author_Source=pin(pathlib.Path(__file__)),current_file_namespace_observation=namespace_observation,Git_readonly_commands=['status --porcelain=v1 -z --untracked-files=all','rev-parse HEAD','rev-parse refs/remotes/origin/main']))
+cappin=save('INDEPENDENT_I13_ROOT_WORK_HANDOFF006_CREATION_CAPSULE_001.json',dict(common,record_type='Independent_Root_handoff006_creation_and_workspace_capsule',full_proof=fullpin))
+print(json.dumps(dict(capsule=cappin,full_proof=fullpin,checks_passed=common['checks_passed'],checks_failed=common['checks_failed'],findings=common['remaining_actionable_findings']),ensure_ascii=True))

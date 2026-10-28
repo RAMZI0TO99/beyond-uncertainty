@@ -1,0 +1,58 @@
+"""Root fresh once admission metadata after exact different Source adoption.
+
+This writes only a prelaunch record and one fresh scope. It never launches a
+child, imports a target, creates the one-use claim or calls a fixture.
+"""
+import ast,ctypes,datetime as dt,hashlib,json,os,shutil
+from pathlib import Path
+R=Path(__file__).parent;C=R/'m3_peer_contracts_016';Q=R/'coordination'
+cfg=json.loads((C/'I13_ONCE_ADMISSION_INPUT_001.json').read_bytes())
+def pin(p):
+ p=Path(p);b=p.read_bytes();return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def read(p):
+ p=Path(p);b=p.read_bytes();assert 0<len(b)<=2097152
+ return json.loads(b)
+def exact(p):
+ assert pin(p['path'])==p
+ return read(p['path'])
+def occurs(v,p):
+ return v==p if type(v) is dict and set(v)=={'path','bytes','sha256'} else any(occurs(x,p) for x in v.values()) if type(v) is dict else any(occurs(x,p) for x in v) if type(v) is list else False
+def save(p,v):
+ b=(json.dumps(v,indent=2,sort_keys=True,allow_nan=False)+'\n').encode();assert 0<len(b)<=2097152 and not os.path.lexists(p)
+ with p.open('xb') as h:assert h.write(b)==len(b)
+ assert p.read_bytes()==b
+ return pin(p)
+manifest=exact(cfg['manifest']);adopt=exact(cfg['Source_adoption']);supervisor=cfg['supervisor']
+assert pin(supervisor['path'])==supervisor
+assert adopt['author']=='/root' and adopt['verdict'].startswith('ACCEPT_EXACT_I13_')
+assert all(adopt[k] is False for k in ('target_execution','operational_authority','scientific_authority','tests_executed','actual_family_publication'))
+allpins=[*manifest['modules'].values(),*manifest['APIs'].values(),*manifest['fixtures'].values(),manifest['catalogue'],supervisor]
+assert all(pin(p['path'])==p and occurs(adopt,p) for p in allpins)
+assert all(p['bytes']<=65536 for p in manifest['modules'].values())
+protocol=R/'ROOT_I13_FINAL_PROTOCOL007_RECORDED_CONTEXT_DIFFERENT_REVIEW_ADOPTION_004.json'
+assert occurs(adopt,pin(protocol))
+scope_path=R/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_001.json';source_scope=read(scope_path)
+assert source_scope['target_execution'] is False and source_scope['operational_authority'] is False
+release=Q/'ROOT_RETAINED_PRO3_010_FAILED_INTEGRATION_AND_FULL_CUSTODY_RELEASE_REPORT_001.json';reported=read(release)
+assert reported['grant']=='010' and reported['reported_full_compute_custody_released'] is True and reported['grant_consumed_closed'] is True
+assert reported['Root_acceptance']['peer_result_accepted'] is False
+grantfiles=sorted(Q.glob('PRO2_PRO3_COMPUTE_RELEASE_20261025_*.json'))
+assert grantfiles and max(int(p.stem.rsplit('_',1)[1]) for p in grantfiles)==10
+assert not any((Path(r'D:\Aenv\pro2\WORK')/('resume-'+day+'-001/coordination/PRO2_REQUEST_PRO3_PAUSE.json')).exists() for day in ('20261007','20261012','20261013','20261015','20261025'))
+class Memory(ctypes.Structure):
+ _fields_=[('length',ctypes.c_ulong),('load',ctypes.c_ulong)]+[(n,ctypes.c_ulonglong) for n in ('total_phys','available_phys','total_page','available_page','total_virtual','available_virtual','available_extended')]
+m=Memory();m.length=ctypes.sizeof(m);assert ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m))
+now=dt.datetime.now(dt.timezone.utc);end=now+dt.timedelta(minutes=10)
+assert dt.datetime.fromisoformat(source_scope['interval_start'])<=now and (dt.datetime.fromisoformat(source_scope['interval_end'])-end).total_seconds()>60
+assert m.available_phys>=1073741824 and shutil.disk_usage(R).free>=10737418240
+owned=C/'owned_memory_runs/attempt001';assert not os.path.lexists(owned);owned.mkdir(parents=True)
+prelaunch=save(C/'ROOT_I13_FRESH_ONCE_PRELAUNCH_METADATA_001.json',dict(schema_version=1,record_type='Root_I13_fresh_once_synthetic_prelaunch_metadata',author='/root',observed_utc=now.isoformat(timespec='microseconds'),source_scope=pin(scope_path),source_adoption=cfg['Source_adoption'],peer_reported_full_custody_release=True,new_peer_grant_after_release=False,peer_custody_release_report=pin(release),last_peer_grant_inventory=[pin(p) for p in grantfiles],available_RAM_bytes=m.available_phys,disk_free_bytes=shutil.disk_usage(R).free,target_execution=False,operational_authority=False,scientific_authority=False,whole_host_quiet_claimed=False,physical_handle_absence_claimed=False))
+runtime=Path(r'C:\Users\aladdin-alyanai\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe')
+rp=pin(runtime);assert rp['bytes']==107312 and rp['sha256']=='7a4102b91959bb234507850ea584e1d31d300a6831b171e4aadc59ff592f0234'
+budgets=dict(total_seconds=60,wait_seconds=50,cleanup_seconds=10,reap_seconds=5,stdout_maximum_bytes=2097152,stderr_maximum_bytes=2097152)
+scope=dict(schema_version=1,record_type='Root_I13_once_owned_synthetic_memory_scope',author='/root',created_utc=now.isoformat(timespec='microseconds'),interval_start=now.isoformat(timespec='microseconds'),interval_end=end.isoformat(timespec='microseconds'),operation='NEW_I13_SYNTHETIC_MEMORY_TEST_ONLY',maximum_suite_invocations=1,source_scope=pin(scope_path),protocol_adoption=pin(protocol),source_adoption=cfg['Source_adoption'],modules=manifest['modules'],APIs=manifest['APIs'],catalogue=manifest['catalogue'],fixtures=manifest['fixtures'],supervisor=supervisor,runtime=rp,prelaunch=prelaunch,outputs={k:str(owned/n) for k,n in (('claim','SCOPE_CLAIM_001.json'),('child_entry','CHILD_ENTRY_001.json'),('child_result','CHILD_RESULT_001.json'),('stdout','CHILD_STDOUT_001.txt'),('stderr','CHILD_STDERR_001.txt'),('supervisor_result','SUPERVISOR_RESULT_001.json'))},budgets=budgets,target_execution=False,operational_authority=False,scientific_authority=False,actual_family_publication=False)
+tree=ast.parse(Path(supervisor['path']).read_bytes());keys=ast.literal_eval(next(n.value for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='SCOPE_KEYS' for t in n.targets)))
+assert set(scope)==set(keys)
+assert (dt.datetime.now(dt.timezone.utc)-now).total_seconds()<30
+out=save(C/'ROOT_I13_ONCE_SYNTHETIC_MEMORY_SCOPE_001.json',scope)
+print(json.dumps(dict(once_scope=out,prelaunch=prelaunch,suite_invoked=False,owned_outputs=str(owned))))

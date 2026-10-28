@@ -1,0 +1,55 @@
+"""Root read/hash and Git preservation metadata only; no imports or calls of old Sources."""
+import datetime as dt, hashlib, json, os, subprocess
+from pathlib import Path
+R=Path(__file__).parent
+REPO=Path(r'D:\Aenv\pro2\github-portable-20261012-001')
+LIMIT=2097152
+def raw(p):
+ p=Path(p); a=p.stat()
+ assert p.is_file() and not p.is_symlink() and a.st_nlink==1 and a.st_size<=LIMIT
+ for q in (p,*p.parents): assert not getattr(q.lstat(),'st_file_attributes',0)&1024
+ b=p.read_bytes(); z=p.stat()
+ assert b==p.read_bytes() and len(b)==a.st_size==z.st_size and a.st_mtime_ns==z.st_mtime_ns
+ return b
+def pin(p):
+ p=Path(p); b=raw(p); return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def git(*args):
+ return subprocess.check_output(['git','-c','safe.directory=D:/Aenv/pro2/github-portable-20261012-001',*args],cwd=REPO).decode()
+basep=R/'ROOT_I13_INITIAL_REPOSITORY_BYTES_BASELINE_001.json'; base=json.loads(raw(basep))
+wanted=[row['pin'] for row in base['status_records']]+base['primary_documents']+base['canonical_manifests']+[base['current_workspace_pointer'],base['current_I12_navigation']]
+unique={row['path']:row for row in wanted}; assert len(unique)==418
+for path,expected in unique.items(): assert pin(path)==expected,path
+status=[x for x in git('status','--porcelain=v1','-z','--untracked-files=all').split(chr(0)) if x]
+assert status==[row['status']+' '+row['relative_path'] for row in base['status_records']]
+head=git('rev-parse','HEAD').strip(); origin=git('rev-parse','origin/main').strip()
+assert head==base['HEAD'] and origin==base['refreshed_origin_main']
+assert git('diff','--check')==''
+oldp=R/'ROOT_I13_RETAINED_I2_006_CALLER003_WHOLE_SOURCE_AND_AST_BASELINE_001.json'
+old=json.loads(raw(oldp)); oldpins=[v['Source'] for v in old['subjects'].values()]
+oldroot=Path(r'D:\Aenv\pro2\WORK\resume-20261025-002\receipt_caller_integration_015')
+for rel,sha in [
+ ('i12/receipt_contract_formats_003.py','d446e4018df9ca37afc234b16cf7ac264c01e28a3aaa55b8c753cf236641ef42'),
+ ('i12/validate_generic_single_receipt_metadata_003.py','0badfa9012cd1809aead5ecf9f6a44bb0872280df35915d6757f8365d31d8da2'),
+ ('i12/validate_selected_peer_receipt_metadata_004.py','e21b14859bf6e128afb87452aff49f096ebc396d4885525bb59df6012cbf6a4c'),
+ ('ROOT_I12_ONCE_MEMORY_SUPERVISOR_003.py','d665d6ae908866575e63b989c4a6b2afe7cce46fdbe267bfa598c5835d1b0817')]:
+ q=pin(oldroot/rel); assert q['sha256']==sha; oldpins.append(q)
+for expected in oldpins: assert pin(expected['path'])==expected
+sourcep=R/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_003.json'; source=json.loads(raw(sourcep))
+now=dt.datetime.now(dt.timezone.utc)
+assert source['author']=='/root' and source['target_execution'] is source['operational_authority'] is False
+assert dt.datetime.fromisoformat(source['interval_start'])<=now
+assert (dt.datetime.fromisoformat(source['interval_end'])-now).total_seconds()>60
+value=dict(schema_version=1,record_type='Root_I13_current_workspace_and_old_Source_preservation',author='/root',created_utc=now.isoformat(),
+ Source_scope=pin(sourcep),baseline=pin(basep),unique_repository_baseline_pins_verified=418,status_identity_count=len(status),
+ all_original_repository_status_identities_unchanged=True,tracked_modified=2,untracked=407,staged=0,HEAD=head,cached_origin_main=origin,
+ Git_diff_check_exit=0,old_Source_pins=oldpins,old_Source_imports=0,old_Source_calls=0,old_tests_replayed=0,
+ primary_six_document_bytes_preserved=True,canonical_manifests_preserved=True,current_workspace_pointer_preserved=True,
+ current_I12_navigation_preserved=True,STEP081_published=False,actual_family_publication=False,Native8=False,Parser=False,
+ runtime=False,science=False,target_execution=False,operational_authority=False,scientific_authority=False,
+ committed=False,pushed=False)
+out=R/'ROOT_I13_CURRENT_WORKSPACE_AND_OLD_SOURCE_PRESERVATION_003.json'
+body=(json.dumps(value,sort_keys=True,indent=2,allow_nan=False)+'\n').encode()
+assert len(body)<=LIMIT and not os.path.lexists(out)
+with out.open('xb') as h: assert h.write(body)==len(body); h.flush(); os.fsync(h.fileno())
+assert raw(out)==body
+print(json.dumps(dict(result=pin(out),unique_repository_pins=418,status_identities=len(status),old_Source_pins=len(oldpins))))

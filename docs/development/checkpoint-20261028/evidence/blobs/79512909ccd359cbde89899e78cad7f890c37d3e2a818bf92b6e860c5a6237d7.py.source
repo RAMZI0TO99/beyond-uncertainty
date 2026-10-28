@@ -1,0 +1,33 @@
+"""Own read/hash/AST metadata; no subject import, function call, or compile."""
+import ast, hashlib, json
+from pathlib import Path
+from datetime import datetime, timezone
+
+root=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003')
+old=Path(r'D:\Aenv\pro2\WORK\resume-20261025-002\receipt_caller_integration_015')
+subjects={
+ 'caller003':(old/'caller/compose_current_owner_receipt_caller_003.py',65536,'8e65790e7bd1ef63989a4910e0edc4d30a6ffbdf987c652968a1f01c1b031906'),
+ 'I2_006':(old/'i2/build_M3_metadata_current_owner_deferred_006.py',2097152,'790ac83005d95fecb1e2837322dd8832b3b59671af85b27f509a35a5fee42c90')
+}
+def sha(raw):return hashlib.sha256(raw).hexdigest()
+rows={}
+for name,(path,cap,expected) in subjects.items():
+ raw=path.read_bytes(); assert sha(raw)==expected and len(raw)<=cap
+ tree=ast.parse(raw,filename=str(path)); lines=raw.splitlines(keepends=True)
+ definitions={}
+ literals={}
+ for node in tree.body:
+  if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef)):
+   definitions[node.name]={'first_line':node.lineno,'last_line':node.end_lineno,'sha256':sha(b''.join(lines[node.lineno-1:node.end_lineno])),'AST_sha256':sha(ast.dump(node,include_attributes=False).encode())}
+  elif isinstance(node,ast.Assign):
+   try:value=ast.literal_eval(node.value)
+   except (ValueError,TypeError):continue
+   for target in node.targets:
+    if isinstance(target,ast.Name) and ('HELD' in target.id or 'ENABLED' in target.id or 'QUALIFIED' in target.id or 'AUTHORITY' in target.id):literals[target.id]=value
+ rows[name]={'Source':{'path':str(path),'bytes':len(raw),'sha256':expected},'cap':cap,'definitions':definitions,'selected_gate_literals':literals}
+out=root/'ROOT_I13_RETAINED_I2_006_CALLER003_WHOLE_SOURCE_AND_AST_BASELINE_001.json'
+assert not out.exists()
+value={'schema_version':1,'record_type':'Root_I13_retained_held_Source_read_hash_AST_baseline','author':'/root','created_utc':datetime.now(timezone.utc).isoformat(),'subjects':rows,'subject_imports':0,'subject_calls':0,'subject_tests':0,'new_target_Source_authored':False,'target_execution':False,'operational_authority':False,'scientific_authority':False,'purpose':'Preserve both complete existing held Sources while separate new I13 metadata contracts and held composition Source are prepared. No original algorithm, guard, Source cap or caller003 identity is changed.'}
+raw=(json.dumps(value,indent=2,sort_keys=True,allow_nan=False)+'\n').encode();assert len(raw)<=2097152
+out.write_bytes(raw)
+print(json.dumps({'path':str(out),'bytes':len(raw),'sha256':sha(raw),'definitions':{key:len(value['definitions']) for key,value in rows.items()}}))

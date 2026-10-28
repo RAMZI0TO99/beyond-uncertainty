@@ -1,0 +1,261 @@
+
+class _Dict(dict):pass
+class _List(list):pass
+class _Str(str):pass
+class _Int(int):pass
+class _Bytes(bytes):pass
+class _Mapping:
+    def __init__(self,value):self.value=value
+    def __getitem__(self,key):return self.value[key]
+    def __iter__(self):return iter(self.value)
+    def __len__(self):return len(self.value)
+
+
+def _node(build,label):
+    if label=='packet':return build.packet
+    if type(build.defs[label]) is bytes:
+        build.defs[label]=json.loads(build.defs[label].decode('utf8'))
+    return build.defs[label]
+
+
+def _at(value,path):
+    for key in path:value=value[key]
+    return value
+
+
+def _change(build,operation):
+    action,label,path,*rest=operation
+    node=_node(build,label)
+    before=_fingerprint(node)
+    parent=_at(node,path[:-1]) if path else None
+    if action=='delete':del parent[path[-1]]
+    elif action=='set':parent[path[-1]]=copy.deepcopy(rest[0])
+    elif action=='ref':parent[path[-1]]=_ref(rest[0])
+    elif action=='append':_at(node,path).append(copy.deepcopy(rest[0]))
+    elif action=='root_set':
+        if label=='packet':build.packet=copy.deepcopy(rest[0])
+        else:build.defs[label]=copy.deepcopy(rest[0])
+    else:raise AssertionError('unknown fresh operation '+action)
+    after=_fingerprint(_node(build,label))
+    assert before!=after,('mutation did not change intended record',operation)
+
+
+def _nodes(value,depth=0):
+    children=[]
+    if type(value) is dict:
+        for key,child in value.items():children.extend((key,child))
+    elif type(value) is list:children=value
+    return 1+sum(_nodes(child,depth+1) for child in children)
+
+
+def _depth(value):
+    children=[]
+    if type(value) is dict:
+        for key,child in value.items():children.extend((key,child))
+    elif type(value) is list:children=value
+    return 0 if not children else 1+max(_depth(child) for child in children)
+
+
+def _special_graph(build,spec):
+    action=spec['special']
+    if action=='reviewer':
+        actor=spec['actor']
+        for label in spec.get('proofs',['canonical'] if build.kind=='single' else ['content']):
+            build.defs[label+'_capsule']['reviewer']=actor;build.defs[label+'_full']['reviewer']=actor
+    elif action=='nested_author':
+        label=spec.get('proof','canonical')
+        build.defs[label+'_full']['extra']={'nested':[{'source_author':REVIEWER}]}
+    elif action=='sibling_author':
+        row=next(r for r in build.defs['selection']['rows'] if r['role']=='profile')
+        row['preparation_Source_author']=REVIEWER
+    elif action=='same_predecessor':
+        build.defs['draft']=build.defs['predecessor']
+        if build.kind=='single':build.defs['canonical']=build.defs['predecessor']
+        else:build.defs['proposal']=build.defs['predecessor']
+    elif action=='draft_canonical_differ':build.defs['canonical']+=b'changed\n'
+    elif action=='proposal_draft_differ':build.defs['proposal']+=b'changed\n'
+    elif action=='nonshared_observation':
+        v=build.defs['publication']['actual_paired_metadata_inputs'][0]
+        v['descriptor9'][spec['index']]+=1
+    elif action=='shared_observation':
+        v=build.defs['publication']['actual_paired_metadata_inputs'][0]
+        v['descriptor9'][spec['index']]+=1
+        if spec['index'] in [0,1,2,3,6,7,8]:v['shared_descriptor7']=[v['descriptor9'][i] for i in [0,1,2,3,6,7,8]]
+    elif action=='extra_role_observation':
+        chosen=next(r for r in build.rows if r['role']=='WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_template')
+        raw=b'x'*65537
+        build.raw('overcap_phase',chosen['canonical_path'],raw)
+        build.defs['publication']['actual_paired_metadata_inputs'].append(build.observation(_pin(chosen['canonical_path'],raw),2097152,second=33))
+    elif action=='large_code_context':
+        build.defs['context']['own_program_support']['Source']=_ref('large_held_code_source')
+    elif action=='proof_coverage':
+        label=spec.get('proof','canonical')+spec.get('part','_capsule')
+        subject=spec.get('subject','canonical')
+        build.defs[label]['subjects']=[pin for pin in build.defs[label]['subjects'] if pin!=_ref(subject)]
+        if spec['mode']=='extended':
+            raw=build.defs[subject];assert type(raw) is bytes
+            build.defs[label]['subjects'].append(dict(_pin(build.paths[subject],raw),extra=True))
+        elif spec['mode']=='pointer':build.defs[label]['coverage_pointer']=_ref('canonical_full')
+    elif action=='checks_count':
+        n=spec['count'];label='canonical_full'
+        build.defs[label]['checks']=[dict(name='fresh_check_'+str(i),passed=True) for i in range(n)]
+        build.defs[label]['checks_passed']=n;build.defs['canonical_capsule']['checks_passed']=n
+    elif action=='graph_nodes':build.defs['canonical_full']['padding']=[None]*50000
+    elif action=='spents_remove':build.defs['publication']['actual_paired_metadata_inputs'].pop(spec.get('index',2))
+    elif action=='spents_duplicate':build.defs['publication']['actual_paired_metadata_inputs'].append(copy.deepcopy(build.defs['publication']['actual_paired_metadata_inputs'][2]))
+    elif action=='phase_reference_opaque':build.defs['context']['fresh_parser_support']['implementation_support']={'unqualified_future_record':{'anything':'opaque metadata data'}}
+    else:raise AssertionError('unknown fresh special '+action)
+
+
+def _post(bundle,spec):
+    action=spec['post']
+    records=bundle['records']
+    if action=='packet_dict':bundle['packet']=json.loads(bundle['packet'].decode())
+    elif action=='packet_duplicate':bundle['packet']=b'{"role":"writer","role":"writer"}'
+    elif action=='packet_float':bundle['packet']=b'{"x":0.5}'
+    elif action=='packet_nonfinite':bundle['packet']=b'{"x":NaN}'
+    elif action=='packet_surrogate':bundle['packet']=b'{"x":"\\ud800"}'
+    elif action=='packet_utf8':bundle['packet']=b'\xff'
+    elif action=='packet_subclass':bundle['packet']=_Bytes(bundle['packet'])
+    elif action=='records_subclass':bundle['records']=_List(records)
+    elif action=='record_subclass':records[0]=_Dict(records[0])
+    elif action=='record_mapping':records[0]=_Mapping(records[0])
+    elif action=='pin_subclass':records[0]['pin']=_Dict(records[0]['pin'])
+    elif action=='record_key_subclass':records[0]={_Str(k):v for k,v in records[0].items()}
+    elif action=='pin_key_subclass':records[0]['pin']={_Str(k):v for k,v in records[0]['pin'].items()}
+    elif action=='pin_int_subclass':records[0]['pin']['bytes']=_Int(records[0]['pin']['bytes'])
+    elif action=='pin_str_subclass':records[0]['pin']['sha256']=_Str(records[0]['pin']['sha256'])
+    elif action=='body_subclass':records[0]['body']=_Bytes(records[0]['body'])
+    elif action=='body_bytearray':records[0]['body']=bytearray(records[0]['body'])
+    elif action=='pin_field':records[0]['pin'][spec['field']]=copy.deepcopy(spec['value'])
+    elif action=='pin_delete':del records[0]['pin'][spec['field']]
+    elif action=='record_delete':del records[0][spec['field']]
+    elif action=='pin_extra':records[0]['pin']['qualified']=True
+    elif action=='record_extra':records[0]['qualified']=True
+    elif action=='body_same_length_wrong_hash':
+        raw=records[0]['body'];records[0]['body']=bytes([raw[0]^1])+raw[1:]
+    elif action=='body_length':records[0]['body']+=b'x'
+    elif action=='store_alias':
+        row=copy.deepcopy(records[0]);row['pin']['path']=row['pin']['path'][:3]+row['pin']['path'][3:].swapcase();records.append(row)
+    elif action=='record257':
+        records[:]=[dict(pin=_pin(HOME+'\\padding\\r'+str(i)+'.txt',b'x'),body=b'x') for i in range(257)]
+    elif action=='total32MiB':
+        raw=b'x'*2097152
+        records[:]=[dict(pin=_pin(HOME+'\\padding\\r'+str(i)+'.txt',raw),body=raw) for i in range(17)]
+    elif action=='extra_keyword':bundle['I8_qualified']=True
+    elif action=='argument':bundle[spec['field']]=copy.deepcopy(spec['value'])
+    elif action=='catalogue_wrong_hash':pass
+    else:raise AssertionError('unknown fresh post '+action)
+
+
+def _format_value(build,spec):
+    label=spec['label'];value=build.expand(_node(build,label))
+    special=spec.get('format_special')
+    if special=='subclass':value=_Dict(value)
+    elif special=='value_nodes':
+        value['details']={'padding':[]};n=spec['limit']-_nodes(value)
+        assert n>=0;value['details']['padding']=[None]*n
+        assert _nodes(value)==spec['limit']
+    elif special=='value_depth':
+        nested='leaf'
+        while True:
+            value['details']=nested
+            if _depth(value)>=spec['limit']:break
+            nested={'child':nested}
+        assert _depth(value)==spec['limit']
+    elif special=='value_bytes':
+        value['details']={'blob':''};n=spec['limit']-len(_wire(value));assert n>=0
+        value['details']['blob']='x'*n;assert len(_wire(value))==spec['limit']
+    return value
+
+
+def _invoke(spec,formats,single,peer,catalogue_bytes,catalogue):
+    if spec['route']=='isolation':
+        before=(_fingerprint(FIXED),_fingerprint(CASE_CATALOGUE))
+        a=_Build('single','writer',catalogue);b=_Build('single','writer',catalogue)
+        assert not _mutable_ids(a.defs).intersection(_mutable_ids(FIXED))
+        assert not _mutable_ids(a.defs).intersection(_mutable_ids(b.defs))
+        first=a.finish();second=b.finish()
+        assert not _mutable_ids(first).intersection(_mutable_ids(a.defs))
+        assert not _mutable_ids(first).intersection(_mutable_ids(a.memo))
+        assert not _mutable_ids(first).intersection(_mutable_ids(second))
+        retained=next(row for row in first['records'] if row['pin']['path']==FIXED['old_selection']['pin']['path'])
+        if spec['mode']=='positive':
+            a.fixed['old_selection']['pin']['bytes']+=1
+            retained['pin']['bytes']+=1
+        elif spec['mode']=='negative':
+            del a.fixed['old_selection']['pin']['path']
+            del a.defs['selection']['rows'][0]['predecessor']['path']
+            del retained['pin']['sha256']
+        else:
+            a.defs['selection']['rows'][0]['retained_semantic_Source_author']='/root/corrupted'
+            a.fixed['old_selection']['pin'].clear()
+            first['records'][0]['pin'].clear()
+        spec['local_case_spec_mutation']=['must remain detached']
+        assert before==(_fingerprint(FIXED),_fingerprint(CASE_CATALOGUE))
+        fresh=_Build('single','writer',catalogue).finish()
+        assert _fingerprint(second)==_fingerprint(fresh)
+        return
+    if spec['route']=='hold':
+        module={'formats':formats,'single':single,'peer':peer}[spec['module']]
+        old=module.ACTUAL_ENTRY_QUALIFIED
+        try:
+            if spec.get('toggle'):module.ACTUAL_ENTRY_QUALIFIED=True
+            module.execute_stage(object(),input_that_must_not_be_examined=object())
+        finally:module.ACTUAL_ENTRY_QUALIFIED=old
+        return
+    build=_Build(spec['kind'],spec['role'],catalogue)
+    before=_fingerprint((build.defs,build.packet))
+    for operation in spec.get('operations',[]):_change(build,operation)
+    if 'special' in spec:_special_graph(build,spec)
+    if spec.get('operations') or 'special' in spec:assert before!=_fingerprint((build.defs,build.packet)),('unchanged input',spec['name'])
+    if spec['route']=='format':
+        value=_format_value(build,spec)
+        if 'format_special' in spec:assert type(value) is not dict or spec['format_special']!='subclass'
+        result=formats.encode_receipt_contract_record(kind=spec['record_kind'],value=value,catalogue_bytes=catalogue_bytes)
+        assert type(result) is bytes and result==_wire(json.loads(result.decode()))
+        assert json.loads(result.decode())==dict(value)
+        return
+    bundle=build.finish()
+    if 'post' in spec:
+        old=_fingerprint(bundle);_post(bundle,spec);assert old!=_fingerprint(bundle) or spec['post']=='catalogue_wrong_hash'
+    module=single if spec['kind']=='single' else peer
+    method=module.validate_generic_single_dependency_metadata if spec['kind']=='single' else module.validate_selected_peer_receipt_metadata
+    if spec['route']=='peer_canonical':method=peer.validate_selected_peer_canonical_dependency_metadata
+    actual_catalogue=catalogue_bytes[:-1]+b' ' if spec.get('post')=='catalogue_wrong_hash' else catalogue_bytes
+    if spec.get('post')=='catalogue_wrong_hash':
+        assert actual_catalogue!=catalogue_bytes and len(actual_catalogue)==len(catalogue_bytes)
+        assert hashlib.sha256(actual_catalogue).hexdigest()!=hashlib.sha256(catalogue_bytes).hexdigest()
+    result=method(catalogue_bytes=actual_catalogue,**bundle)
+    view=json.loads(result.decode('utf8'))
+    assert type(result) is bytes and result==_wire(view)
+    schema=catalogue['schemas'][catalogue['result_schema_names']['single' if spec['kind']=='single' else 'peer']]
+    assert set(view)==set(schema['fields']) and view['metadata_only'] is True and view['format_validated'] is True
+    assert all(view[key] is False for key in AUTHORITY_FALSE_FLAGS)
+    assert view['verified_record_count']==len(bundle['records']) and view['verified_record_bytes']==sum(len(row['body']) for row in bundle['records'])
+    assert view['recorded_spent_observation_count']==view['exact_spent_whitelist_matches']==(75 if spec['kind']=='single' else 0)
+    assert view['producer_route_status']=='UNWIRED'
+    assert view['canonical_dependency_ABI_metadata_validated'] is (spec['kind']=='single')
+    # Byte output is immutable and remains exact after mutating a detached caller view.
+    original=result;view['metadata_only']=False
+    assert result==original and json.loads(result.decode())['metadata_only'] is True
+
+
+def run(*,formats,single,peer,catalogue_bytes):
+    assert type(formats) is types.ModuleType and type(single) is types.ModuleType and type(peer) is types.ModuleType
+    catalogue=json.loads(catalogue_bytes.decode('utf8'))
+    global_snapshot=(_fingerprint(FIXED),_fingerprint(CASE_CATALOGUE))
+    rows=[]
+    for original in CASE_CATALOGUE:
+        spec=copy.deepcopy(original)
+        assert not _mutable_ids(spec).intersection(_mutable_ids(CASE_CATALOGUE))
+        expected=spec['expected']
+        try:_invoke(spec,formats,single,peer,catalogue_bytes,catalogue)
+        except Exception as error:
+            actual=error.code if type(error) in (formats.I12Error,single.I12Error,peer.I12Error) else type(error).__name__
+            assert expected!='PASS' and actual==expected,(spec['name'],expected,actual,str(error))
+        else:assert expected=='PASS',(spec['name'],'expected refusal did not occur',expected)
+        assert global_snapshot==(_fingerprint(FIXED),_fingerprint(CASE_CATALOGUE)),('global mutation',spec['name'])
+        rows.append(dict(name=spec['name'],passed=True))
+        print(json.dumps(dict(event='CASE_PASS',name=spec['name']),sort_keys=True,separators=(',',':')),flush=True)
+    return dict(record_type='I12_owned_synthetic_memory_case_results',cases=rows,passed=len(rows),failed=0,metadata_only=True,target_execution=False,operational_authority=False,scientific_authority=False,actual_family_publication=False)

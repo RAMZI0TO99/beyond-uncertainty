@@ -1,0 +1,119 @@
+"""Own limited read/hash/strictJSON review of saved eighteen-record DATA sweep."""
+import collections
+import datetime
+import hashlib
+import json
+from pathlib import Path
+
+HERE = Path(__file__).parent
+PEER = HERE.parent / 'canonical_peer_protocol_audit_001'
+OUT = HERE / 'fixed_data_sweep_different_review_001'
+
+def pin(path, raw=None):
+    raw = path.read_bytes() if raw is None else raw
+    return {'path': str(path), 'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
+
+def read(raw):
+    def pairs(items):
+        out = {}
+        for key, value in items:
+            if key in out:
+                raise ValueError('duplicate')
+            out[key] = value
+        return out
+    def reject(token):
+        raise ValueError(token)
+    return json.loads(raw.decode('utf-8'), object_pairs_hook=pairs, parse_float=reject, parse_constant=reject)
+
+def stats(value, parts=(), depth=0):
+    count, maximum, c0, surrogate = 1, depth, [], []
+    if type(value) is str:
+        if any(ord(char) < 32 for char in value):
+            c0.append({'pointer': '/' + '/'.join(parts), 'C0_codepoints': sorted({ord(c) for c in value if ord(c) < 32}),
+                'counts': dict(sorted(collections.Counter(str(ord(c)) for c in value if ord(c) < 32).items())),
+                'UTF8_bytes': len(value.encode()), 'UTF8_sha256': hashlib.sha256(value.encode()).hexdigest()})
+        if any(0xD800 <= ord(char) <= 0xDFFF for char in value):
+            surrogate.append('/' + '/'.join(parts))
+    elif type(value) is dict:
+        for key, child in value.items():
+            for node, path in ((key, parts + ('@key:' + key,)), (child, parts + (key,))):
+                n, m, c, s = stats(node, path, depth + 1)
+                count += n
+                maximum = max(maximum, m)
+                c0 += c
+                surrogate += s
+    elif type(value) is list:
+        for index, child in enumerate(value):
+            n, m, c, s = stats(child, parts + (str(index),), depth + 1)
+            count += n
+            maximum = max(maximum, m)
+            c0 += c
+            surrogate += s
+    return count, maximum, c0, surrogate
+
+def save(name, value):
+    raw = (json.dumps(value, sort_keys=True, indent=2, ensure_ascii=False, allow_nan=False) + '\n').encode()
+    if len(raw) > 2097152:
+        raise ValueError('cap')
+    with (OUT / name).open('xb') as handle:
+        handle.write(raw)
+    if (OUT / name).read_bytes() != raw:
+        raise ValueError('readback')
+    return pin(OUT / name, raw)
+
+def main():
+    path = PEER / 'I13_LIMITED_MANDATORY_FIXED_JSON_C0_SURROGATE_NODE_SWEEP_001.json'
+    sweep = read(path.read_bytes())
+    checks = []
+    def check(name, passed, evidence):
+        if type(passed) is not bool:
+            raise ValueError('builtinbool')
+        checks.append({'name': name, 'passed': passed, 'evidence': evidence})
+    check('saved_sweep_exact_pin', pin(path)['bytes'] == 11464 and pin(path)['sha256'] == '03f8977071a4b382e7f757279489e824ba213e7dcb664face9ac2a10538619e9', pin(path))
+    check('saved_sweep18_unique_names', sweep['records'] == len(sweep['rows']) == len({row['name'] for row in sweep['rows']}) == 18, pin(path))
+    subjects = [pin(path)]
+    c0_names = []
+    for row in sweep['rows']:
+        name = row['name']
+        raw = Path(row['pin']['path']).read_bytes()
+        body = read(raw)
+        count, maximum, c0, surrogate = stats(body)
+        subjects.append(row['pin'])
+        check(name + '_actual_hash_size', pin(Path(row['pin']['path']), raw) == row['pin'], row['pin'])
+        check(name + '_strict_JSON_decoded', type(body) is dict, row['pin'])
+        check(name + '_full_key_value_node_count', count == row['nodes'], row['pin'])
+        check(name + '_full_maximum_depth', maximum == row['maximum_depth'], row['pin'])
+        check(name + '_exact_C0_selectors_hashes_counts', c0 == row['C0_leaves'], row['pin'])
+        check(name + '_no_surrogates', surrogate == row['surrogate_leaves'] == [], row['pin'])
+        check(name + '_individual_record_node_depth_bounds', len(raw) <= 2097152 and count <= 50000 and maximum <= 48 and row['bounds_fit_individually'] is True, row['pin'])
+        if c0:
+            c0_names.append(name)
+    check('exact_known_two_C0_record_domains', c0_names == sweep['C0_record_names'] == ['M3_inventory17', 'I11_API007'], pin(path))
+    check('no_unaccounted_C0_or_surrogate_records', sweep['new_unaccounted_C0'] == sweep['surrogate_records'] == [], pin(path))
+    check('no_spent_body_read_claim', type(sweep['spent_identity_body_reads']) is int and sweep['spent_identity_body_reads'] == 0, pin(path))
+    for key in ('operational_authority', 'target_execution', 'tests_executed'):
+        check(key + '_False', sweep[key] is False, pin(path))
+    check('bounded_review_not_whole_graph_or_test_acceptance', True, {
+        'reviewed_conclusion': 'OnlyeighteenexplicitrawJSONdata bodies; exactindividualmetrics verified byownstdlib. No targetmodule/fixture import/call, no spent75 read, no originalruntime/Parser/physical/currenteligibility acceptance. Fullnewfixturegraph conservativeparent+child totals stillseparatelyreviewed beforeactualonceadmission.',
+        'subject': pin(path)})
+    if any(not row['passed'] for row in checks):
+        raise ValueError('refuse ' + repr([row['name'] for row in checks if not row['passed']]))
+    OUT.mkdir(exist_ok=False)
+    full = {'schema_version': 1, 'record_type': 'Independent_I13_limited_fixed_DATA_sweep_different_Source_full_proof',
+        'reviewer': '/root/project_architecture', 'source_author': '/root/i2_resume_gap',
+        'created_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds'),
+        'verdict': 'PASS_I13_LIMITED_FIXED_DATA_SWEEP_READ_HASH_ONLY',
+        'subjects': subjects, 'checks': checks, 'checks_passed': len(checks), 'checks_failed': 0,
+        'target_execution': False, 'operational_authority': False, 'native_Parser_executed': False,
+        'scientific_authority': False, 'tests_executed': False, 'target_Source_authored': False,
+        'actual_admission': False, 'current_canonical_authority_qualified': False,
+        'full_original_I2_DAG_closed': False, 'actual_peer_content_qualified': False}
+    full_pin = save('INDEPENDENT_I13_LIMITED_FIXED_DATA_SWEEP_SOURCE_FULL_PROOF_001.json', full)
+    capsule = {key: value for key, value in full.items() if key != 'checks'}
+    capsule['record_type'] = 'Independent_I13_limited_fixed_DATA_sweep_different_Source_capsule'
+    capsule['full_proof'] = full_pin
+    capsule_pin = save('INDEPENDENT_I13_LIMITED_FIXED_DATA_SWEEP_SOURCE_CAPSULE_001.json', capsule)
+    print(json.dumps({'capsule': capsule_pin, 'full_proof': full_pin, 'checks_passed': len(checks), 'checks_failed': 0}))
+
+if __name__ == '__main__':
+    main()

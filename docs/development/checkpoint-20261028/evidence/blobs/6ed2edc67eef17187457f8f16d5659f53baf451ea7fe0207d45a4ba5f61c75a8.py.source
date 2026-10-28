@@ -1,0 +1,100 @@
+"""Adopt exact different-reviewed prospective contract only and prepare WORK handoff."""
+import base64, datetime as dt, hashlib, json, math, os, stat, sys
+from pathlib import Path
+R=Path(__file__).parent
+O=R.parent/'resume-20261025-003'
+CAP=2097152
+
+def need(v,m):
+ if not v:raise ValueError(m)
+
+def raw(path):
+ p=Path(path)
+ for q in (p,*p.parents):
+  s=q.lstat();need(not q.is_symlink() and not getattr(s,'st_file_attributes',0)&1024,'ordinary nonreparse lineage')
+ a=p.stat();need(stat.S_ISREG(a.st_mode) and a.st_nlink==1 and 0<=a.st_size<=CAP,'regular singlelink2MiB metadata')
+ with p.open('rb') as h:
+  d=os.fstat(h.fileno());b=h.read(CAP+1);e=os.fstat(h.fileno())
+ z=p.stat();fields=lambda x:(x.st_dev,x.st_ino,x.st_mode,x.st_nlink,x.st_size,x.st_mtime_ns)
+ need(fields(a)==fields(d)==fields(e)==fields(z) and len(b)==a.st_size<=CAP,'samehandle stable bounded bytes');return b
+
+def fact(path,b=None):
+ if b is None:b=raw(path)
+ return dict(path=str(path),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+
+def doc(path,expected=None):
+ b=raw(path);p=fact(path,b)
+ if expected:need(p==expected,'exact complete metadata pin')
+ def pairs(rows):
+  d={}
+  for k,v in rows:need(k not in d,'duplicate JSONkey');d[k]=v
+  return d
+ def finite(s):
+  v=float(s);need(math.isfinite(v),'finiteJSON');return v
+ def reject(s):raise ValueError('nonfinite JSONconstant')
+ return json.loads(b,object_pairs_hook=pairs,parse_float=finite,parse_constant=reject),p
+
+def bounded_tree(v,depth=1):
+ if type(v) is dict:
+  xs=[bounded_tree(x,depth+1) for x in v.values()];return 1+len(v)+sum(x[0] for x in xs),max([depth]+[x[1] for x in xs])
+ if type(v) is list:
+  xs=[bounded_tree(x,depth+1) for x in v];return 1+sum(x[0] for x in xs),max([depth]+[x[1] for x in xs])
+ return 1,depth
+
+def write(name,v):
+ b=(json.dumps(v,sort_keys=True,indent=2,ensure_ascii=False,allow_nan=False)+'\n').encode('utf8')
+ nodes,depth=bounded_tree(v);need(len(b)<=CAP and nodes<=50000 and depth<=48,'unchanged own metadata caps')
+ now=dt.datetime.now(dt.timezone.utc);need(dt.datetime.fromisoformat(s['interval_start'])<=now and (dt.datetime.fromisoformat(s['interval_end'])-now).total_seconds()>60,'strict60reserve at each final exclusive write')
+ p=R/name
+ with p.open('xb') as h:need(h.write(b)==len(b),'complete exclusiveWrite');h.flush();os.fsync(h.fileno())
+ need(raw(p)==b,'whole metadata readback');return fact(p,b)
+
+need(len(sys.argv)==3,'capsule path plus whole SHA256')
+scope_expected=dict(path=str(R/'ROOT_CURRENT_I13_RAW_INPUT_RETENTION_SOURCE_SCOPE_007.json'),bytes=6266,sha256='e203fe614b01e19b4ecc6632ff77ddebc8c812a88dae46aba4bd3643454563f5')
+s,sp=doc(scope_expected['path'],scope_expected)
+sa_expected=dict(path=str(R/'ROOT_I13_SOURCE_SCOPE007_DIFFERENT_REVIEW_ADOPTION_001.json'),bytes=3115,sha256='a517732dd0b4870e08381fb3ce31baa435385d6ae3e700dd2f014708df3a5969')
+sa,sap=doc(sa_expected['path'],sa_expected)
+need(sa['Source_scope']==sp and sa['contract_preparation_and_review_adopted'] is True and sa['raw_acquisition_admitted'] is False,'adopted preparation-only scope')
+cp=Path(sys.argv[1]);need(cp.is_relative_to(R/'raw_retention_contract_different_review_001'),'own genuine review capsule lineage')
+c,cf=doc(cp);need(cf['sha256']==sys.argv[2],'exact caller capsule SHA')
+f,ff=doc(c['full_proof']['path'],c['full_proof'])
+need(c['reviewer']==f['reviewer']=='/root/i13_final_review' and c['verdict']==f['verdict'] and c['verdict'].startswith('PASS_') and c['remaining_actionable_findings']==[],'different genuine final allclear')
+need(c['scope']==f['scope']==sp,'same exact current Source scope')
+checks=f['checks'];need(type(checks) is list and len(checks)>0 and len(checks)==len({x['name'] for x in checks})==c['checks_passed']==f['checks_passed'] and c['checks_failed']==f['checks_failed']==0 and all(x['passed'] is True for x in checks),'unique complete allpass different checks')
+need(c['reviewed_artifacts']==f['reviewed_artifacts'],'same exact reviewed artifact roster')
+artifacts=c['reviewed_artifacts'];need(len(artifacts)>4 and len({x['path'].casefold() for x in artifacts})==len(artifacts),'closed unique independently reviewed artifact roster')
+reviewed={}
+for p in artifacts:
+ need(Path(p['path']).is_relative_to(R),'own contract/plan/adopter evidence artifact')
+ need(fact(p['path'])==p,'unchanged different-reviewed complete artifact')
+ reviewed[p['path']]=p
+plan_expected=dict(path=str(R/'retention_selection_plan_001'/'ROOT_I13_RAW_RETENTION_SIX_GRAPH_WHOLE_RECORD_SELECTION_PLAN_001.json'),bytes=452561,sha256='97fdb498e51580f3eb8bc30ad291d72d5b67fb254f3840128f0ee19e9dbd91e5')
+need(reviewed.get(plan_expected['path'])==plan_expected,'exact independently reviewed whole-record plan')
+plan,pp=doc(plan_expected['path'],plan_expected)
+need(plan['logical_record_count']==973 and plan['total_logical_record_bytes']==17399459 and plan['partition_count']==23 and plan['maximum_partition_output_upper_bound']==1493609 and plan['maximum_partition_node_upper_bound']==6391,'exact reviewed static arithmetic')
+need(plan['raw_acquisition_admitted'] is False and plan['actual_raw_bodies_retained'] is False and plan['compact_ABI_status']=='NOT_READY' and plan['implementation_blockers_remain']==11,'plan proves sizes only')
+contract_files=[x for x in artifacts if Path(x['path']).parent==R/'raw_input_retention_contract_001' and x['path'].lower().endswith('.json')]
+need(len(contract_files)>=4,'reviewed contract schema closure freeze')
+adopter_pin=fact(Path(__file__))
+need(reviewed.get(adopter_pin['path'])==adopter_pin,'this exact adoption and handoff preparation Source independently reviewed')
+held=dict(raw_acquisition_admitted=False,new_raw_retention_operation_admitted=False,new_target_or_fixture_Source_authoring_admitted=False,new_builder_fixture_validator_target_calls_admitted=False,new_tests_admitted=False,new_operational_execution_lease_issued=False,prior_scopes_or_leases_extended=False,actual_family_publication=False,primary_six_document_publication=False,Git_commit_or_push_admitted=False,Native8=False,Parser=False,runtime=False,actual6=False,science=False,target_execution=False,operational_authority=False,scientific_authority=False)
+now=dt.datetime.now(dt.timezone.utc).isoformat()
+ad=dict(schema_version=1,record_type='Root_I13_raw_input_retention_prospective_contract_different_review_adoption_only',author='/root',created_utc=now,Source_scope=sp,Source_scope_adoption=sap,genuine_different_review=cf,full_proof=ff,checks_passed=len(checks),checks_failed=0,reviewed_artifacts=artifacts,selection_plan=pp,
+ Root_decision='Adopt the exact prospective raw-input retention contract, closed schema, saved-metadata whole-record selection plan and static no-call closure as reviewed design only. This accepts the bounded transport design; future acquisition Source/API/supervisor qualification, review/adoption, fresh admission and once custody remain UNISSUED. No target successor implementation, raw capture or prior snapshot replay is admitted.',
+ prospective_retention_design_adopted=True,implementation_protocol_adopted=False,compact_ABI_status='NOT_READY',implementation_blockers_remain=11,current_main936=dict(completed=32,passed=20,failed=12,remaining_unestablished=904),adopter_Source=adopter_pin,**held)
+ap=write('ROOT_I13_RAW_INPUT_RETENTION_CONTRACT_DIFFERENT_REVIEW_ADOPTION_001.json',ad)
+prior_expected=dict(path=str(O/'ROOT_I13_CURRENT_CAUSAL_RECEIPT_DESIGN_AND_EVIDENCE_HANDOFF_003.json'),bytes=10109,sha256='d98a694c79269204239498b1ec4248a3209ec3458d9f786bfd30a26d17ee44b7')
+prior,prior_pin=doc(prior_expected['path'],prior_expected);prior_bytes=raw(prior_pin['path'])
+need(fact(prior_pin['path'],prior_bytes)==prior_pin,'complete inverse bytes equal authenticated predecessor pin')
+inverse=write('ROOT_I13_HANDOFF004_COMPLETE003_PREDECESSOR_INVERSE_001.json',dict(schema_version=1,record_type='Root_I13_handoff004_complete003_predecessor_inverse',author='/root',complete_predecessor=prior_pin,complete_predecessor_base64=base64.b64encode(prior_bytes).decode('ascii'),predecessor_retained_unchanged=True,raw_capture_admitted=False))
+w,wp=doc(s['current_workspace_refresh']['path'],s['current_workspace_refresh'])
+h=dict(schema_version=1,record_type='Root_I13_current_raw_input_retention_contract_and_evidence_handoff',author='/root',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),working_evidence_root=str(R),managed_checkout=s['managed_checkout'],workspace_refresh=wp,Source_scope=sp,Source_scope_adoption=sap,Source_window_end_utc=s['interval_end'],Source_window_end_Riyadh='2026-10-27T17:27:32.449418+03:00',publication_reserve_seconds=60,prospective_contract_adoption=ap,prospective_contract_artifacts=contract_files,selection_plan=pp,genuine_different_contract_review=cf,full_contract_review_proof=ff,complete003_inverse=inverse,previous_handoff=prior_pin,
+ workspace_state='Current metadata refresh verifies418 repository baseline pins,60 working Source/evidence pins, exact unchanged409 status identities (2 modified,407untracked,0staged); HEAD/cached origin/main/actual remote main c6e9173c82190db9f077f3251ba99ac90c834355. This is not a clean-worktree claim.',
+ retention_design_summary=dict(six_saved_graphs=6,logical_records=973,logical_raw_bytes=17399459,whole_record_partitions=23,max_partition_output_bytes_upper_bound=1493609,max_partition_nodes_upper_bound=6391,max_result_bytes=2097152,max_result_nodes=50000,max_raw_bytes_per_partition=1048576,raw_bytes_actually_retained=False,original_virtual_paths_written=0,cross_graph_deduplication=False),
+ Root_decision='This WORK-only handoff records a refreshed Source-only workspace and the genuinely reviewed raw retention design. No raw capture, builder/fixture calls, target or fixture implementation, current-case replay, execution or managed/Git publication follows. Source007 expires at its recorded endpoint; any later work needs current authorized scope and all exact future qualification/admission decisions.',
+ next_step='Separately authorize and qualify the prospective data-only raw retention exporter/API and parent once-custody supervisor against this exact contract and plan. Require genuine different Source/static no-call reviews and Root adoption before any new operation; then separately admit fresh bounded capture and independent exact-byte readback. All such gates are presently UNISSUED. Continue semantic normalization/causal/cost models only from genuinely retained inputs; no all-six fit or compact ABI readiness is established.',
+ completed_as_design_only=True,creation_review_pending=True,implementation_protocol_adopted=False,compact_ABI_status='NOT_READY',implementation_blockers_remain=11,current_main936=dict(completed=32,passed=20,failed=12,remaining_unestablished=904),
+ old_evidence='All75 spent original identities, consumed snapshots001/002/003, refused records, old Source005/006 and exact prior contracts/results remain immutable and unreplayed. Standing dated150fits/270models149synced1local111untouched not recounted; Native013/D161/twins/epoch and DELTA86 withheld400 lines unchanged. Source planned readsets/counts remain hypotheses, not actual Target traces or physical custody/host quiet.',
+ maximum_local_agents_including_Root=3,maximum_shared_including_both_roots_and_overlap=5,Pro3_reserved_overlap_max=2,peer_coordination_not_a_prerequisite=True,**held)
+hp=write('ROOT_I13_CURRENT_RAW_INPUT_RETENTION_CONTRACT_AND_EVIDENCE_HANDOFF_004.json',h)
+print(json.dumps(dict(adoption=ap,handoff=hp,complete003_inverse=inverse,all_execution_gates_held=True)))

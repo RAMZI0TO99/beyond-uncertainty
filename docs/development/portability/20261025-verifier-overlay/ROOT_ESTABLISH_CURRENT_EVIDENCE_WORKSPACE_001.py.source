@@ -1,0 +1,112 @@
+"""Owned engineering verification/restoration only; never import project targets."""
+from datetime import datetime, timezone
+import hashlib
+import json
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+ROOT = Path(r"D:\Aenv\pro2\WORK\resume-20261025-001")
+REPO = Path(r"D:\Aenv\pro2\github-portable-20261012-001")
+DEST = REPO / ".continuation" / "step080-20261025-001"
+SCOPE = ROOT / "ROOT_CURRENT_I11_SOURCE_CONTRACT_AND_PORTABILITY_SCOPE_001.json"
+REPORT = ROOT / "ROOT_CURRENT_EVIDENCE_WORKSPACE_ESTABLISHMENT_001.json"
+POINTER = REPO / ".continuation" / "current-workspace.json"
+
+def now():
+    return datetime.now(timezone.utc).isoformat()
+
+def pin(path):
+    data = path.read_bytes()
+    return {"path": str(path), "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+
+def write_new(path, value):
+    with path.open("x", encoding="utf-8", newline="\n") as stream:
+        json.dump(value, stream, indent=2, sort_keys=True)
+        stream.write("\n")
+
+def run_step(name, *args):
+    stdout = ROOT / (name + "_STDOUT_001.txt")
+    stderr = ROOT / (name + "_STDERR_001.txt")
+    argv = [sys.executable, "-I", "-S", "-B", str(REPO / "tools/continuation.py"), *args]
+    started = now()
+    tick = time.monotonic()
+    timed_out = False
+    with stdout.open("xb") as out, stderr.open("xb") as err:
+        child = subprocess.Popen(argv, cwd=REPO, stdin=subprocess.DEVNULL, stdout=out, stderr=err)
+        try:
+            code = child.wait(timeout=600)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            child.kill()
+            code = child.wait(timeout=10)
+    result = {"step": name, "argv": argv, "owned_child_pid": child.pid,
+              "started_utc": started, "ended_utc": now(),
+              "elapsed_microseconds": int((time.monotonic() - tick) * 1000000),
+              "exit_code": code, "timed_out": timed_out,
+              "owned_child_reaped": child.returncode is not None,
+              "stdout": pin(stdout), "stderr": pin(stderr)}
+    print(json.dumps(result), flush=True)
+    return result
+
+def main():
+    if DEST.exists() or REPORT.exists() or POINTER.exists():
+        raise ValueError("fresh absent workspace, report and pointer required; preserve any prior artifacts")
+    scope = json.loads(SCOPE.read_bytes())
+    if datetime.now(timezone.utc).timestamp() + 60 >= datetime.fromisoformat(scope["interval_end"]).timestamp():
+        raise ValueError("current Source publication reserve unavailable")
+    baseline = {"manifest": pin(REPO / "continuation/manifest.json"),
+                "canonical_source": pin(REPO / "continuation/canonical-source.json"),
+                "overlay": pin(REPO / "continuation/canonical-source-overlays.json"),
+                "verifier": pin(REPO / "tools/continuation.py"),
+                "isolated_tests": pin(REPO / "tools/test_continuation.py"),
+                "scope": pin(SCOPE), "supervisor": pin(Path(__file__))}
+    steps = []
+    for name, args in [
+        ("VERIFY_CURRENT_ARCHIVE", ("verify",)),
+        ("RESTORE_CURRENT_STEP080", ("restore", "--destination", str(DEST))),
+        ("VERIFY_CURRENT_WORKSPACE", ("verify", "--workspace", str(DEST))),
+    ]:
+        result = run_step(name, *args)
+        steps.append(result)
+        if result["exit_code"] or result["timed_out"]:
+            write_new(REPORT, {"schema_version": 1, "record_type": "Root_engineering_workspace_establishment",
+                "author": "/root", "created_utc": now(), "verdict": "REFUSED",
+                "inputs": baseline, "steps": steps, "project_code_executed": False,
+                "operational_authority": False, "scientific_authority": False})
+            raise SystemExit(1)
+    if pin(REPO / "continuation/manifest.json") != baseline["manifest"] or pin(REPO / "continuation/canonical-source.json") != baseline["canonical_source"]:
+        raise ValueError("frozen archive metadata changed during restoration")
+    manifest = json.loads((REPO / "continuation/manifest.json").read_bytes())
+    adoption = manifest["final_acceptance"]
+    restored_adoption = pin(DEST / adoption["path"])
+    if (restored_adoption["bytes"], restored_adoption["sha256"]) != (adoption["bytes"], adoption["sha256"]):
+        raise ValueError("restored final adoption differs")
+    later_indexes = []
+    for name in ("native-owner-implementation", "native-family-implementation", "native-measurement-implementation",
+                 "native-parser-implementation", "native-interface-implementation", "native-publication-adapter",
+                 "native-publisher-implementation", "native-publisher-admission", "native-m3-prewrite", "native-producer-qualification"):
+        later_indexes.extend(pin(path) for path in sorted((REPO / "docs/development" / name).rglob("evidence-index.json")))
+    result = {"schema_version": 1, "record_type": "Root_engineering_workspace_establishment",
+        "author": "/root", "created_utc": now(), "verdict": "VERIFIED",
+        "inputs": baseline, "steps": steps,
+        "frozen_workspace": str(DEST), "verified_archived_files": manifest["selected_file_count"],
+        "frozen_final_adoption": restored_adoption,
+        "restore_receipt": pin(DEST / "PORTABLE_RESTORE_RECEIPT.json"),
+        "later_evidence_indexes_in_managed_checkout": later_indexes,
+        "later_sources_merged_into_frozen_snapshot": False,
+        "old_workspace_preserved": str(REPO / ".continuation/workspace"),
+        "working_evidence_root": "D:\\Aenv\\pro2",
+        "project_code_executed": False, "historical_native_identity_preserved": False,
+        "operational_authority": False, "scientific_authority": False}
+    write_new(REPORT, result)
+    write_new(POINTER, {"schema_version": 1, "record_type": "local_current_evidence_workspace_pointer",
+        "created_utc": now(), "frozen_workspace": str(DEST), "frozen_checkpoint": "STEP080",
+        "establishment_report": pin(REPORT), "managed_checkout": str(REPO),
+        "later_evidence_is_separate": True, "later_evidence_indexes": later_indexes,
+        "working_evidence_root": "D:\\Aenv\\pro2", "execution_authority": False})
+    print(json.dumps({"verdict": "VERIFIED", "report": pin(REPORT), "pointer": pin(POINTER)}), flush=True)
+
+if __name__ == "__main__":
+    main()

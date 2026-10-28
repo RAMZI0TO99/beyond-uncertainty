@@ -1,0 +1,125 @@
+"""Independent plan-only read/hash/strict-JSON/AST review; creates no bundles."""
+import base64
+import datetime
+import hashlib
+import json
+import os
+import stat
+from pathlib import Path
+
+R=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003')
+C=R/'m3_peer_contracts_016'
+PUB=R/'publication_001'
+P=R/'I13_EXACT_METADATA_HELPER_SOURCE_BUNDLE_PACKAGING_PLAN_001.json'
+OUT=R/'helper_bundle_plan_Source_review_001'
+checks=[]
+END=datetime.datetime.fromisoformat('2026-10-25T18:03:03.861408+00:00')
+
+def check(name,value,evidence):
+    assert name not in{x['name']for x in checks}
+    checks.append(dict(name=name,passed=bool(value),evidence=evidence))
+def fact(p):
+    b=p.read_bytes();return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def pairs(items):
+    v={}
+    for k,x in items:
+        if k in v:raise ValueError('duplicate JSON key')
+        v[k]=x
+    return v
+def bad(v):raise ValueError('nonfinite/float JSON forbidden')
+def read(p):
+    b=p.read_bytes();assert len(b)<=2097152
+    return json.loads(b.decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def wire(v):return json.dumps(v,sort_keys=True,ensure_ascii=True,separators=(',',':'),allow_nan=False).encode('ascii')
+def ordinary(p):
+    s=os.lstat(p)
+    return not bool(getattr(s,'st_file_attributes',0)&1024)and not stat.S_ISLNK(s.st_mode)
+
+v=read(P);subject=fact(P)
+check('exact_subject38426_SHA',subject['bytes']==38426 and subject['sha256']=='ee248717db124b607daff4884aae765ccdba995d7ed159fb31521c209abe0fa4',subject)
+check('Root_authored_not_reviewer',v['author']=='/root'and v['author']!='/root/project_architecture',v['author'])
+check('schema1_exact_builtin',type(v['schema_version'])is int and v['schema_version']==1,v['schema_version'])
+check('exact_member_count_builtin',type(v['member_count'])is int and v['member_count']==160,v['member_count'])
+check('exact_member_bytes_builtin',type(v['member_bytes'])is int and v['member_bytes']==1353151,v['member_bytes'])
+check('members_builtin_list160',type(v['members'])is list and len(v['members'])==160,len(v['members']))
+scope=read(Path(v['Source_scope']['path']));adopt=read(Path(v['Source_scope_adoption']['path']))
+for name in ['Source_scope','Source_scope_adoption']:
+    check('exact_'+name,wire(fact(Path(v[name]['path'])))==wire(v[name]),v[name])
+check('adopted_exact_Source_scope',wire(adopt['Source_scope'])==wire(v['Source_scope'])and adopt['operational_authority']is False,adopt['verdict'])
+check('separately_reviewed_packaging_only','A separately reviewed packaging selection may encode' in scope['scope']and scope['inert_managed_evidence_publication_requires_separate_candidate_review_Root_adoption_and_actual_creation_review']is True,scope['scope'])
+for key,expected in [('maximum_metadata_file_bytes',2097152),('maximum_actual_copy_rows',512),('maximum_actual_copy_payload_bytes',67108864)]:
+    check('exact_unchanged_cap_'+key,type(v[key])is int and v[key]==expected,expected)
+check('same_scope_packaging_count_bytes',v['maximum_actual_copy_rows']==scope['inert_managed_publication_maximum_rows']and v['maximum_actual_copy_payload_bytes']==scope['inert_managed_publication_maximum_payload_bytes'],dict(rows=v['maximum_actual_copy_rows'],bytes=v['maximum_actual_copy_payload_bytes']))
+for key in ['target_execution','operational_authority','scientific_authority','tests_executed','execution_lease_issued','actual_family_publication','old_files_modified']:
+    check('explicit_false_'+key,v[key]is False,v[key])
+check('reconstructable_explicit',v['exact_original_Source_bytes_reconstructable']is True,v['exact_original_Source_bytes_reconstructable'])
+check('no_loader_or_restore_writes','no executable loader or restored file writes' in v['encoding'],v['encoding'])
+check('strict_RFC4648_decode_length_hash','decode(validate=True)'in v['encoding']and'original byte length and SHA256'in v['encoding'],v['encoding'])
+check('whole_original_files_untouched','Complete original Sources remain physically untouched' in v['encoding'],v['encoding'])
+check('only_frozen_members_can_be_bundled','Only these exact member Source files may be omitted from direct copy'in v['bundle_layout']and'New helpers absent from this frozen list stay direct copies'in v['selection'],dict(layout=v['bundle_layout'],selection=v['selection']))
+check('all_direct_inert_sources_retained','All target/kernel/fixture/process supervisor Sources stay direct inert copies'in v['selection'],v['selection'])
+check('all_json_txt_direct_and_no_normalization','No original JSON/TXT evidence omission, deletion or normalization'in v['inventory_policy'],v['inventory_policy'])
+check('all_other_files_direct','All other original files remain direct exact copies'in v['inventory_policy'],v['inventory_policy'])
+check('suffix_only_filename_transform','inherited suffix-only filename transform'in v['inventory_policy'],v['inventory_policy'])
+check('no_cap_waiver_refuse','If bounded final inventory fails, refuse; this plan grants no cap waiver'in v['inventory_policy'],v['inventory_policy'])
+check('bounded_greedy_no_split','Greedy original-path sorted members'in v['bundle_layout']and'each <=2097152 serialized bytes, no member split'in v['bundle_layout'],v['bundle_layout'])
+check('member_once_and_index','all rows appear exactly once'in v['bundle_layout']and'Index maps every original fact3 to bundle copy fact3 and member ordinal'in v['bundle_layout'],v['bundle_layout'])
+check('bundle_json_stays_direct','bundle JSON itself stays a direct exact copy'in v['bundle_layout'],v['bundle_layout'])
+expected_steps=['Genuine different Source review and Root plan adoption','New archive helper exact Source review and Root adoption','Actual bundles byte reconstruction review','Exact final candidate different review and Root adoption','Actual managed creation different saved review and Root adoption']
+check('all_five_future_gates_exact',v['required_separate_steps']==expected_steps,v['required_separate_steps'])
+
+names=[];source_bytes=0;base64_bytes=0;tree_symbols=[]
+for i,pin in enumerate(v['members']):
+    prefix='member_'+str(i).zfill(3)+'_'
+    typed=type(pin)is dict and set(pin)=={'path','bytes','sha256'}and all(type(k)is str for k in pin)and type(pin['path'])is str and type(pin['bytes'])is int and pin['bytes']>0 and type(pin['sha256'])is str
+    check(prefix+'closed_builtin_fact3',typed,pin)
+    path=Path(pin['path'])
+    check(prefix+'absolute_metadata_py_domain',path.is_absolute()and path.suffix=='.py'and path.is_relative_to(R)and not path.is_relative_to(C)and not path.is_relative_to(PUB)and '..'not in path.parts,pin['path'])
+    lineage=[path]
+    parent=path.parent
+    while parent!=R:
+        assert parent.is_relative_to(R);lineage.append(parent);parent=parent.parent
+    lineage.append(R)
+    check(prefix+'ordinary_nonreparse_lineage',all(ordinary(x)for x in lineage)and path.is_file(),[str(x)for x in lineage])
+    actual=fact(path)
+    check(prefix+'whole_bytes_SHA_exact',wire(actual)==wire(pin),actual)
+    body=path.read_bytes();source_bytes+=len(body)
+    encoded=base64.b64encode(body)
+    base64_bytes+=len(encoded)
+    check(prefix+'strict_base64_whole_inverse',base64.b64decode(encoded,validate=True)==body and len(encoded)==4*((len(body)+2)//3),dict(original_bytes=len(body),base64_bytes=len(encoded),whole_sha256=actual['sha256']))
+    # Parse actual complete UTF8 Source only; no imports, compile execution or call.
+    import ast
+    try:
+        node=ast.parse(body.decode('utf8'),filename=str(path))
+    except (SyntaxError,UnicodeError) as error:
+        syntax=dict(path=str(path),historical_Syntax_status='REFUSED_RETAINED_SOURCE',exception_type=type(error).__name__,message=str(error)[:512])
+    else:
+        syntax=dict(path=str(path),historical_Syntax_status='PARSED_SOURCE_ONLY',top_level_definitions=[x.name for x in node.body if isinstance(x,(ast.FunctionDef,ast.ClassDef))])
+    tree_symbols.append(syntax)
+    check(prefix+'whole_opaque_Source_preserved_without_loader',base64.b64decode(encoded,validate=True)==body,syntax)
+    names.append(pin['path'])
+check('member_casefold_uniqueness',len({x.casefold()for x in names})==len(names),len(names))
+check('member_original_path_casefold_sort',names==sorted(names,key=str.casefold),names)
+check('all_members_exact_total',source_bytes==v['member_bytes'],source_bytes)
+check('no_selected_process_Sources',not any(Path(name).name.startswith(('ROOT_CAPTURE','ROOT_I13_ONCE_MEMORY_SUPERVISOR','validate_','exercise_'))for name in names),'All selected files are metadata author/prepare/adopt/repair/retain/review/sweep/verify helpers; executable target/fixture/process sources are outside membership.')
+check('all_members_still_exact_after_review',all(fact(Path(p['path']))==p for p in v['members']),v['member_count'])
+check('plan_still_exact_after_review',fact(P)==subject,subject)
+check('current_Source_reserve',datetime.datetime.fromisoformat(scope['interval_end'])-datetime.datetime.now(datetime.timezone.utc)>datetime.timedelta(seconds=60),scope['interval_end'])
+check('no_original75_replay_authority',scope['original75_spent_identities_unreplayed']is True and v['tests_executed']is False,scope['original75_spent_identities_unreplayed'])
+check('Source_only_no_operation',scope['new_operational_execution_lease_issued']is False and scope['new_pure_I13_tests_automatically_admitted']is False,'Plan approval is packaging selection approval only; this review creates no actual bundle, candidate or managed payload.')
+
+assert all(x['passed']for x in checks),[x for x in checks if not x['passed']]
+OUT.mkdir(exist_ok=False)
+def save(name,value):
+    assert END-datetime.datetime.now(datetime.timezone.utc)>datetime.timedelta(seconds=60)
+    body=(json.dumps(value,sort_keys=True,ensure_ascii=True,indent=2,allow_nan=False)+'\n').encode('utf8');assert len(body)<=2097152
+    p=OUT/name
+    with p.open('xb')as f:f.write(body);f.flush();os.fsync(f.fileno())
+    assert p.read_bytes()==body
+    print(json.dumps(fact(p),sort_keys=True));return p
+common=dict(schema_version=2,record_type='genuine_different_Root_helper_bundle_packaging_plan_Source_review',author='/root/project_architecture',source_author='/root/project_architecture',reviewer='/root/project_architecture',created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds'),subjects=[subject],subject=subject,checks_passed=len(checks),checks_failed=0,verdict='PASS_SOURCE_PLAN_ONLY_NO_PACKAGING_MUTATION',target_execution=False,operational_authority=False,scientific_authority=False,native_Parser_executed=False,tests_executed=False,actual_family_publication=False)
+full=save('INDEPENDENT_I13_HELPER_BUNDLE_PACKAGING_PLAN_SOURCE_FULL_PROOF_001.json',dict(common,checks=checks,
+    original_member_count=160,original_member_bytes=source_bytes,exact_Base64_character_count=base64_bytes,historical_helper_AST_status=tree_symbols,own_reader001_unnecessary_AST_requirement_refused_before_proof_writes=True,
+    no_actual_bundles_created=True,no_original_files_changed=True,no_member_Source_imported_or_called=True,
+    limitations=['This verifies selection membership, complete original pins, strict in-memory Base64 reversibility and unchanged plan caps. It does not qualify an archive helper or actual bundle/index.','The future exact helper must implement bounded complete serialized bundle checks, greedy deterministic ordering, one-to-one member/index joins, exclusive create/readback and no executable reconstruction.','Final growing candidate row/aggregate counts and every direct-copy file must be reviewed on its actual final inventory. This plan supplies no cap waiver or omission of later unlisted files.','The plan does not grant any target, fixture, operational family, old75 replay, loader, physical, Parser or science entry.']))
+save('INDEPENDENT_I13_HELPER_BUNDLE_PACKAGING_PLAN_SOURCE_CAPSULE_001.json',dict(common,full_review=fact(full),checks=checks,member_count=160,member_bytes=source_bytes,all_member_pins_and_complete_strict_Base64_inverse=True,source_selection_only=True,actual_bundles_created=False))

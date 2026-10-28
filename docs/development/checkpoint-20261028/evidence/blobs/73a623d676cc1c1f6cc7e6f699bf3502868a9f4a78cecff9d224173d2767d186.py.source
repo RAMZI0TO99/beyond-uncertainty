@@ -1,0 +1,132 @@
+"""Narrow Root Source-only fixes for four saved preliminary findings; no subject calls."""
+import datetime as dt,hashlib,json,os
+from pathlib import Path
+R=Path(__file__).parent;LIMIT=2097152
+def raw(p):
+ p=Path(p);a=p.stat();assert p.is_file() and not p.is_symlink() and a.st_nlink==1 and 0<a.st_size<=LIMIT
+ for q in (p,*p.parents):assert not getattr(q.lstat(),'st_file_attributes',0)&1024
+ b=p.read_bytes();assert b==p.read_bytes() and len(b)==a.st_size;return b
+def pin(p):
+ p=Path(p);b=raw(p);return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def wire(v):return(json.dumps(v,sort_keys=True,indent=2,allow_nan=False)+'\n').encode()
+scopep=R/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_003.json'
+assert pin(scopep)['sha256']=='726c201dd6349aca56122129acf71b259b821a667c0720a3a4838ffb8aefe1ad'
+scope=json.loads(raw(scopep))
+def reserve():
+ now=dt.datetime.now(dt.timezone.utc);assert dt.datetime.fromisoformat(scope['interval_start'])<=now and (dt.datetime.fromisoformat(scope['interval_end'])-now).total_seconds()>60
+def save(p,b):
+ reserve();assert type(b) is bytes and len(b)<=LIMIT and not os.path.lexists(p)
+ with p.open('xb')as h:assert h.write(b)==len(b);h.flush();os.fsync(h.fileno())
+ assert raw(p)==b;return pin(p)
+def replace(s,a,b):
+ assert s.count(a)==1,(a,s.count(a));return s.replace(a,b)
+phase_function=r'''
+def check_phase_plan(route,rows,g):
+    allowed=SOURCE_SITE_IDS
+    bypath={r['pin']['path']:r for r in rows}
+    p=c=0;added=0;merged=False
+    starts={'PARENT':False,'CHILD':False};contexts={'PARENT':False,'CHILD':False}
+    parsed={'PARENT':set(),'CHILD':set()}
+    childdone=decoded=parentdone=False
+    first=None
+    for event in route['phase_rows']:
+        cache=event['cache'];op=event['operation'];site=event['Source_site_id']
+        need(event['phase']==op and site in allowed,'exact phase and Source site enums')
+        if parentdone:need(False,'no phase after final parent result')
+        if cache=='CONSERVATIVE_SUM':
+            need(op=='CHILD_TOTAL_ADDITION' and site=='publisher:_prewrite' and childdone and decoded
+                 and not merged and event['subject'] is None and event['charge_nodes']==c,'one child total addition')
+            before=p;charge=c;added=c;merged=True;local=p+c;conservative=p+c;after=p+c
+        else:
+            need(cache in ('PARENT','CHILD') and site.startswith('publisher:' if cache=='PARENT' else 'm3:'),'cache Source namespace')
+            if cache=='PARENT':
+                need(not starts['CHILD'] or childdone,'no interleaved child execution')
+                before=p+added
+            else:
+                need(contexts['PARENT'] and not childdone and not merged,'child execution order')
+                before=c
+            current=p if cache=='PARENT' else c
+            if op=='EAGER_SNAPSHOT':
+                need(not starts[cache] and not contexts[cache] and current==0 and event['subject'] is None
+                     and site==('publisher:_Store.__init__' if cache=='PARENT' else 'm3:_Store.__init__'),'eager Source/order')
+                charge=1+11*g['record_count'];starts[cache]=True
+            elif op=='CONTEXT':
+                need(starts[cache] and not contexts[cache] and current==1+11*g['record_count'] and event['subject'] is None
+                     and site==('publisher:_Graph.__init__' if cache=='PARENT' else 'm3:_Graph.__init__'),'context Source/order')
+                charge=7;contexts[cache]=True
+            elif op=='JSON_PARSE':
+                need(contexts[cache] and (cache=='CHILD' or not starts['CHILD'] or merged),'JSON phase order')
+                subject=event['subject'];check_fact(subject)
+                row=bypath.get(subject['path']);need(row is not None and row['pin']==subject,'JSON subject belongs to exact roster')
+                use=row['child_use' if cache=='CHILD' else 'parent_'+route['route']+'_use']
+                need(use['designation']=='JSON_PARSE' and row['strict_JSON']['status']=='VALID' and site in use['Source_site_ids']
+                     and subject['path'] not in parsed[cache] and use['first_parse_ordinal']==len(parsed[cache])+1,'first cache miss and Source join')
+                parsed[cache].add(subject['path']);charge=row['strict_JSON']['nodes']
+            elif op=='CHILD_RESULT_DECODE':
+                need(cache=='PARENT' and contexts['PARENT'] and childdone and not decoded and not merged
+                     and site=='publisher:_direct' and event['subject'] is None,'child result decode Source/order')
+                charge=route['parent_child_result_decode_nodes'];decoded=True
+            elif op=='FINAL_RESULT':
+                need(contexts[cache] and event['subject'] is None,'result phase context')
+                if cache=='CHILD':
+                    need(site=='m3:_Graph.result','child result Source')
+                    charge=route['child_result_nodes'];childdone=True
+                else:
+                    need(merged and decoded and site=='publisher:_outer_result','parent result Source/order')
+                    charge=route['parent_final_result_nodes'];parentdone=True
+            else:
+                need(False,'unsupported cache phase')
+            need(event['charge_nodes']==charge,'exact Source-derived phase charge')
+            if cache=='PARENT':
+                p+=charge;local=p;conservative=p+added;after=p+added
+            else:
+                c+=charge;local=c;conservative=p+c;after=c
+        need(event['charge_nodes']==charge and event['local_cumulative_nodes']==local
+             and event['conservative_cumulative_nodes']==conservative,'recomputed local/conservative cumulative counts')
+        if first is None and after>50000:
+            need(before<=50000 and after==before+charge,'first Source guard crossing arithmetic')
+            first=dict(phase=event['phase'],cache=cache,Source_site_id=site,before=before,charge=charge,after=after)
+    need(all(starts.values()) and all(contexts.values()) and childdone and decoded and merged and parentdone,'complete ordered cache/result phases')
+    need(p==route['planned_parent_local_total'] and c==route['planned_child_local_total']
+         and p+c==route['planned_conservative_total'],'phase totals join headlines')
+    for cache in ('PARENT','CHILD'):
+        key='child_use' if cache=='CHILD' else 'parent_'+route['route']+'_use'
+        need(parsed[cache]=={r['pin']['path'] for r in rows if r[key]['designation']=='JSON_PARSE'},'all unique JSON charges represented')
+    need(route['first_planned_50000_crossing']==first,'exact earliest Source guard crossing')
+'''
+tp=R/'I13_INPUT_SNAPSHOT_SUPERVISOR_CUSTOM_SOURCE_001.py.source';old_template=raw(tp);s=old_template.decode()
+s=replace(s,"and pre.get('source_scope') == SOURCE_SCOPE and pre.get('source_adoption') == v['source_adoption']","and pre.get('source_scope') == SOURCE_SCOPE and pre.get('source_adoption') == v['source_adoption']\n         and pre.get('role_group_id') == v['role_group_id']")
+s=replace(s,"and all(type(x) is str and 0<len(x)<=256 for x in v['Source_site_ids'])","and all(type(x) is str and x in SOURCE_SITE_IDS for x in v['Source_site_ids'])")
+s=replace(s,"def validate_ledger(v,roles):",phase_function+"\ndef validate_ledger(v,roles):")
+s=replace(s,"            crossing=route['first_planned_50000_crossing']","            check_phase_plan(route,rows,g)\n            crossing=route['first_planned_50000_crossing']")
+newtemplate=save(R/'I13_INPUT_SNAPSHOT_SUPERVISOR_CUSTOM_SOURCE_002.py.source',s.encode())
+ap=R/'prepare_I13_input_snapshot_once_admission_001.py';old_admission=raw(ap);s=old_admission.decode()
+s=replace(s,"def save(p,v):\n assert not os.path.lexists(p)","def reserve():\n now_check=dt.datetime.now(dt.timezone.utc)\n assert dt.datetime.fromisoformat(source_scope['interval_start'])<=now_check and (dt.datetime.fromisoformat(source_scope['interval_end'])-now_check).total_seconds()>60\n\ndef save(p,v):\n reserve()\n assert not os.path.lexists(p)")
+s=replace(s,"  assert not(v['source_adoption']==cfg['Source_adoption'] and v['role_group_id']==group),'Source+group already allocated; no replay'",
+"""  oldplan=exact(v['role_plan']);oldroles=[x['roles'] for x in oldplan['groups'] if x['group_id']==v['role_group_id']]
+  assert len(oldroles)==1
+  same_inputs=(v['modules']==constants['SOURCES'] and v['APIs']==constants['APIS'] and v['catalogue']==constants['CATALOGUE'] and v['fixture']==constants['FIXTURE'] and oldplan['Source_inputs']==plan['Source_inputs'])
+  assert not(same_inputs and oldroles[0]==rows[0]['roles']),'identical actual Source inputs + selected roles already allocated, regardless adoption/plan identity'""")
+s=replace(s,"owned=C/('owned_input_snapshot_runs/attempt%03d'%number);assert not os.path.lexists(owned);owned.mkdir(parents=True)","owned=C/('owned_input_snapshot_runs/attempt%03d'%number);assert not os.path.lexists(owned);reserve();owned.mkdir(parents=True)")
+newadmission=save(R/'prepare_I13_input_snapshot_once_admission_002.py',s.encode())
+aup=R/'author_I13_input_snapshot_Root_controls_001.py';old_author=raw(aup);s=old_author.decode()
+s=replace(s,"ROLE_STAGES=stages,BUDGETS=budgets","ROLE_STAGES=stages,SOURCE_SITE_IDS=[x['id'] for x in read(protocolp)['reference_Source_sites']],BUDGETS=budgets")
+s=replace(s,"I13_INPUT_SNAPSHOT_SUPERVISOR_CUSTOM_SOURCE_001.py.source","I13_INPUT_SNAPSHOT_SUPERVISOR_CUSTOM_SOURCE_002.py.source")
+s=replace(s,"prepare_I13_input_snapshot_once_admission_001.py","prepare_I13_input_snapshot_once_admission_002.py")
+newauthor=save(R/'author_I13_input_snapshot_Root_controls_002.py',s.encode())
+refp=R/'input_snapshot_controls_preliminary_Source_review_001/INDEPENDENT_I13_INPUT_SNAPSHOT_ROOT_CONTROLS001_PRELIMINARY_SOURCE_REFUSAL_CAPSULE_001.json'
+assert pin(refp)['sha256']=='f7fde2c28b372952f7232980c0209ad005fce6c3f858df00e9e08c0a04265dc6'
+import base64,ast
+for p in (newadmission,newauthor):ast.parse(raw(p['path']))
+receipt=dict(schema_version=1,record_type='Root_I13_input_snapshot_control_Source002_complete001_inverses',
+ author='/root',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),Source_scope=pin(scopep),genuine_preliminary_refusal=pin(refp),
+ predecessors=[dict(pin=pin(p),complete_bytes_base64=base64.b64encode(b).decode()) for p,b in ((tp,old_template),(ap,old_admission),(aup,old_author))],
+ successors=dict(custom_template=newtemplate,admission_helper=newadmission,author_helper=newauthor),
+ fixed_findings=['phase/site enum, each charge/cumulative/roster/cachemiss/firstcrossing arithmetic',
+ 'prelaunch exact role_group_id join','Source003 reserve immediately before owned mkdir and each metadata write',
+ 'actual fixed Sources and selected roles replay refusal independent of adoption and plan wrappers'],
+ semantic_cumulative_convention='PARENT p+addedchild (zero until merge); CHILD pausedp+c visibility but guardc; addition p+c once; parentlocal headline excludeschild',
+ old_sources_unchanged=True,subject_calls=0,tests_executed=False,target_execution=False,operational_authority=False,scientific_authority=False,actual_family_publication=False)
+for p,b in ((tp,old_template),(ap,old_admission),(aup,old_author)):assert raw(p)==b
+rp=save(R/'ROOT_I13_INPUT_SNAPSHOT_CONTROL_SOURCE002_COMPLETE001_INVERSES_001.json',wire(receipt))
+print(json.dumps(dict(receipt=rp,successors=receipt['successors'],subject_calls=0)))

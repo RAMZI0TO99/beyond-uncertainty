@@ -1,0 +1,92 @@
+"""Ownership-aware exact snapshot Source adoption; no fixture, model or kernel calls."""
+import ast,datetime as dt,hashlib,json,os
+from pathlib import Path
+R=Path(__file__).parent;C=R/'m3_peer_contracts_016';T=C/'i13';LIMIT=2097152
+def raw(p):
+ p=Path(p);a=p.stat();assert p.is_file() and not p.is_symlink() and a.st_nlink==1 and 0<a.st_size<=LIMIT
+ for q in(p,*p.parents):assert not getattr(q.lstat(),'st_file_attributes',0)&1024
+ b=p.read_bytes();z=p.stat();assert b==p.read_bytes() and len(b)==a.st_size==z.st_size and a.st_mtime_ns==z.st_mtime_ns
+ return b
+def pin(p):
+ p=Path(p);b=raw(p);return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def read(p):return json.loads(raw(p))
+def occurs(v,p):
+ if type(v)is dict:return v==p or any(occurs(x,p)for x in v.values())
+ return type(v)is list and any(occurs(x,p)for x in v)
+def review(p,sha,reviewer,count):
+ assert pin(p)['sha256']==sha
+ cap=read(p);fp=cap['full_proof'];assert pin(fp['path'])==fp
+ full=read(fp['path']);assert cap['reviewer']==full['reviewer']==reviewer
+ assert cap['verdict']==full['verdict'] and(cap['verdict']=='PASS' or cap['verdict'].startswith('PASS_'))
+ assert cap['checks_failed']==full['checks_failed']==0 and type(cap['checks_failed'])is int
+ checks=full['checks'];assert type(checks)is list and len(checks)==count==cap['checks_passed']==full['checks_passed']
+ assert all(type(x)is dict and type(x.get('name'))is str and x.get('passed')is True for x in checks)
+ assert len({x['name']for x in checks})==len(checks)
+ for obj in(cap,full):assert all(obj[k]is False for k in('target_execution','actual_family_publication','operational_authority','scientific_authority','native_Parser_executed','tests_executed'))
+ for q in cap['subjects']:assert pin(q['path'])==q
+ return cap,full,dict(capsule=pin(p),full_proof=fp,reviewer=reviewer,checks_passed=count,checks_failed=0)
+corep=R/'input_snapshot_fixture015_different_Source_review_001/INDEPENDENT_I13_FIXTURE015_INPUT_NODE_READSET_SOURCE_CAPSULE_001.json'
+core,corefull,cr=review(corep,'f3c30f8e69e502b8bca4dc799c6be1455f921cf30a9d84b46ad8b5fca98af859','/root/i13_final_review',316)
+rootp=R/'input_snapshot_controls_different_Source_review_002/INDEPENDENT_I13_ROOT_SNAPSHOT_CONTROLS003_SOURCE_CAPSULE_001.json'
+root,rootfull,rr=review(rootp,'01648b926dbb224584123fba20fffe331824c366ad61d1e5ec02a94895a89fad','/root/project_architecture',142)
+assert root['own_fixture015_or_model_semantics_accepted']is False and root['reviewed_subject_functions_called']==0
+fixture=pin(T/'exercise_M3_guard_and_publisher_metadata_memory_015.py')
+model=pin(T/'I13_FIXTURE015_EXACT_INPUT_NODE_READSET_SOURCE_MODEL_DATA_001.json')
+corefreeze=pin(T/'I13_FIXTURE015_INPUT_NODE_LEDGER_SOURCE_FREEZE_001.json')
+assert fixture['sha256']=='568904c774f12506fab8992028f0db04a5dd63a13b9a1935f7dc6d2a4f942e30'
+assert model['sha256']=='5ee0534998682d1172f34cdd7c0270edf319d01f6f64d8fad42adde738bbd8d3'
+for q in(fixture,model,corefreeze):assert q in core['subjects']
+freeze_p=C/'ROOT_I13_INPUT_SNAPSHOT_ROOT_CONTROLS002_SOURCE_AUTHOR_FREEZE_001.json'
+freeze=read(freeze_p)
+assert pin(freeze_p)['sha256']=='39663bf4e0243ca36cbeeebf51f1cabc78f5da4c149e51dd9f14bbbb22e59613'
+for q in list(freeze['products'].values())+[pin(freeze_p),freeze['custom_Source_template'],freeze['own_metadata_author_Source']]:
+ assert pin(q['path'])==q and q in root['subjects']
+supp=freeze['products']['supervisor'];constants={}
+for n in ast.parse(raw(supp['path'])).body:
+ if isinstance(n,ast.Assign)and len(n.targets)==1 and isinstance(n.targets[0],ast.Name):
+  try:constants[n.targets[0].id]=ast.literal_eval(n.value)
+  except(ValueError,TypeError):pass
+assert constants['FIXTURE']==fixture and constants['SOURCE_INPUTS']==freeze['Source_inputs']==read(model['path'])['Source_inputs']
+assert constants['SOURCE_SITE_IDS']==[x['id']for x in read(constants['SOURCE_INPUTS']['protocol']['path'])['reference_Source_sites']]
+assert len(constants['SOURCE_SITE_IDS'])==51
+assert constants['LEDGER_LIMITS']==dict(record_count=256,rawbytes=33554432,perrecord=2097152,output=2097152,source_node_guard=50000,depth=48)
+plan=read(constants['ROLE_PLAN']['path'])
+assert plan['fixture']==fixture and plan['Source_inputs']==constants['SOURCE_INPUTS']
+assert [x for group in plan['groups']for x in group['roles']]==list(constants['ROLE_STAGES']) and len(plan['groups'])==3 and all(len(x['roles'])==2 for x in plan['groups'])
+for p in constants['SOURCE_INPUTS'].values():assert pin(p['path'])==p
+assert all(p['bytes']<=65536 for p in constants['SOURCES'].values())
+assert constants['PROTOCOL_ADOPTION']['sha256']=='a2dbe90c868b55e8f0b647d3a6809c9ca39549bb402e2a7441e3f850b3088ff0'
+sourcep=R/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_003.json';source=read(sourcep)
+assert pin(sourcep)==constants['SOURCE_SCOPE'] and pin(sourcep)['sha256']=='726c201dd6349aca56122129acf71b259b821a667c0720a3a4838ffb8aefe1ad'
+now=dt.datetime.now(dt.timezone.utc)
+assert source['target_execution']is source['operational_authority']is False
+assert dt.datetime.fromisoformat(source['interval_start'])<=now and(dt.datetime.fromisoformat(source['interval_end'])-now).total_seconds()>60
+previousp=C/'ROOT_I13_ONCE008_DIFFERENT_SAVED_PARTITION_RESULT_ADOPTION_001.json'
+assert pin(previousp)['sha256']=='e5ea44379c7e48f86b6a3fa2bd1e1713c16c3c02c4ef44964616bbfeb8a7a183'
+preservep=R/'ROOT_I13_CURRENT_WORKSPACE_AND_OLD_SOURCE_PRESERVATION_003.json'
+assert pin(preservep)['sha256']=='f07d96ff3ee95f24a232ce18d42544710f73f407d8cf68242c93d6fef6775243'
+v=dict(schema_version=1,record_type='Root_I13_ownership_aware_exact_data_only_input_snapshot_Source_adoption',
+ author='/root',created_utc=now.isoformat(),verdict='ACCEPT_EXACT_I13_INPUT_SNAPSHOT_SOURCE_SET001_NO_CALL_ADMISSION',
+ core_different_Source_review=cr,Root_controls_different_Source_review=rr,
+ ownership=dict(core_author='/root/project_architecture',core_reviewer='/root/i13_final_review',
+ Root_control_author='/root',Root_control_reviewer='/root/project_architecture',own_subject_Source_self_acceptance=False),
+ Source_scope=pin(sourcep),protocol_adoption=constants['PROTOCOL_ADOPTION'],Source_inputs=constants['SOURCE_INPUTS'],
+ modules=constants['SOURCES'],APIs=constants['APIS'],catalogue=constants['CATALOGUE'],fixture=fixture,
+ model_data=model,fixture_Source_freeze=corefreeze,Root_controls_Source_freeze=pin(freeze_p),
+ supervisor=supp,role_plan=constants['ROLE_PLAN'],admission_helper=freeze['products']['admission_helper'],
+ Root_control_all_reviewed_subjects=root['subjects'],core_reviewed_subjects=core['subjects'],
+ previous_consumed_adoption=pin(previousp),current_workspace_preservation=pin(preservep),
+ Root_judgment='Accept exact separately reviewed fixture015/read-model and corrected Root controls. Only fixed1..2roles data-only input snapshots may later be admitted under a fresh exact once scope. All node totals/crossings are Source-planned hypotheses, not Target traces or kernel qualification. No old936 cases are rerun.',
+ core_Source_checks_passed=316,Root_control_Source_checks_passed=142,Source_read_sites_reconciled=139,Source_regions_reconciled=51,
+ original936_case_definitions_and_runner_ASTs_preserved=True,complete014_prefix_preserved=True,
+ data_only_carriers=True,kernel_Source_compiled=False,kernel_exports_called=0,old_I0_through_I12_targets_imported_or_called=0,
+ snapshot_calls_admitted=0,metadata_only=True,tests_executed=False,target_execution=False,actual_family_publication=False,
+ operational_authority=False,scientific_authority=False,native_Parser_executed=False,Native8=False,runtime=False,science=False,
+ full_original_I2_DAG_closed=False,authentic_loader_qualified=False,claim_reuse_or_replay_authorized=False,
+ combined_metadata_nodes_cap=50000,conservative_per_cache_sum_preserved=True,
+ fresh_once_scope_and_native_resources_required=True,latest_peer_explicit_full_custody_release_required=True)
+out=C/'ROOT_I13_INPUT_SNAPSHOT_SOURCE_SET_DIFFERENT_REVIEW_ADOPTION_001.json'
+b=(json.dumps(v,sort_keys=True,indent=2,allow_nan=False)+'\n').encode();assert len(b)<=LIMIT and not os.path.lexists(out)
+with out.open('xb')as h:assert h.write(b)==len(b);h.flush();os.fsync(h.fileno())
+assert raw(out)==b
+print(json.dumps(dict(adoption=pin(out),Source_checks=dict(core=316,Root_controls=142),snapshot_calls=0)))

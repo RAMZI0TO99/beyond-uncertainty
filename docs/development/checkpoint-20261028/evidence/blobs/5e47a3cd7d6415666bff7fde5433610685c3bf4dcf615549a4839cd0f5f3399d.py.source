@@ -1,0 +1,188 @@
+"""Independent metadata-only creation review; never execute either reviewed subject."""
+import ast
+import datetime as dt
+import hashlib
+import json
+import os
+import stat
+from pathlib import Path
+
+OUT=Path(__file__).parent
+B=OUT.parent
+C=B.parent
+REVIEWER='/root/project_architecture'
+S=C/'ROOT_PRO3_NEW_FINITE_SOURCE_ONLY_COEXISTENCE_SCOPE_009_001.json'
+A=C/'ROOT_PRO3_SOURCE_ONLY_COEXISTENCE009_DIFFERENT_REVIEW_ADOPTION_001.json'
+V=B/'ROOT_PRO3_BOOTSTRAP_REQUEST001_EXPLICIT_REJECTION_CANDIDATE_001.json'
+W=B/'prepare_or_adopt_explicit_bootstrap_rejection_001.py'
+IC=B/'independent_001/INDEPENDENT_PRO3_BOOTSTRAP001_STATIC_REQUEST_REFUSAL_CAPSULE_002.json'
+FINAL=B/'ROOT_PRO3_BOOTSTRAP_REQUEST001_EXPLICIT_REJECTED_DECISION_001.json'
+EXPECTED={
+ str(S):(7516,'b04507102cc00306e99ce9992cd0a526da03101e7d972e79eed6d20aab354739'),
+ str(A):(3543,'29dce6bd6b7767449b0bc28d8daeed1023581748d82be41d4eb82cabcf8804ab'),
+ str(V):(15782,'8d1096fd36f45b6ae215ee9289091f39cf2eb8c1e4570079d2953aa735a9033d'),
+ str(W):(10912,'1e6edd088986840f1d3d33b45ac7ea72cd79acdfaefe9706c7da277b65b4ee2b'),
+ str(IC):(14380,'f57bbbf4a439d8e1074e9b240876c77e53cfdabe922d7bdcbda77000d2c33a6b'),
+}
+CACHE={}
+CHECKS=[]
+
+def require(v,m):
+ if not v:raise ValueError(m)
+
+def check(name,value,evidence):
+ require(type(name) is str and name and name not in {x['name'] for x in CHECKS},'unique check name')
+ CHECKS.append(dict(name=name,passed=value is True,evidence=evidence))
+ require(value is True,'review finding: '+name)
+
+def raw(p):
+ p=Path(p)
+ for q in (p,*p.parents):
+  z=q.lstat();require(not q.is_symlink() and not getattr(z,'st_file_attributes',0)&1024,'ordinary nonreparse lineage')
+ a=p.stat();require(stat.S_ISREG(a.st_mode) and a.st_nlink==1 and 0<=a.st_size<=2097152,'ordinary singlelink bounded file')
+ with p.open('rb') as h:
+  d=os.fstat(h.fileno());b=h.read(2097153);e=os.fstat(h.fileno())
+ z=p.stat();key=lambda x:(x.st_dev,x.st_ino,x.st_mode,x.st_nlink,x.st_size,x.st_mtime_ns)
+ require(key(a)==key(d)==key(e)==key(z) and len(b)==a.st_size,'stable samebuffer read')
+ return b
+
+def fact(p,b):
+ return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+
+def load(p,expected=None,is_json=True):
+ p=Path(p);b=raw(p);f=fact(p,b)
+ if expected is not None:require(f==expected,'exact expected fact3')
+ if str(p) in EXPECTED:require((len(b),f['sha256'])==EXPECTED[str(p)],'hardpinned subject')
+ CACHE[str(p)]=b
+ if not is_json:return b,f
+ def pairs(xs):
+  r={}
+  for k,v in xs:require(k not in r,'duplicate JSON key');r[k]=v
+  return r
+ def bad(_):raise ValueError('noninteger or nonfinite JSON number')
+ v=json.loads(b.decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+ shape(v)
+ return v,f
+
+def shape(v):
+ todo=[(v,0)];n=0;depth=0
+ while todo:
+  x,d=todo.pop();n+=1;depth=max(depth,d)
+  require(n<=50000 and d<=48,'full key/value node/depth bounds')
+  require(x is None or type(x) in (bool,int,str,list,dict),'builtin JSON value')
+  if type(x) is str:require(not any(55296<=ord(c)<=57343 for c in x),'no surrogate text')
+  elif type(x) is list:todo.extend((y,d+1) for y in x)
+  elif type(x) is dict:
+   require(all(type(k) is str for k in x),'builtin string keys')
+   for k,y in x.items():todo.extend(((k,d+1),(y,d+1)))
+ return dict(nodes=n,depth=depth)
+
+s,sp=load(S);a,ap=load(A)
+def fresh():
+ n=dt.datetime.now(dt.timezone.utc)
+ require(dt.datetime.fromisoformat(s['interval_start'])<=n and (dt.datetime.fromisoformat(s['interval_end'])-n).total_seconds()>60,'live Source009 strict greater-than-60 write reserve')
+ require(raw(S)==CACHE[str(S)] and raw(A)==CACHE[str(A)],'unchanged current Source authority buffers')
+ return n.isoformat()
+
+fresh()
+check('Source009_hardpins_and_adoption_join',a['Source_only_scope']==sp and a['Source_only_coexistence_adopted'] is True,[sp,ap])
+check('Source009_finite_end_and_original_strict_reserve',s['interval_end']=='2026-10-27T16:30:00+00:00' and a['interval_end']==s['interval_end'] and s['publication_reserve_seconds']==a['publication_reserve_seconds']==60,'Fresh UTC checked at review and immediately before every evidence CreateNew.')
+check('Source009_shared_concurrency_caps',s['Pro2_max_including_Root']==a['Pro2_max_including_Root']==3 and s['Pro3_max_including_Root_and_reviewer']==a['Pro3_max_including_Root_and_reviewer']==2 and s['shared_max_including_both_roots_and_overlap']==a['shared_max_including_both_roots_and_overlap']==5,'No nested agents or new slots.')
+for k in ('operational_authority','target_execution','new_compute_grant_issued','new_once_admission_issued','native_pin_preparation_admitted','raw_capture_admitted','runtime','science','scientific_authority','physical_custody_release_claimed','whole_host_quiet_claimed'):
+ check('Source009_held_'+k,s[k] is False and a[k] is False,'Both exact scope and adoption preserve False.')
+check('Source009_metadata_caps',s['metadata_cap_bytes']==2097152 and s['metadata_nodes']==50000 and s['metadata_depth']==48,'Current own evidence limits.')
+
+v,vp=load(V);wb,wp=load(W,is_json=False);wt=wb.decode('utf8');tree=ast.parse(wt,filename=str(W))
+ic,icp=load(IC);ip=ic['full_proof'];f,fp=load(ip['path'],ip)
+check('genuine_full_refusal_hardpin',fp['bytes']==26343 and fp['sha256']=='d3631e4a7605afb9e16173a8513010b4985980a0c6c0d83b66cac930d86c17d3',fp)
+check('genuine_refusal_independent_reviewer',ic['reviewer']==f['reviewer']=='/root/i13_final_review' and ic['reviewer']!=REVIEWER,'Independent Source review joined, not replaced by this creation review.')
+check('genuine_refusal_scope_and_verdict',ic['scope']==f['scope']==sp and ic['verdict']==f['verdict'] and ic['verdict'].startswith('REFUSE_'),ic['verdict'])
+xs=f['checks']
+check('genuine_refusal_nonempty_unique_checks',type(xs) is list and len(xs)==22 and all(type(x['name']) is str and x['name'] and type(x['passed']) is bool for x in xs) and len({x['name'] for x in xs})==22,'22 actual named typed checks.')
+check('genuine_refusal_actual_19_positive_3_failed',sum(x['passed'] is True for x in xs)==ic['checks_passed']==f['checks_passed']==19 and sum(x['passed'] is False for x in xs)==ic['checks_failed']==f['checks_failed']==3,'Counts recomputed from saved full proof.')
+for k,value in [('source_only',True),('subject_execution_performed',False),('bootstrap_observation_executed',False),('native_helper_compiled_or_loaded',False),('native_queries_performed',False),('children_or_Jobs_launched',False),('observed_API_timeout_or_overrun',False),('peer_result_accepted',False),('physical_release_or_whole_host_quiet_accepted',False)]:
+ check('genuine_refusal_boundary_'+k,ic[k] is value and f[k] is value,'No runtime or physical release evidence is manufactured.')
+findings=ic['remaining_actionable_findings']
+ids=['B01_WHOLE_CALLER_DEADLINE_NOT_ENFORCED','B02_LATE_PUBLICATION_AND_STRICT_RESERVE_GAP','B03_CALLER_OUTPUT_AND_FAILURE_CONTRACT_UNISSUED']
+check('genuine_refusal_three_complete_blocking_findings',findings==f['remaining_actionable_findings'] and [x['id'] for x in findings]==ids and all(x['severity']=='blocking' and x['summary'] and x['reason'] and x['required_resolution'] and x['evidence'] for x in findings),ids)
+check('genuine_refusal_failed_names_match_blockers',[x['name'] for x in xs if not x['passed']]==ids,'The three copied blockers are the actual failed checks.')
+peer=ic['reviewed_artifacts']
+check('genuine_refusal_same_four_peer_facts',peer==f['reviewed_artifacts'] and len(peer)==4 and len({p['path'].casefold() for p in peer})==4,peer)
+expected_peer=[(5408,'4d856d586904f34dd758ca36049e8471748b4849539d13216f36d9cc35710f46'),(14119,'69bfb16bab0c5ce64d08456cc12ef30498e1b7d5e3993474bc16e2f4d74f0b29'),(5553,'b1b4b013b4941e7042b67fb9b43be03d447ef1967e4576e8bfa7747dd58f5ab2'),(1876,'733d6505fb24ee552ae0abd7e1bec46c14f6fc33e66a71d1adb3cf2f30c9fe75')]
+peer_values=[]
+for i,p in enumerate(peer):
+ value,pin=load(p['path'],p,is_json=i!=1);peer_values.append(value)
+ check('peer_frozen_wholepin_'+str(i+1),(p['bytes'],p['sha256'])==expected_peer[i] and pin==p,p)
+request=peer_values[0]
+check('request_scope_Source_adoption_joins',request['source_scope_sha256']==sp['sha256'] and request['source_adoption_sha256']==ap['sha256'] and request['scope']==v['scope'],'Current Source009 is review authority, not operational admission.')
+for key,i in [('source',1),('source_review',2),('owner_resource_amendment',3)]:
+ check('request_peer_sha_join_'+key,request[key+'_sha256']==peer[i]['sha256'] and v[key+'_sha256']==peer[i]['sha256'],peer[i])
+for key,i in [('source',1),('source_review',2),('owner_resource_amendment',3),('request',0)]:
+ check('candidate_exact_path_join_'+key,v[key+'_path']==peer[i]['path'] and v[key+'_sha256']==peer[i]['sha256'],peer[i])
+
+fields=('maximum_seconds','internal_work_stop_seconds','internal_output_end_seconds','publication_reserve_seconds','maximum_helper_invocations','maximum_files','maximum_code_bytes','maximum_enumerated_entries','maximum_directory_depth','maximum_manifest_bytes','startup_ram_gib','active_ram_gib','disk_gib','two_startup_samples_required','python_invocations','jobs','child_processes','automatic_retry_permitted','native_helper_compilation_admitted','scientific_admission','window_start_utc','window_end_utc')
+for k in fields:check('candidate_rejected_request_identity_'+k,type(v[k]) is type(request[k]) and v[k]==request[k],dict(value=v[k],meaning='Copied rejected-request identity only; no allocation or availability determination.'))
+check('candidate_schema_and_own_author',v['schema']=='pro2_pro3_bootstrap_observation_decision_v1' and v['author']=='Pro2 Root /root','Root-created response schema, not a peer-authored Root decision.')
+check('candidate_explicit_REJECTED_state',v['decision']=='REJECTED' and v['record_is_candidate'] is True,'Actual serialized decision is absent until a separate Root adopt action.')
+check('candidate_actual_observed_UTC_in_scope',dt.datetime.fromisoformat(s['interval_start'])<=dt.datetime.fromisoformat(v['observed_utc'])<dt.datetime.fromisoformat(s['interval_end'])-dt.timedelta(seconds=60),v['observed_utc'])
+check('candidate_exact_Source_authority',v['Source_only_scope']==sp and v['Source_only_scope_adoption']==ap and v['no_scope_extension'] is True,[sp,ap])
+check('candidate_exact_independent_refusal_joins',v['genuine_different_static_refusal']==icp and v['full_static_refusal_proof']==fp and v['blocking_findings']==findings and v['reviewed_peer_artifacts']==peer,'Complete copied refusal, without changing severity, reasons or required resolution.')
+check('candidate_actual_metadata_writer_Source_join',v['metadata_author_adopter_Source']==wp,wp)
+held=dict(released=False,accepted=False,helper_invocations_granted=0,new_compute_grant_issued=False,new_once_admission_issued=False,new_operational_execution_lease_issued=False,native_pin_preparation_admitted=False,bootstrap_observation_admitted=False,bootstrap_executed_by_Pro2=False,peer_result_accepted=False,Root_resource_availability_measured=False,Root_current_compute_reservation_issued=False,Root_current_pause_request_issued=False,all_five_pause_inventory_checked=False,physical_custody_release_claimed=False,whole_host_quiet_claimed=False,raw_capture_admitted=False,Pro2_capture_activation_admitted=False,Pro2_operational_authority=False,Pro2_runtime=False,Pro2_Native8=False,Pro2_Parser=False,Pro2_actual6=False,Pro2_scientific_authority=False,Pro2_science=False,actual_family_publication=False,Git_commit_or_push_admitted=False)
+for k,value in held.items():check('candidate_held_'+k,type(v[k]) is type(value) and v[k]==value,dict(actual=value))
+check('candidate_released_false_meaning_no_physical_inference','no peer permission' in v['released_field_meaning'] and 'not a claim' in v['released_field_meaning'],'False is rejection disposition, not physical occupancy/release evidence.')
+check('candidate_resource_provenance_not_floor_amendment','copied only to bind the rejected request' in v['resource_authority'] and 'no resource measurement/Rootflooramendment/physicalclearance' in v['resource_authority'],'Trusted human provenance is in adopted Source009; this reviewer performs no app re-query or live resource query.')
+check('candidate_no_empirical_overrun_or_peer_review_override','No empirical overrun or runtime fault was measured.' in v['decision_basis'] and 'dated Source-only evidence' in v['decision_basis'],'Static control gap, not an observed overrun or a new Pro3 Source verdict.')
+check('candidate_repair_is_future_immutable_and_separate','immutable Source/request successors' in v['repair_scope'] and 'before a separate Rootdecision' in v['repair_scope'] and 'No automatic retry or dispatch' in v['repair_scope'],'No repair execution or automatic new admission.')
+
+imports=[]
+for node in ast.walk(tree):
+ if isinstance(node,ast.Import):imports.extend(x.name for x in node.names)
+ elif isinstance(node,ast.ImportFrom):imports.append(node.module)
+check('writer_only_stdlib_metadata_imports',set(imports)=={'datetime','hashlib','json','os','stat','sys','pathlib'},imports)
+names={x.id for x in ast.walk(tree) if isinstance(x,ast.Name)}
+check('writer_no_dynamic_code_or_process_operators',not names.intersection({'exec','eval','compile','__import__','subprocess','ctypes','importlib','multiprocessing'}),'AST read only; no subject compilation, import or call performed.')
+funcs={n.name:n for n in tree.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef))}
+check('writer_closed_metadata_function_set',set(funcs)=={'need','raw','pin','pairs','bad','doc','fresh','shape','save'},sorted(funcs))
+segments={k:ast.get_source_segment(wt,n) for k,n in funcs.items()}
+requirements={
+ 'writer_fixed_own_base_and_scope_paths':"R=Path(__file__).parent;C=R.parent" in wt and "S=C/'ROOT_PRO3_NEW_FINITE_SOURCE_ONLY_COEXISTENCE_SCOPE_009_001.json'" in wt,
+ 'writer_stable_singlelink_nonreparse_read':all(x in segments['raw'] for x in ('st_nlink==1','st_file_attributes','os.fstat','key(a)==key(d)==key(e)==key(z)','h.read(2097153)')),
+ 'writer_samebuffer_fact_and_strict_JSON':all(x in segments['doc'] for x in ('b=raw(p);f=pin(p,b)','object_pairs_hook=pairs','parse_float=bad','parse_constant=bad')),
+ 'writer_hardpinned_current_Source_and_adoption':sp['sha256'] in wt and ap['sha256'] in wt and "sa['Source_only_scope']==sp" in wt and "sa['Source_only_coexistence_adopted'] is True" in wt,
+ 'writer_current_UTC_strict_greater_than_60':"dt.datetime.now(dt.timezone.utc)" in segments['fresh'] and ".total_seconds()>60" in segments['fresh'] and "s['interval_start']" in segments['fresh'],
+ 'writer_complete_metadata_nodes_depth_keys':all(x in segments['shape'] for x in ('n<=50000 and d<=48','(bool,int,str,list,dict)','55296<=ord(c)<=57343','todo.extend(((k,d+1),(v,d+1)))')),
+ 'writer_save_cap_fresh_CreateNew_fsync_readback':all(x in segments['save'] for x in ("len(b)<=2097152","fresh();p=R/name","p.open('xb')","h.write(b)==len(b)","os.fsync(h.fileno())","raw(p)==b")),
+ 'writer_exact_refusal_actor_scope_counts':all(x in wt for x in ("ic['reviewer']==full['reviewer']=='/root/i13_final_review'","ic['scope']==full['scope']==sp","ic['checks_passed']==full['checks_passed']==19","ic['checks_failed']==full['checks_failed']==3")),
+ 'writer_refusal_and_peer_rehashed_before_modes':all(x in wt for x in ("findings==full['remaining_actionable_findings']","len(findings)==3","len(ic['reviewed_artifacts'])==4","for p in peerpins:need(pin(p['path'])==p")),
+ 'writer_explicit_modes_and_arity':all(x in wt for x in ("sys.argv[1] in ('prepare','adopt')","len(sys.argv)==2","len(sys.argv)==4")),
+ 'writer_review_capsule_path_and_wholeSHA':all(x in wt for x in ("cp.is_relative_to(R/'decision_creation_different_review_001')","cf['sha256']==sys.argv[3]","doc(c['full_proof']['path'],c['full_proof'])")),
+ 'writer_review_independent_role_allclear':all(x in wt for x in ("c['reviewer']==f['reviewer']=='/root/project_architecture'","c['verdict']==f['verdict']","startswith('PASS_')","c['remaining_actionable_findings']==f['remaining_actionable_findings']==[]")),
+ 'writer_review_unique_nonempty_fullchecks':all(x in wt for x in ("type(xs) is list and len(xs)>0","type(x['name']) is str and x['name']","len({x['name'] for x in xs})","c['checks_failed']==f['checks_failed']==0","all(x['passed'] is True for x in xs)")),
+ 'writer_review_same_scope_roster_and_currentpins':all(x in wt for x in ("c['scope']==f['scope']==sp","c['reviewed_artifacts']==f['reviewed_artifacts']","Path(p['path']).is_relative_to(R) and pin(p['path'])==p")),
+ 'writer_review_must_directly_cover_self_and_candidate':all(x in wt for x in ("by.get(selfpin['path'])==selfpin","by.get(vp['path'])==vp","c['candidate']==f['candidate']==vp","v['metadata_author_adopter_Source']==selfpin")),
+ 'writer_preserves_rejection_refusal_and_all_held_fields':all(x in wt for x in ("v['decision']=='REJECTED'","v['record_is_candidate'] is True","v['blocking_findings']==findings","for k,value in held.items():need(type(v[k]) is type(value) and v[k]==value")),
+ 'writer_final_metadata_adds_review_and_actual_current_UTC':all(x in wt for x in ("record_is_candidate=False,observed_utc=fresh()","frozen_rejection_candidate=vp","genuine_different_decision_metadata_review=cf","full_decision_metadata_review_proof=ff","Root_decision_adopted=True")),
+ 'writer_only_fixed_candidate_and_rejection_outputs':"ROOT_PRO3_BOOTSTRAP_REQUEST001_EXPLICIT_REJECTION_CANDIDATE_001.json" in wt and "save('ROOT_PRO3_BOOTSTRAP_REQUEST001_EXPLICIT_REJECTED_DECISION_001.json',v)" in wt and "'REJECTED',released=False,no_execution_permission=True" in wt,
+}
+for name,value in requirements.items():check(name,value,'Exact frozen Source AST and UTF-8 region inspection; no writer mode invoked.')
+source_regions=[dict(name=k,line=n.lineno,end_line=n.end_lineno,utf8_region_sha256=hashlib.sha256(segments[k].encode('utf8')).hexdigest(),AST_sha256=hashlib.sha256(ast.dump(n,include_attributes=False).encode('utf8')).hexdigest()) for k,n in funcs.items()]
+check('writer_AST_owned_save_is_only_file_writer',len([n for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=='open' and any(isinstance(x,ast.Constant) and x.value=='xb' for x in n.args)])==1,'Single metadata save CreateNew site; both mode outputs are fixed Root-owned filenames.')
+check('actual_final_rejection_not_yet_created',not os.path.lexists(FINAL),'Read-only filesystem presence observation, not host/process/handle absence or a once grant.')
+check('review_two_artifact_roster_exact',len([vp,wp])==2 and len({p['path'].casefold() for p in [vp,wp]})==2,'This creation review directly covers only Root candidate and Root writer; peer inputs are separate basis.')
+for p,b in list(CACHE.items()):check('final_samebuffer_rehash_'+str(len(CHECKS)),raw(p)==b,p)
+
+def save(name,value):
+ shape(value);b=(json.dumps(value,sort_keys=True,indent=2,ensure_ascii=False,allow_nan=False)+'\n').encode('utf8');require(len(b)<=2097152,'own2MiB evidence cap');fresh()
+ p=OUT/name
+ with p.open('xb') as h:require(h.write(b)==len(b),'whole exclusive evidence write');h.flush();os.fsync(h.fileno())
+ require(raw(p)==b,'evidence whole readback');return fact(p,b)
+
+history=dict(schema_version=1,record_type='Independent_review_own_display_refusal_history',reviewer=REVIEWER,scope=sp,occurred_before_any_review_evidence_write=True,subject_mutation=False,subject_execution=False,tool_chunk='54b53f',tool_exit_code=1,error_type='UnicodeEncodeError',cause='The read-only display script printed a UTF-8 JSON value containing U+2192 to the host cp1252 stdout. All subject reads were read-only; the script authored no files. A subsequent display used json.dumps(...,ensure_ascii=True) successfully.',resolution='Explicit UTF-8 decoding for reads and ASCII-safe JSON for tool summaries; immutable review outputs use explicit UTF-8 serialization.',root_or_peer_Source_finding=False)
+hp=save('INDEPENDENT_PRO3_REJECTION_CREATION_REVIEW_OWN_DISPLAY_REFUSAL_HISTORY_001.json',history)
+base=dict(schema_version=1,record_type='Independent_Root_Pro3_bootstrap_rejection_metadata_creation_review',reviewer=REVIEWER,created_utc=fresh(),verdict='PASS_ROOT_REJECTION_METADATA_CREATION_ONLY_NO_PRO3_SOURCE_OR_EXECUTION_ACCEPTANCE',scope=sp,scope_adoption=ap,candidate=vp,reviewed_artifacts=[vp,wp],checks_passed=len(CHECKS),checks_failed=0,remaining_actionable_findings=[],source_only=True,subject_execution_performed=False,Root_or_peer_writer_invoked_by_reviewer=False,peer_Source_accepted=False,peer_result_accepted=False,Root_decision_adopted_by_reviewer=False,helper_invocations_granted=0,released=False,accepted=False,physical_custody_release_claimed=False,resource_availability_measured=False,new_compute_grant_issued=False,new_once_admission_issued=False,raw_capture_admitted=False,operational_authority=False,scientific_authority=False,ready_for_execution=False,claim_limit='PASS covers exact Root-created rejection candidate and uninvoked metadata writer only. The genuine i13 19-positive/3-blocking refusal is joined as saved independent basis, not repeated or overwritten. No Pro3 Source/runtime/native/custody/science qualification, resource clearance, operation allocation, grant or actual decision serialization is performed by this reviewer.',basis=[sp,ap,icp,fp,*peer],own_review_helper=fact(Path(__file__),raw(__file__)),own_checker_history=hp,writer_Source_regions=source_regions,planned_Root_final_output=str(FINAL),actual_final_decision_absent_at_review=True)
+proof=dict(base,checks=CHECKS)
+pp=save('INDEPENDENT_PRO3_ROOT_REJECTION_CANDIDATE001_WRITER001_CREATION_FULL_PROOF_001.json',proof)
+capsule=dict(base,full_proof=pp)
+cp=save('INDEPENDENT_PRO3_ROOT_REJECTION_CANDIDATE001_WRITER001_CREATION_CAPSULE_001.json',capsule)
+print(json.dumps(dict(full_proof=pp,capsule=cp,own_display_refusal_history=hp,checks_passed=len(CHECKS),checks_failed=0,remaining_actionable_findings=[],Root_or_peer_writer_invoked=False),ensure_ascii=True))

@@ -1,0 +1,64 @@
+"""Static counter accounting only; never invokes subjects or fixture builders."""
+import ast,datetime,hashlib,json
+from pathlib import Path
+R=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003');P=R/'m3_peer_contracts_016';O=R/'saved_once008_partition_failure_review_001';checks=[];subjects=[]
+def sha(b):return hashlib.sha256(b).hexdigest()
+def fact(p):
+ b=Path(p).read_bytes();return dict(path=str(p),bytes=len(b),sha256=sha(b))
+def rd(f):
+ b=Path(f['path']).read_bytes();assert len(b)==f['bytes']and sha(b)==f['sha256'];subjects.append(f);return b
+def ck(n,v,e):checks.append(dict(name=n,passed=bool(v),evidence=e))
+def dump(n):return ast.dump(n,include_attributes=False)
+scopef=fact(P/'ROOT_I13_ONCE_SYNTHETIC_MEMORY_SCOPE_008.json');scope=json.loads(rd(scopef).decode('utf8'))
+sources={k:rd(scope['modules'][k]).decode('utf8')for k in ('publisher','m3')};trees={k:ast.parse(b)for k,b in sources.items()}
+def defs(t):
+ d={}
+ for n in t.body:
+  if isinstance(n,ast.FunctionDef):d[n.name]=n
+  elif isinstance(n,ast.ClassDef):d.update({n.name+'.'+x.name:x for x in n.body if isinstance(x,ast.FunctionDef)})
+ return d
+ds={k:defs(t)for k,t in trees.items()}
+def seg(k,n):return ast.get_source_segment(sources[k],ds[k][n])
+def count(v):return 1+sum(1+count(x)for x in v.values())if type(v)is dict else 1+sum(map(count,v))if type(v)is list else 1
+for k,selfname in [('publisher','q2'),('m3','self')]:
+ tree=seg(k,'_tree');store=seg(k,'_Store.__init__');record=seg(k,'_Store.record');body=seg(k,'_Store.body');locate=seg(k,'_Store.locate');graph=seg(k,'_Graph.__init__')
+ ck(k+'_tree_each_node_increment_and_guard',tree.index('counter[0]+=1')<tree.index("_need(counter[0]<=50000,'E_NODE_BUDGET')"),dict(function='_tree',line=ds[k]['_tree'].lineno))
+ ck(k+'_dict_keys_and_values_both_counted','_tree(key,counter' in tree and '_tree(child,counter'in tree and 'for key,child in'in tree,'Dictionary root1 + key-node1 and recursively counted value for every field; lists root1+children; scalars1.')
+ ck(k+'_initial_counter1_all_record_eager_fact3_plus4','[1]'in store and 'for entry in records:'in store and '_tree(pin,'+selfname+'.count)'in store and selfname+'.count[0]+=4'in store,dict(function='_Store.__init__',line=ds[k]['_Store.__init__'].lineno,per_record=11,initial=1))
+ ck(k+'_record_list_bound256_and_total32MiB','len(records)<=256'in store and '<=33554432'in store,'Original input budgets unchanged.')
+ ck(k+'_context_exact_three_scalar_values_count7',"_tree({'root':root,'editor':editor,'now':now},"in graph and count(dict(root='r',editor='e',now='n'))==7,dict(function='_Graph.__init__',line=ds[k]['_Graph.__init__'].lineno))
+ ck(k+'_common_fixed_catalogue_and_base_record_decodes',".record(CATALOGUE_PIN)"in graph and ".record("+selfname+".c['peer_base_catalogue'])"in graph,dict(function='_Graph.__init__',line=ds[k]['_Graph.__init__'].lineno))
+ ck(k+'_per_path_cache_once_decode','if key not in '+selfname+'.cache:'in record and '_decode(raw,'+selfname+'.count,pin)'in record and "key=pin['path']"in record,dict(function='_Store.record',line=ds[k]['_Store.record'].lineno))
+ ck(k+'_body_and_locate_no_tree_charge',not any(isinstance(n,ast.Call)and isinstance(n.func,ast.Name)and n.func.id in ('_tree','_decode')for name in ('_Store.body','_Store.locate')for n in ast.walk(ds[k][name])),'Pin/hash/alias checks remain but no metadata-node increments in body()/locate().')
+ ck(k+'_opaque_does_not_skip_counting_or_recursion',tree.index('counter[0]+=1')<tree.index('_opaque(')and '_opaque('in tree and 'return _opaque'not in tree,'Opaque exact I11 leaf exception changes C0 validation only; it does not suppress tree node charging.')
+direct=ds['publisher']['_direct'];dtext=seg('publisher','_direct');statements=direct.body
+ck('direct_child_call_then_parent_result_decode_then_child_sum_guard',dtext.index('result=module.__dict__[name]')<dtext.index('view=_decode(result,g.s.count)')<dtext.index("g.s.count[0]+=view['charged_metadata_nodes']")<dtext.index("_need(g.s.count[0]<=50000,'E_NODE_BUDGET')"),dict(function='_direct',lines=[direct.lineno,direct.end_lineno]))
+ck('typed_child_error_propagates_without_location_detail',"raise I13MetadataError(code)from None"in dtext and "raise I13MetadataError('E_LAYER_EXCEPTION')from None"in dtext,'Saved typed E_NODE_BUDGET cannot identify whether it originated inside child or parent.')
+ck('child_result_decode_budget_can_raise_before_schema_or_combined_sum',dtext.index('view=_decode(result,g.s.count)')<dtext.index("_schema(view,'result54',g.c)")<dtext.index("g.s.count[0]+=view['charged_metadata_nodes']"),'A parent result-decode E_NODE_BUDGET is distinct from publisher599 combined sum E_NODE_BUDGET.')
+ck('reported_child_charge_checked_builtin_int_and_nonnegative50000',"type(view['charged_metadata_nodes'])is int and 0<=view['charged_metadata_nodes']<=50000"in dtext,'No shared mutable counter; child charge arrives only through result54 after successful child return.')
+result=seg('m3','_Graph.result');outer=seg('publisher','_outer_result')
+ck('M3_result_tree_included_before_reported_charge_and_wire',result.index('_tree(result,self.s.count)')<result.index("result['charged_metadata_nodes']=self.s.count[0]")<result.index('return _wire(result)'),dict(function='_Graph.result',line=ds['m3']['_Graph.result'].lineno))
+ck('publisher_final_result_tree_included_before_reported_charge_and_wire',outer.index('_tree(out,g.s.count)')<outer.index("out['charged_metadata_nodes']=g.s.count[0]")<outer.index('return _wire(out)'),dict(function='_outer_result',line=ds['publisher']['_outer_result'].lineno))
+ck('canonical_reuses_same_parentGraph_through_internal_prewrite',seg('publisher','validate_selected_role_canonical_dependency_metadata').count('g=_Graph(')==1 and 'req,view,purpose,staging=_prewrite(g,before,records,catalogue_bytes,m3,peer,evaluation)'in seg('publisher','validate_selected_role_canonical_dependency_metadata'),'Canonical contains one publisher cache and invokes one child through internal _prewrite; not a second publisher cache.')
+ck('prewrite_passes_entire_same_record_list_to_child','view=_direct(g,key,module,name,g.s.body(p[\'author_packet\']),expected,records,catalogue_bytes,g.eval_text)'in seg('publisher','_prewrite'),'Every unused supplied record still incurs eager11 in both parent and M3 child.')
+cat=json.loads(rd(scope['catalogue']).decode('utf8'));basef=cat['peer_base_catalogue'];base=json.loads(rd(basef).decode('utf8'))
+ck('independent_fixed_whole_tree_counts',count(cat)==5378 and count(base)==2259,dict(catalogue_nodes=count(cat),base_nodes=count(base),per_cache_fixed_nodes=count(cat)+count(base)))
+ck('fixed_fact3_and_scalar_context_counts',count(dict(path='p',bytes=1,sha256='h'))==7 and count(dict(root='r',editor='e',now='n'))==7,dict(fact3_nodes=7,context_nodes=7))
+ck('result54_absolute_minimum109_before_nested_values',1+2*54==109,'Only a lower bound: dictionary root1+54 key nodes+54 value-root nodes. Actual pins/lists/objects cost more.')
+mutations={}
+for k,t in trees.items():
+ rows=[]
+ for name,n in ds[k].items():
+  for x in ast.walk(n):
+   if isinstance(x,ast.AugAssign)and isinstance(x.target,ast.Subscript)and isinstance(x.target.slice,ast.Constant)and x.target.slice.value==0:
+    rows.append(dict(function=name,line=x.lineno,target=ast.unparse(x.target),operation=ast.unparse(x)))
+ mutations[k]=rows
+ ck(k+'_all_scalar_counter_increment_sites_closed',len(rows)==(3 if k=='publisher'else 2)and {x['function']for x in rows}==({'_tree','_Store.__init__','_direct'}if k=='publisher'else{'_tree','_Store.__init__'}),rows)
+failed=[x['name']for x in checks if not x['passed']];print(json.dumps(dict(checks=len(checks),failed=failed)));assert not failed
+equations=dict(tree_count='T(scalar)=1; T(list)=1+sum T(items); T(dict)=1+sum(1+T(value)) for string keys',cache_before_decoded_bodies='8+11*N for N entire supplied records, including unused',per_cache_total_before_successful_return='8+11*N + sum(T(raw JSON body) for distinct parsed paths in that cache) + T(child_result54) [M3 child]',parent_after_successful_child_before_final_result='parent current charge + T(child result54) + child reported total; applied in that exact order',parent_final_total='8+11*N + sum(parent parsed path body T) + T(child result54) + child total + T(parent result54)',two_cache_fixed_lower_bound_before_packets_and_results='2*(8+11*N+5378+2259) = 15290+22*N; not a fit prediction',result54_minimum='109 nodes each; actual node count depends on nested pins/roles and must be independently counted',canonical_cache_count='one publisher _Graph + one M3 child _Graph; canonical reuses parent for internal prewrite')
+now=datetime.datetime.now(datetime.timezone.utc).isoformat();common=dict(schema_version=1,reviewer='/root/i13_final_review',created_utc=now,verdict='PASS_I13_SOURCESET5_COUNTER_SKELETON_SOURCE_AUDIT_ONLY',subjects=subjects,checks_passed=len(checks),checks_failed=0,target_execution=False,tests_executed=False,native_Parser_executed=False,operational_authority=False,scientific_authority=False,actual_family_publication=False,claim_limit='Static consuming-Source arithmetic only. No subjects or fixture builders called; no measured node ledger or precise saved failure origin exists. Proposed immutable snapshots may support independently counted full key/value body inventory and explicitly source-planned per-cache readsets. Planned totals/crossings must remain distinguished from actual target counter/order/guard location. Saved once008 twelve E_NODE_BUDGET codes establish failure only. No cap waiver/cache sharing/reset/expanded runtime schema, fit/runtime/whole936/operational or physical-host claim.')
+full=dict(common,record_type='Independent_I13_SourceSet5_counter_skeleton_Source_full_proof',checks=checks,equations=equations,all_counter_increment_sites=mutations)
+def write(p,v):
+ with p.open('xb')as f:f.write((json.dumps(v,sort_keys=True,ensure_ascii=False,indent=2,allow_nan=False)+'\n').encode('utf8'))
+fp=O/'INDEPENDENT_I13_SOURCESET5_COUNTER_SKELETON_SOURCE_FULL_PROOF_001.json';write(fp,full);cp=O/'INDEPENDENT_I13_SOURCESET5_COUNTER_SKELETON_SOURCE_CAPSULE_001.json';write(cp,dict(common,record_type='Independent_I13_SourceSet5_counter_skeleton_Source_capsule',full_proof=fact(fp),equations=equations))
+for p in (fp,cp):print(json.dumps(dict(**fact(p),checks_passed=len(checks),checks_failed=0)))

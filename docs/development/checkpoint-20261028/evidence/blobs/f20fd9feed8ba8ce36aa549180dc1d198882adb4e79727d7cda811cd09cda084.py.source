@@ -1,0 +1,65 @@
+"""Root narrow read/hash/AST metadata correction adoption; no subject calls."""
+import ast,copy,datetime as dt,hashlib,json
+from pathlib import Path
+R=Path(__file__).parent;C=R/'m3_peer_contracts_016';M=C/'m3_protocol_audit_001';P=C/'canonical_peer_protocol_audit_001'
+checks=[]
+def ck(ok,name,evidence):
+ assert ok,name;checks.append(dict(name=name,passed=True,evidence=evidence))
+def pin(p):
+ b=p.read_bytes();return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def pairs(rows):
+ d={}
+ for k,v in rows:assert k not in d;d[k]=v
+ return d
+def bad(v):raise ValueError('noninteger JSON token')
+def load(p,sha=None):
+ b=p.read_bytes();assert 0<len(b)<=2097152
+ if sha is not None:assert hashlib.sha256(b).hexdigest()==sha
+ return json.loads(b.decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def save(p,v):
+ raw=(json.dumps(v,indent=2,sort_keys=True,allow_nan=False)+'\n').encode();assert len(raw)<=2097152
+ with p.open('xb') as h:assert h.write(raw)==len(raw)
+ return pin(p)
+old_path=R/'ROOT_I13_FINAL_PROTOCOL_SET_DIFFERENT_SOURCE_REVIEW_ADOPTION_002.json'
+old_adopt=load(old_path,'e4d882a49c84fde7e1118a9de2ca385b920f6a4170cc4206da5f249054bdd64a')
+clar_path=M/'I13_PROPOSED_ORIGINAL_I2_RECEIPT22_OBSERVATION9_CORRECTION_001.json'
+cat_path=M/'I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_005.json'
+pro_path=M/'I13_PROPOSED_M3_GUARD_AND_SHARED_SELECTED_ROLE_PUBLISHER_PROTOCOL_005.json'
+clar=load(clar_path,'9ea41d6a404e885205506cc0f26c9028e85d544c49a7c407e175829e1b5cefa0')
+cat=load(cat_path,'39be598b3d526130a99b5a3de58a44bf3446f7b31c8e3526a3074cdf49157f61')
+pro=load(pro_path,'ea51288a63b0b8e4eb06adb57d4d4231fa02475935a3fe2c94f105a3e6194d24')
+old=load(Path(old_adopt['subjects']['common_catalogue']['path']))
+ck(pin(Path(old_adopt['subjects']['common_catalogue']['path']))==old_adopt['subjects']['common_catalogue'],'old_adopted_catalogue_exact',old_adopt['subjects']['common_catalogue'])
+keys=['path','sha256','bytes','cap','path9','descriptor9','shared_identity_indexes','two_read_match','observed_utc']
+ck(cat['schemas']['M3_read_observation9']['exact_keys']==keys and cat['schemas']['M3_read_observation9']['field_count']==9,'correct_exact_observation9_schema',cat['schemas']['M3_read_observation9'])
+for name,value in old['schemas'].items():
+ expected=copy.deepcopy(value)
+ if name=='receipt22':expected['fields']['finite_actual_Source_observations']='complete_unique_M3_read_observation9_list'
+ ck(cat['schemas'][name]==expected,'only_receipt22_item_descriptor_changed_'+name,pin(cat_path))
+ck(set(cat['schemas'])==set(old['schemas'])|{'M3_read_observation9'},'only_one_new_schema_added',list(cat['schemas']))
+for key in ('original_guards','counter_mode','counter_composition_policy','ROLE_SOURCE_CAPS','fixed_port_registry','validator_support_delivery','fixed_inventory_descriptive_LF_rule'):
+ ck(cat[key]==old[key],'unchanged_'+key,pin(cat_path))
+source_path=Path(clar['Source']['path']);source=source_path.read_bytes();ck(pin(source_path)==clar['Source'],'I2_006_whole_Source_unchanged',clar['Source'])
+tree=ast.parse(source);read=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='read')
+assignments=[n for n in ast.walk(read) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Subscript) and isinstance(t.value,ast.Name) and t.value.id=='OBSERVATIONS' for t in n.targets)]
+ck(len(assignments)==1 and isinstance(assignments[0].value,ast.Call) and isinstance(assignments[0].value.func,ast.Name) and assignments[0].value.func.id=='dict' and [k.arg for k in assignments[0].value.keywords]==keys,'actual_original_read_emits_exact9',clar['actual_OBSERVATIONS_assignment'])
+part=b''.join(source.splitlines(keepends=True)[read.lineno-1:read.end_lineno]);ck(hashlib.sha256(part).hexdigest()==clar['actual_read_function']['sha256'] and hashlib.sha256(ast.dump(read,include_attributes=False).encode()).hexdigest()==clar['actual_read_function']['AST_sha256'],'actual_read_full_bytes_and_AST',clar['actual_read_function'])
+cap_path=P/'observation9_protocol_review_001/INDEPENDENT_I13_OBSERVATION9_CORRECTION_SOURCE_CAPSULE_002.json'
+cap=load(cap_path,'8442f276de4b1c3072d1229ad3c34d8b8eb7680eaafe310c52b2a1f59b3274cf');full_path=Path(cap['full_proof']['path']);full=load(full_path,'ba11fb35899a17d756059e955254bf7a730ee22b404844def047cbb90771fb1d')
+ck(pin(full_path)==cap['full_proof'],'different_full_proof_exact',cap['full_proof'])
+for body,label in ((cap,'capsule'),(full,'full')):
+ ck(body['reviewer']=='/root/i2_resume_gap' and body['reviewer']!=clar['author'],'different_reviewer_'+label,pin(cap_path))
+ ck(type(body['checks_passed']) is int and body['checks_passed']==91 and type(body['checks_failed']) is int and body['checks_failed']==0,'positive_exact_counts_'+label,pin(cap_path))
+ ck(all(pin(p) in body['subjects'] for p in (clar_path,cat_path,pro_path)),'direct_exact_subjects_'+label,[pin(p) for p in (clar_path,cat_path,pro_path)])
+ for key in ('target_execution','operational_authority','scientific_authority','native_Parser_executed','tests_executed'):ck(body[key] is False,'review_'+label+'_'+key+'_false',pin(cap_path))
+ck(len(full['checks'])==91 and len({r['name'] for r in full['checks']})==91 and all(set(r)=={'name','passed','evidence'} and r['passed'] is True for r in full['checks']),'all_unique_positive_different_checks',cap['full_proof'])
+scope_path=R/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_001.json';scope=load(scope_path);now=dt.datetime.now(dt.timezone.utc)
+ck((dt.datetime.fromisoformat(scope['interval_end'])-now).total_seconds()>60,'current_Source_reserve',pin(scope_path))
+ck(True,'recorded_stability_boundary','Observation9 retains exact complete path9/descriptor9 and shared7/ordinary/two-read metadata. Original I2 read enforces independent full-vector stability; no absent stable flag/raw9/shared_descriptor7 is invented. Newmetadata does not authenticate physical I/O.')
+subjects=copy.deepcopy(old_adopt['subjects']);subjects.update(common_protocol=pin(pro_path),common_catalogue=pin(cat_path),observation9_clarification=pin(clar_path))
+proof=save(R/'ROOT_I13_OBSERVATION9_CORRECTION_FOCUSED_REVIEW_FULL_PROOF_003.json',dict(schema_version=1,record_type='Root_I13_observation9_correction_read_hash_AST_review',author='/root',created_utc=now.isoformat(),subjects=subjects,checks=checks,checks_passed=len(checks),checks_failed=0,target_execution=False,operational_authority=False,scientific_authority=False,tests_executed=False))
+value=copy.deepcopy(old_adopt);value.update(created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),record_type='Root_I13_exact_final_protocol_with_original_observation9_corrective_adoption',verdict='ACCEPT_EXACT_I13_METADATA_PROTOCOL005_SOURCE_AUTHORING_ONLY',subjects=subjects,prior_complete_adoption=pin(old_path),prior_adoption_known_predicate_limitation='Catalogue004 M3 receipt22 observation item incorrectly used publication12. Corrected005 changes only that slot to original observation9. Prior acceptance is preserved dated history; no original/new target has been run.',corrective_different_review=dict(capsule=pin(cap_path),full_proof=pin(full_path)),Root_corrective_proof=proof,Root_corrective_checks_passed=len(checks),Root_corrective_checks_failed=0,peer_Source_successor_limited_to_new_catalogue_pin_and_necessary_final_review_fixes=True)
+value.update(Root_metadata_reader=pin(Path(__file__)),refused_predecessor_reader=pin(R/'adopt_I13_observation9_protocol_correction_003.py'),reader003_refusal='Own reader guessed observation9 instead of normative M3_read_observation9; refused before any proof/adoption write. Original and new target calls/tests remained zero.')
+value.update(refused_reader004=pin(R/'adopt_I13_observation9_protocol_correction_004.py'),review001_limitation='Original89-check review omitted explicit scientific_authority/native_Parser_executed. Root refused before adoption; genuine additive002 explicitly supplies bothFalse and91checks. No absence-as-False inference.')
+out=save(R/'ROOT_I13_FINAL_PROTOCOL005_OBSERVATION9_DIFFERENT_REVIEW_ADOPTION_003.json',value)
+print(json.dumps(dict(adoption=out,proof=proof,Root_correction_checks=len(checks))))

@@ -1,0 +1,154 @@
+"""Own bounded metadata/text reviewer. Never load, parse as PowerShell, or run a subject."""
+import datetime as dt
+import hashlib
+import json
+import os
+import re
+import stat
+from pathlib import Path
+
+O=Path(__file__).parent
+R=O.parent
+C=R.parent
+P=Path(r'D:\Aenv\pro3\runs\coordination\cho51_p3_contracts_20261027_v1')
+S=C/'ROOT_PRO3_NEW_FINITE_SOURCE_ONLY_COEXISTENCE_SCOPE_009_001.json'
+A=C/'ROOT_PRO3_SOURCE_ONLY_COEXISTENCE009_DIFFERENT_REVIEW_ADOPTION_001.json'
+FIXED={
+ 'bootstrap-observation_002.ps1':(14862,'e4085b587e8b4e4904cd0de44b4406ed090126e32a6c0063360ce5d840dc9051'),
+ 'bootstrap-protocol_002.md':(18701,'7328551bbd9c1b268a3595407b1c7c42ca842bdfa7ccfea2ebfc33c4cef07775'),
+ 'bootstrap-source-review_002.json':(2888,'ed91bdbb0824891783851b7a622fe887671c90359367c89c2feb33f4b5ae562d'),
+ 'helper-source-review_002.json':(3979,'e1bebce0bd437ad1719535d25e2429c6961d267aa520ba3f2fb5f735fcef76f1'),
+ 'bootstrap-supervisor-source-review_002.json':(4546,'352c2b0c20d79728b7e9fa8ae87059405eec15c0cda90e138f622638315dc2c6'),
+}
+CACHE={};CHECKS=[]
+def need(v,m):
+ if not v:raise ValueError(m)
+def check(n,v,e):
+ need(n and n not in {x['name'] for x in CHECKS},'unique check')
+ CHECKS.append(dict(name=n,passed=v is True,evidence=e))
+ need(v is True,'own Source-review predicate failed: '+n)
+def fact(p,b):return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def raw(p):
+ p=Path(p)
+ for q in (p,*p.parents):need(not q.is_symlink() and not getattr(q.lstat(),'st_file_attributes',0)&1024,'ordinary nonreparse lineage')
+ a=p.stat();need(stat.S_ISREG(a.st_mode) and a.st_nlink==1 and 0<=a.st_size<=2097152,'bounded singlelink regular file')
+ with p.open('rb') as h:d=os.fstat(h.fileno());b=h.read(2097153);e=os.fstat(h.fileno())
+ z=p.stat();key=lambda x:(x.st_dev,x.st_ino,x.st_mode,x.st_nlink,x.st_size,x.st_mtime_ns)
+ need(key(a)==key(d)==key(e)==key(z) and len(b)==a.st_size,'stable exact retained buffer')
+ return b
+def pairs(xs):
+ d={}
+ for k,v in xs:need(k not in d,'duplicate metadata JSON key');d[k]=v
+ return d
+def bad(_):raise ValueError('noninteger/nonfinite metadata JSON')
+def shape(v):
+ todo=[(v,0)];n=0;depth=0
+ while todo:
+  x,d=todo.pop();n+=1;depth=max(depth,d);need(n<=50000 and d<=48,'own full-key/value node/depth cap')
+  need(x is None or type(x) in (str,int,bool,list,dict),'builtin JSON value')
+  if type(x) is str:need(not any(55296<=ord(c)<=57343 for c in x),'surrogates refused')
+  elif type(x) is list:todo.extend((v,d+1) for v in x)
+  elif type(x) is dict:
+   need(all(type(k) is str for k in x),'builtin keys')
+   for k,v in x.items():todo.extend(((k,d+1),(v,d+1)))
+ return dict(nodes=n,depth=depth)
+def load(p,expected=None,doc=True):
+ p=Path(p);b=raw(p);f=fact(p,b)
+ if expected is not None:need(f==expected,'expected whole fact3')
+ CACHE[str(p)]=b
+ if not doc:return b,f
+ v=json.loads(b.decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad);shape(v);return v,f
+
+s,sp=load(S);a,ap=load(A)
+need((sp['bytes'],sp['sha256'])==(7516,'b04507102cc00306e99ce9992cd0a526da03101e7d972e79eed6d20aab354739'),'Source009 hardpin')
+need((ap['bytes'],ap['sha256'])==(3543,'29dce6bd6b7767449b0bc28d8daeed1023581748d82be41d4eb82cabcf8804ab'),'adoption hardpin')
+def fresh():
+ n=dt.datetime.now(dt.timezone.utc)
+ need(dt.datetime.fromisoformat(s['interval_start'])<=n and (dt.datetime.fromisoformat(s['interval_end'])-n).total_seconds()>60,'Source009 strict >60 reserve')
+ need(raw(S)==CACHE[str(S)] and raw(A)==CACHE[str(A)],'exact current Source/adoption buffers')
+ return n.isoformat()
+fresh()
+check('current_Source009_adopted_bounded_static_review_only',a['Source_only_scope']==sp and a['Source_only_coexistence_adopted'] is True and s['target_execution'] is False and s['native_pin_preparation_admitted'] is False,'No Source ACK is operation/admission authority.')
+check('current_Source009_end_caps_and_reserve_unchanged',s['interval_end']=='2026-10-27T16:30:00+00:00' and s['publication_reserve_seconds']==60 and s['metadata_cap_bytes']==2097152 and s['metadata_nodes']==50000 and s['metadata_depth']==48,'Own evidence writes require fresh current UTC and strict reserve.')
+check('current_concurrency_caps_no_extra_agents',s['Pro2_max_including_Root']==3 and s['Pro3_max_including_Root_and_reviewer']==2 and s['shared_max_including_both_roots_and_overlap']==5,'No nested agent or new process/job allocated by this reviewer.')
+
+values={};pins=[]
+for n,(length,sha) in FIXED.items():
+ v,f=load(P/n,doc=n.endswith('.json'));values[n]=v;pins.append(f)
+ check('exact_frozen_whole_subject_'+n,f['bytes']==length and f['sha256']==sha,f)
+h=values['bootstrap-observation_002.ps1'].decode('utf8');hl=h.splitlines()
+t=values['bootstrap-protocol_002.md'].decode('utf8');tl=t.splitlines()
+con=values['bootstrap-source-review_002.json'];hr=values['helper-source-review_002.json'];sr=values['bootstrap-supervisor-source-review_002.json']
+supb,supp=load(P/'bootstrap-supervise_002.ps1',doc=False);supl=supb.decode('utf8').splitlines()
+check('supervisor_wholepin_is_crosscomponent_basis_only',supp['bytes']==36789 and supp['sha256']=='8faabbd9084bf51f7b932ee79e795e62189b0e130cee8eac8b5a93bcdd9c6240','Only the manifest-consumer303–312 span is inspected here; supervisor internals belong to the independent i13 reviewer.')
+amend,amp=load(P/'owner-resource-amendment.json')
+check('exact_dated_phase_amendment_wholepin',amp['bytes']==1876 and amp['sha256']=='733d6505fb24ee552ae0abd7e1bec46c14f6fc33e66a71d1adb3cf2f30c9fe75',amp)
+scope='cho51_p3_contracts_20261027_v1_bootstrap_observation_002'
+for n,v,schema in [('consolidated',con,'cho51_p3_bootstrap_source_review_v2'),('helper',hr,'cho51_p3_bootstrap_helper_source_review_v2'),('supervisor',sr,'cho51_p3_bootstrap_supervisor_source_review_v2')]:
+ check('component_receipt_shape_scope_Source_only_'+n,v['schema']==schema and v['scope']==scope and v['source_only'] is True and v['remaining_actionable_findings']==[],'Actual peer receipt is static provenance only; this does not adopt its zero-findings assertion.')
+check('consolidated_exact_three_Source_map',con['files']=={str(P/'bootstrap-observation_002.ps1'):FIXED['bootstrap-observation_002.ps1'][1],str(P/'bootstrap-supervise_002.ps1'):supp['sha256'],str(P/'bootstrap-protocol_002.md'):FIXED['bootstrap-protocol_002.md'][1]},con['files'])
+check('consolidated_exact_component_review_pins',con['helper_source_review_path']==str(P/'helper-source-review_002.json') and con['helper_source_review_sha256']==FIXED['helper-source-review_002.json'][1] and con['supervisor_source_review_path']==str(P/'bootstrap-supervisor-source-review_002.json') and con['supervisor_source_review_sha256']==FIXED['bootstrap-supervisor-source-review_002.json'][1],'No future request/admission digest is embedded in these earlier Source receipts.')
+check('helper_receipt_actual_helper_identity',hr['source_path']==str(P/'bootstrap-observation_002.ps1') and hr['source_bytes']==14862 and hr['source_sha256']==con['source_sha256']==FIXED['bootstrap-observation_002.ps1'][1],'Authorship and receipt histories remain dated peer Source provenance.')
+check('supervisor_receipt_exact_outer_protocol_map',sr['files']=={str(P/'bootstrap-supervise_002.ps1'):supp['sha256'],str(P/'bootstrap-protocol_002.md'):FIXED['bootstrap-protocol_002.md'][1]},'Crosscomponent receipt hashes joined; not an independent re-review of supervisor custody.')
+check('component_review_different_authors_declared',hr['source_author']=='Pro3 Root' and '/root/p3_independent_review' in hr['reviewer'] and sr['source_author']=='/root/p3_independent_review' and sr['reviewer'].startswith('Pro3 Root'),'Declared different-author component reviews; no Source self-approval inferred from consolidation.')
+check('all_component_execution_and_science_flags_false',all(con[k] is False for k in ('bootstrap_executed','native_preparation_executed','python_or_tests_executed','job_created','operational_admission_granted','scientific_admission')) and all(hr[k] is False for k in ('helper_executed','outer_controller_executed','native_csharp_compiled_or_executed','python_imported_or_executed','tests_or_fixtures_executed','job_created','runtime_behavior_proven','operational_admission_granted','scientific_admission')) and all(sr[k] is False for k in ('controller_executed','helper_executed','native_helper_compiled','python_or_tests_executed','job_created','scientific_admission')),'No peer result or actual physical release is accepted.')
+
+def has(*xs):return all(x in h for x in xs)
+def proto(*xs):return all(x in t for x in xs)
+checks=[
+ ('helper_exact_two_SHA_argument_interface',has("[Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{64}$')][string]$RequestSha256","[Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{64}$')][string]$RootAdmissionSha256"),'lines1–4; helper has exactly two declared mandatory SHA arguments.'),
+ ('helper_exact_fixed_Source_runtime_and_owned_paths',has("$run=$PSScriptRoot","$scope='"+scope+"'","$PSCommandPath -cne (Join-Path $run 'bootstrap-observation_002.ps1')","$PSHOME -ceq $runtime"),'lines8–12,95; output paths are not supplied by caller data.'),
+ ('helper_metadata_retained_readonly_whole_SHA_then_JSON',has('$stream.Length -gt 0 -and $stream.Length -le 1048576','$stream.ReadExactly($raw)','$observed -ceq $expected','[Text.Json.JsonDocument]::Parse','[Text.UTF8Encoding]::new($false,$true).GetString($raw)|ConvertFrom-Json -AsHashtable -DateKind String'),'lines15–36; exact retained bytes are hashed before decode.'),
+ ('helper_JSON_depth_duplicate_and_finite_value_guards',has('$depth -le 32 -and $script:jsonNodes -le 50000','$names.Add($property.Name)',"'Duplicate JSON property'",'[double]::IsInfinity($number)','[double]::IsNaN($number)'),'lines24–33; this Source counter counts JsonElement values, not property-name nodes. No full-key/value cap equivalence is claimed.'),
+ ('helper_effect_clock50s_and_strict_Source_request_reserve',has('$watch.Elapsed.TotalSeconds -lt 50','$now -lt $entry.AddSeconds(50)','$now -lt $end.AddSeconds(-60)',"$now -lt (Utc $sourceScope 'interval_end').AddSeconds(-60)"),'lines38–42; helper45/50 is distinct from supervisor65/80/85/90 common clock.'),
+ ('helper_CreateNew_pre_post_flush_and_readback_guards',has("function Write-New([string]$path,$value)","$raw.Length -le 1048576","[IO.FileMode]::CreateNew","$stream.Flush($true)","[void](Read-Metadata $path $expected)" ) and hl[43].strip()=='Effect-Clock' and hl[46].strip()=='Effect-Clock' and hl[49].strip()=='Effect-Clock' and hl[52].strip()=='Effect-Clock','lines43–54; all helper effects use this fixed bounded writer. Synchronous stalls can still require outer cleanup/refusal.'),
+ ('helper_exact_request_admission_peer_request_scope_joins',has("'cho51_p3_bootstrap_observation_request_v1'","'cho51_p3_bootstrap_observation_admission_v1'","$admission.accepted -is [bool]","$admission.request_sha256 -ceq $RequestSha256","$peer.schema -ceq 'pro2_pro3_bootstrap_observation_decision_v1'","$peer.released -is [bool] -and $peer.released"),'lines55–74; operational inputs remain unissued/unaccepted by this review.'),
+ ('helper_exact_integer_budgets_and_zero_spawn_fields',has('$record.maximum_seconds -is [long] -and $record.maximum_seconds -eq 90','$record.maximum_files -is [long] -and $record.maximum_files -eq 2500','$record.maximum_code_bytes -is [long] -and $record.maximum_code_bytes -eq 1073741824','$record.outer_child_processes -is [long] -and $record.outer_child_processes -eq 1',"@('python_invocations','jobs','helper_child_processes')"),'lines61–69; one outer-owned helper is a proposed revised allowance, not granted here.'),
+ ('helper_no_retry_native_helper_or_science_widening',has("@('automatic_retry_permitted','native_helper_compilation_admitted','scientific_admission')","$record[$field] -is [bool] -and -not $record[$field]"),'lines68–69; all admitted inputs must carry literal False values.'),
+ ('helper_phase_resource_floors_provenance_are_separate',has("@('startup_ram_gib','active_ram_gib')","$record[$field] -is [long] -and $record[$field] -eq 4","$record.disk_gib -is [long] -and $record.disk_gib -eq 20","$amendment.applies_to -ceq 'metadata_profile_mapping_and_telemetry_contract_tests_only'","@('canonical_guard_modified','scientific_admission')"),'lines65–81; this does not measure Root resources or amend Root floors.'),
+ ('helper_current_009_paths_hashes_and_agent_caps_exact',has(sp['sha256'],ap['sha256'],str(S),str(A),'$sourceScope.Pro2_max_including_Root -eq 3','$sourceScope.Pro3_max_including_Root_and_reviewer -eq 2','$sourceScope.shared_max_including_both_roots_and_overlap -eq 5'),'lines87–94; no old Source scope extension.'),
+ ('helper_disposition_times_and_strict_entry_fit',has("(Utc $record 'observed_utc') -le $entry","$entry.AddSeconds(90) -lt $end.AddSeconds(-60)","$entry.AddSeconds(90) -lt (Utc $sourceScope 'interval_end').AddSeconds(-60)"),'lines82–94; UTC spellings parsed, strict boundary equality rejected; no actual clock observed by reviewer.'),
+ ('helper_five_pause_paths_work45_and_native_floor_observations',has("@('20261007','20261012','20261013','20261015','20261025')",'$watch.Elapsed.TotalSeconds -lt 45','Get-CimInstance -ClassName Win32_OperatingSystem -OperationTimeoutSec 3',"[IO.DriveInfo]::new('D:\\')",'$available -ge 4GB -and $disk -ge 20GB','foreach($pausePath in $pauses)'),'lines13,97–105; observational floors, not reservation or a guarantee that each blocking call returns on time.'),
+ ('helper_two_distinct_startup_samples',has('$startup.Add((Floors));[Threading.Thread]::Sleep(200);$startup.Add((Floors))'),'line108; two calls and 200ms separation are explicit.'),
+ ('helper_separate_once_outputs_without_old001_rewrite',has("@('bootstrap-helper-attempt_002.json','preparation-bootstrap-pins_002.json')","'Bootstrap output already used'","Write-New (Join-Path $run 'bootstrap-helper-attempt_002.json')","Write-New (Join-Path $run 'preparation-bootstrap-pins_002.json')"),'lines106–108,141; no retry or helper-output deletion route.'),
+ ('helper_lazy_entry_depth_and_extension_bounds',has('$options.RecurseSubdirectories=$true;$options.MaxRecursionDepth=16','$options.AttributesToSkip=[IO.FileAttributes]::ReparsePoint','$enumerated -le 10000',"@('.dll','.exe','.json','.ps1','.psm1','.psd1')"),'lines109–118; partial coverage by explicit depth/extension/reparse policy is not full installed/loaded runtime coverage.'),
+ ('helper_2500_files_and_1GiB_aggregate_bound',has('$files.Count -lt 2500','$total+$stream.Length -le 1GB','$counted -le $before.Length','$counted -eq $before.Length','$total+=$counted'),'lines118–135; aggregate accounted on successfully hashed files; growth/short reads refuse.'),
+ ('helper_64KiB_chunk_SHA_and_periodic_floors',has('$buffer=[byte[]]::new(65536)','$digest.AppendData($buffer,0,$read)','$sinceFloor -ge 4MB','$watch.Elapsed.TotalSeconds -lt 45','$digest.Dispose()','$stream.Dispose()','$enumerator.Dispose()'),'lines120–138; synchronous operations are not independently interruptible by helper code.'),
+ ('helper_observational_size_lastwrite_stability_only',has('$after.Length -eq $before.Length','$after.LastWriteTimeUtc.Ticks -eq $before.LastWriteTimeUtc.Ticks','native_same_handle_identity_verified=$false;full_pro3_pins_created=$false'),'lines133–140; no native file identity/link/coverage qualification is added.'),
+ ('helper_no_spawn_or_dynamic_compilation_route',not any(x in h for x in ('Start-Process','ProcessStartInfo','[Diagnostics.Process]::Start','Add-Type','New-Object -ComObject','Invoke-Expression','Start-Job','python.exe',' -Command ')),'Whole helper text inspected; this is not a PowerShell grammar certificate or proof of arbitrary platform behavior.'),
+ ('helper_manifest_and_stdout_falseflags_and_external_completion',has('python_executed=$false;child_process_started=$false;job_created=$false;native_helper_compiled=$false;scientific_admission=$false','full_caller_release_still_requires_external_evidence=$true'),'lines140–143; helper does not claim actual full caller/tool return.'),
+ ('protocol_Source_only_no_automatic_operational_authority',proto('This is Source only.','Neither this document nor a clean Source review authorizes','Source coexistence, an acknowledgment, available RAM,','silence or a release estimate is not that decision.'),'lines3–8,38–48; no exact request2/admission review is performed by this component review.'),
+ ('protocol_explicit_revised_zero_resource_and_cleanup_boundary',proto('| outer_child_processes / helper_child_processes |1 /0|','| python_invocations / jobs |0 /0|','bounded_cleanup_after_pause_admitted=true','never continued helper','work or a passing result'),'lines60–90; cleanup allowance must be explicitly admitted separately.'),
+ ('protocol_exact_ten_file_namespace_and_acyclic_late_joins',proto('bootstrap-dispatch_002.json','bootstrap-helper-attempt_002.json','preparation-bootstrap-pins_002.json','never its own future hash','Release joins completion.','no overwrite, deletion, rearm or automatic retry'),'lines107–131; future request/admission decisions are outside this Source-only review.'),
+ ('protocol_external_65_80_85_90_clock_is_not_helper_clock',proto('Outer normal work stops at65s common elapsed, cleanup/drain/reap stops at80s,','all effects/final handle close and caller publication aim before85s','strictly<90s','actual tool result is retained alongside the closed release record'),'lines194–233,280–294; whole caller acceptance is external and unavailable now.'),
+ ('protocol_openly_discloses_synchronous_stall_and_coverage_limits',proto('not claimed to be absolutely interruptible','an OS-stalled outer or tool host may still overrun','Sampling cannot prove an unobserved transient','not a kernel job guarantee'),'lines268–294; no empirical overrun, native-ID or transient-process-absence claim is made here.'),
+ ('protocol_partial_truth_no_failure_laundering',proto('A failure never produces a passing operation or manifest acceptance.','Partial files and used identities are retained.','Failure stream refs are null','there is no accepted closure.'),'lines131,296–308; outer typed failure behavior itself is independently reviewed by i13.'),
+]
+for n,v,e in checks:check(n,v,e)
+
+def assignments(line):return re.findall(r'(?:^|[;{])([A-Za-z_][A-Za-z_0-9]*)=',line)
+manifest_fields=assignments(hl[139]);attempt_fields=assignments(hl[106]);sample_fields=assignments(hl[103]);file_fields=assignments(hl[133]);stdout_fields=assignments(hl[142])
+check('helper_exact_Source_generated_payload_field_rosters',len(manifest_fields)==24 and len(attempt_fields)==7 and len(sample_fields)==4 and len(file_fields)==2 and len(stdout_fields)==8,dict(manifest=manifest_fields,helper_attempt=attempt_fields,helper_startup_sample=sample_fields,file_row=file_fields,stdout_summary=stdout_fields))
+check('helper_output_paths_fixed_not_caller_controlled',all(x in h for x in ("$run=$PSScriptRoot","Join-Path $run 'bootstrap-helper-attempt_002.json'","Join-Path $run 'preparation-bootstrap-pins_002.json'")) and "Write-New $request" not in h,'Two fixed helper outputs; no body path comes from a dynamic callback or supplied output root.')
+check('crosscomponent_current_manifest_header_consumer_exact',"$helperAttempt=Existing 'bootstrap-helper-attempt_002.json';$manifest=Existing 'preparation-bootstrap-pins_002.json'" in supl[302] and all(x in supl[303] for x in ('$manifest.value.schema','$manifest.value.scope','$manifest.value.request_sha256','$manifest.value.root_admission_sha256')),'supervisor303–304 is limited to four manifest header fields; helper-attempt is retained by whole hash.')
+check('crosscomponent_current_acceptance_explicitly_deferred','$record.observational_manifest_accepted=$false' in supl[310] and '$record.full_caller_accepted=$false' in supl[310] and 'observational_manifest_accepted=false' in t,'No missing payload check is recharacterized as a present wrong-output acceptance or independent execution blocker merely because acceptance is deferred.')
+check('protocol_outer_startup_schema_not_misapplied_to_helper_sample','Each stream object is exactly `path`, `bytes`, `sha256`; each startup sample' in t and sample_fields==['observed_utc','available_ram_bytes','free_disk_bytes','method'],'Protocol152–153 closes the parent supervision sample3. Helper sample4 has an additional method field; the two payload domains are explicitly kept distinct here.')
+
+regions=[]
+for name,start,end in [('helper_parameters_and_fixed_paths',1,14),('helper_Read_Metadata',15,37),('helper_Effect_Clock',38,42),('helper_Write_New',43,54),('helper_admission_and_Source_joins',55,95),('helper_Floors_and_startup_once',96,108),('helper_bounded_runtime_hash_inventory',109,139),('helper_result_and_stdout',140,143)]:
+ text='\n'.join(hl[start-1:end])+'\n';regions.append(dict(path=str(P/'bootstrap-observation_002.ps1'),name=name,line=start,end_line=end,normalized_LF_UTF8_region_sha256=hashlib.sha256(text.encode('utf8')).hexdigest()))
+deferred=[dict(id='D01_HELPER_PAYLOAD_SCHEMA_AND_SEMANTIC_CONSUMPTION',status='UNRESOLVED_BEFORE_OBSERVATIONAL_ACCEPTANCE',current_execution_blocker_asserted=False,current_wrong_output_acceptance_asserted=False,summary='Complete helper observation/helper-attempt schema and semantic acceptance remain a future duty. Current supervisor records whole hashes and checks only four manifest header fields; it expressly does not accept the observational manifest.',evidence=[dict(path=str(P/'bootstrap-observation_002.ps1'),line=107,end_line=107),dict(path=str(P/'bootstrap-observation_002.ps1'),line=140,end_line=143),dict(path=str(P/'bootstrap-protocol_002.md'),line=127,end_line=131),dict(path=str(P/'bootstrap-protocol_002.md'),line=177,end_line=182),dict(path=str(P/'bootstrap-supervise_002.ps1'),line=303,end_line=312)],unclosed_future_duties=['Exact helper-attempt keyset/types/actual request and admission binding; its seven Source-generated fields are recorded in this proof.','Exact helper observation keyset/types and request/admission/helperSource/review/peer/runtime joins; file map, count and aggregate size/hash consistency; two helper startup sample4 values and minima; all false native/fullpins/child/Job/Python/science flags.','Independent saved actual-output review before using an observational manifest as separately admitted preparation input; no native identity or complete coverage may be inferred.'],resolution_boundary='No stronger native-ID or runtime-coverage requirement is invented. Source-generated data-plane positives can be retained independently; this deferred duty is not a present executable admission or manifest acceptance.')]
+check('future_payload_duty_disclosed_without_new_authority',deferred[0]['status']=='UNRESOLVED_BEFORE_OBSERVATIONAL_ACCEPTANCE' and deferred[0]['current_execution_blocker_asserted'] is False,'Current review is narrow static Source only and does not grant an operation or accept its future evidence.')
+presence={n:os.path.lexists(P/n) for n in ('bootstrap-admission_002.json','bootstrap-dispatch_002.json','bootstrap-helper-attempt_002.json','preparation-bootstrap-pins_002.json','bootstrap-supervision_002.json','bootstrap-failure_002.json','bootstrap-release_002.json')}
+check('actual_operation_outputs_and_admission_uncreated_at_review',all(v is False for v in presence.values()),dict(presence=presence,meaning='Read-only local path-presence observation only, not physical host/process/custody absence. Request2 review is pending elsewhere.'))
+for p,b in list(CACHE.items()):check('final_unchanged_samebuffer_'+str(len(CHECKS)),raw(p)==b,p)
+
+def save(n,v):
+ shape(v);b=(json.dumps(v,sort_keys=True,indent=2,ensure_ascii=False,allow_nan=False)+'\n').encode('utf8');need(len(b)<=2097152,'own evidence2MiB cap');fresh();p=O/n
+ with p.open('xb') as h:need(h.write(b)==len(b),'whole exclusive metadata write');h.flush();os.fsync(h.fileno())
+ need(raw(p)==b,'exact evidence readback');return fact(p,b)
+base=dict(schema_version=1,record_type='Independent_bootstrap002_helper_data_plane_and_output_boundary_Source_review',reviewer='/root/project_architecture',created_utc=fresh(),scope=sp,scope_adoption=ap,verdict='PASS_NARROW_HELPER_DATA_PLANE_STATIC_SOURCE_ONLY_OUTPUT_ACCEPTANCE_DEFERRED',source_only=True,checks_passed=len(CHECKS),checks_failed=0,remaining_actionable_findings=[],reviewed_artifacts=pins,basis=[sp,ap,supp,amp],Source_regions=regions,helper_Source_generated_payload_fields=dict(manifest=manifest_fields,helper_attempt=attempt_fields,helper_startup_sample=sample_fields,file_row=file_fields,stdout_summary=stdout_fields),deferred_observational_acceptance_requirements=deferred,read_only_output_presence=presence,subject_execution_performed=False,PowerShell_Source_AST_parsed_or_compiled=False,subject_imported_or_loaded=False,native_queries_performed=False,helper_or_supervisor_invoked=False,Python_target_or_children_or_tests_or_Jobs_run=False,Root_operation_or_compute_or_admission_issued=False,supervisor_custody_internals_qualified_by_this_review=False,exact_request002_qualified_by_this_review=False,observational_manifest_accepted=False,peer_result_accepted=False,physical_custody_release_claimed=False,whole_host_quiet_claimed=False,resource_availability_measured=False,operational_authority=False,raw_capture_admitted=False,scientific_authority=False,ready_for_execution=False,claim_limit='Narrow static helper/data-plane plus helper/protocol output-boundary review only. Whole frozen helper/protocol/review bytes rehashed. Helper45s-work/50s-effects gates, bounds, Source joins and by-construction output fields are text-inspected, without PowerShell parse/compile/import/call. Supervisor65/80/85/90/custody internals and exact request/admission are distinct review domains; their acceptance is not implied. Current helper payload acceptance is expressly deferred, not silently upgraded by retaining whole hashes. All execution/native/runtime/capture/science gates remain held.',own_metadata_reviewer_Source=fact(Path(__file__),raw(__file__)))
+proof=dict(base,checks=CHECKS)
+pp=save('INDEPENDENT_PRO3_BOOTSTRAP002_HELPER_DATA_PLANE_SOURCE_FULL_PROOF_001.json',proof)
+cp=save('INDEPENDENT_PRO3_BOOTSTRAP002_HELPER_DATA_PLANE_SOURCE_CAPSULE_001.json',dict(base,full_proof=pp))
+print(json.dumps(dict(full_proof=pp,capsule=cp,checks_passed=len(CHECKS),checks_failed=0,remaining_actionable_findings=[],deferred_requirement_status=deferred[0]['status'],no_subject_calls=True),ensure_ascii=True))

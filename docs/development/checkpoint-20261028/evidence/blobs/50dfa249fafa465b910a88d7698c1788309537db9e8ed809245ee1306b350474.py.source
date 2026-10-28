@@ -1,0 +1,168 @@
+"""Independent Root-owned controls review; metadata reads/AST only, no subject calls."""
+from pathlib import Path
+import ast,base64,datetime,hashlib,json,os
+R=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003');C=R/'m3_peer_contracts_016';T=C/'i13'
+O=R/'SourceSet5_Root_controls_different_Source_review_001'
+checks=[]
+def sha(b):return hashlib.sha256(b).hexdigest()
+def pin(p,b=None):
+ p=Path(p);b=p.read_bytes()if b is None else b
+ return dict(path=str(p),bytes=len(b),sha256=sha(b))
+def load(p):
+ def pairs(rows):
+  d={}
+  for k,v in rows:
+   assert k not in d
+   d[k]=v
+  return d
+ def bad(x):raise ValueError(x)
+ return json.loads(Path(p).read_bytes().decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def check(name,ok,evidence=None):
+ assert type(ok)is bool
+ checks.append(dict(name=name,passed=ok,evidence=evidence))
+def exact(p):return pin(p['path'])==p
+def tree(p):return ast.parse(Path(p).read_bytes().decode('utf8'))
+def dump(n):return ast.dump(n,include_attributes=False)
+def constants(tr):
+ out={}
+ for x in tr.body:
+  if isinstance(x,ast.Assign)and len(x.targets)==1 and isinstance(x.targets[0],ast.Name):
+   try:out[x.targets[0].id]=ast.literal_eval(x.value)
+   except(ValueError,TypeError):pass
+ return out
+def defs(tr):return {n.name:dump(n)for n in tr.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+def direct(v,p):
+ rows=v.values()if type(v)is dict else v if type(v)is list else ()
+ return any(type(x)is dict and set(x)=={'path','bytes','sha256'}and x==p for x in rows)
+def changed_top(a,b):
+ assert len(a.body)==len(b.body)
+ out=[]
+ for x,y in zip(a.body,b.body):
+  if dump(x)!=dump(y):
+   assert isinstance(x,ast.Assign)and isinstance(y,ast.Assign)and dump(x.targets[0])==dump(y.targets[0])
+   out.append(x.targets[0].id)
+ return out
+
+comp=T/'current_owner_M3_peer_held_composition_006.py';api=T/'CURRENT_OWNER_M3_PEER_SEPARATE_HELD_COMPOSITION_INERT_API_006.json'
+planp=T/'I13_EXACT936_DISJOINT_MAX32_CASE_PARTITION_SOURCE_PLAN_006.json';sup=C/'ROOT_I13_ONCE_MEMORY_SUPERVISOR_011.py'
+receiptp=C/'ROOT_I13_SOURCESET5_ROOT_COMPOSITION006_PLAN006_SUPERVISOR011_SOURCE_AUTHOR_RECEIPT_001.json'
+admission=R/'prepare_I13_bounded_partition_once_admission_001.py'
+expected=[(comp,5104,'750527e48b7877d7b15cbf6554a7ca6413e3fd1c9eb2e82d537f0678d45684d6'),(api,4341,'42c79b3d2e3c21fde40f0321fe3af3996b4c0d6a5c0c3b1b116b588711feee62'),(planp,198015,'8bdc978e9434a49da2b1d75010b0f741dc6313d6f25ff0d2a26010948c4d0e67'),(sup,79249,'31fb4a50fa93bbbec7f34ee3cfd2f7cf86ea3410473be6786cc52d82afc69a5e'),(admission,7960,'5faea7d445ebe8b81b8ea7b22dc53be2ad157ba2dcb1797e9cc9698b95db71d2'),(receiptp,388410,'2ae5f2b43a46089d73c251de933892eb00a1bd49df4a09aa57278ce9d29dd789')]
+subjects=[pin(p)for p,_,_ in expected]
+for p,size,digest in expected:check('current_exact_'+p.name,pin(p)==dict(path=str(p),bytes=size,sha256=digest))
+receipt=load(receiptp);ap=load(api);plan=load(planp);ct=tree(comp);st=tree(sup);cc=constants(ct);sc=constants(st)
+check('Root_authorship',receipt['author']==ap['author']==ap['actual_Source_editor']==plan['author']=='/root')
+check('four_complete_predecessor_inverses',len(receipt['predecessors'])==len(receipt['complete_predecessor_bytes_base64'])==4)
+for i,(p,encoded)in enumerate(zip(receipt['predecessors'],receipt['complete_predecessor_bytes_base64'])):
+ b=base64.b64decode(encoded,validate=True)
+ check('whole_predecessor_'+str(i),pin(p['path'],b)==p and Path(p['path']).read_bytes()==b)
+ check('canonical_Base64_'+str(i),base64.b64encode(b).decode('ascii')==encoded)
+oldcomp,oldapi,oldplan,oldsup=[Path(p['path'])for p in receipt['predecessors']]
+oct=tree(oldcomp);ost=tree(oldsup);oldap=load(oldapi);oldpl=load(oldplan)
+check('composition_all_function_class_AST_exact',defs(ct)==defs(oct))
+check('supervisor_all_function_class_AST_exact',defs(st)==defs(ost))
+check('composition_only_fixed_sources_top_assignment_changes',changed_top(oct,ct)==['FIXED_SOURCES'])
+check('supervisor_only_four_pin_top_assignment_changes',changed_top(ost,st)==['SOURCES','FIXTURES','PARTITION_PLAN','APIS'])
+check('composition_cap',len(comp.read_bytes())<=65536)
+check('all_Root_metadata_Source_caps',len(sup.read_bytes())<=2097152 and all(p['bytes']<=2097152 for p in subjects))
+check('composition_import_policy',{n.names[0].name for n in ct.body if isinstance(n,ast.Import)}=={'hashlib','types'}and not any(isinstance(n,ast.ImportFrom)for n in ct.body))
+check('composition_literal_actual_hold',cc['ACTUAL_ENTRY_QUALIFIED']is False)
+for name in ap['actual_entries']:
+ f=next(n for n in ct.body if isinstance(n,ast.FunctionDef)and n.name==name)
+ check('double_hold_before_context_'+name,len(f.body)==2 and isinstance(f.body[0],ast.If)and isinstance(f.body[0].test,ast.UnaryOp)and isinstance(f.body[0].test.op,ast.Not)and isinstance(f.body[0].test.operand,ast.Name)and f.body[0].test.operand.id=='ACTUAL_ENTRY_QUALIFIED'and len(f.body[0].body)==1 and isinstance(f.body[0].body[0],ast.Raise)and isinstance(f.body[1],ast.Raise))
+check('composition_API_Source_join',ap['Source']==pin(comp))
+check('composition_API_only_Source_version_fixedpins_changes',sorted(k for k in oldap.keys()|ap.keys()if oldap.get(k)!=ap.get(k))==['Source','fixed_sources','schema_version'])
+check('composition_API_current_version',type(ap['schema_version'])is int and ap['schema_version']==6)
+check('composition_API_fixed_sources_join',ap['fixed_sources']==cc['FIXED_SOURCES'])
+for name in ('m3','peer','publisher'):
+ check('composition_source_Sup_join_'+name,cc['FIXED_SOURCES'][name]['Source']==sc['SOURCES'][name])
+ check('composition_API_Sup_join_'+name,cc['FIXED_SOURCES'][name]['API']==sc['APIS'][name])
+ check('actual_Source_pin_'+name,exact(sc['SOURCES'][name]))
+ check('actual_API_pin_'+name,exact(sc['APIS'][name]))
+ check('source_cap_'+name,type(sc['SOURCES'][name]['bytes'])is int and sc['SOURCES'][name]['bytes']<=65536)
+for k,v in ap.items():
+ if type(v)is bool:check('composition_API_flag_'+k,v is(k=='recorded_source_api_mechanical_binding_only'))
+check('Root_receipt_subjects_current4',receipt['subjects']==[pin(comp),pin(api),pin(planp),pin(sup)])
+check('Root_receipt_modules_join',receipt['modules']==sc['SOURCES'])
+check('Root_receipt_APIs_join',receipt['APIs']==sc['APIS'])
+check('Root_receipt_fixtures_join',receipt['fixtures']==sc['FIXTURES'])
+check('Root_receipt_catalogue_join',receipt['catalogue']==sc['CATALOGUE']==ap['catalogue'])
+for k in ('target_execution','operational_authority','scientific_authority','tests_executed','actual_family_publication','new_targets_or_composition_invoked'):check('Root_receipt_false_'+k,receipt[k]is False)
+check('Root_receipt_future_admission_required',receipt['separate_Source_review_Root_adoption_and_fresh_once_scope_required']is True)
+check('Sup_partition_plan_pin',sc['PARTITION_PLAN']==pin(planp))
+check('Sup_catalogue_pin_exact',exact(sc['CATALOGUE']))
+check('plan_current_inputs',plan['current_kernel_and_API_inputs']==[*sc['SOURCES'].values(),*sc['APIS'].values()])
+check('plan_flags_no_result',plan['case_results']is None and all(plan[k]is False for k in ('target_execution','operational_authority','scientific_authority','native_Parser_executed','actual_family_publication')))
+check('plan_no_grant_policy','admits zero calls'in plan['admission_policy']and'fresh once-only scope'in plan['admission_policy'])
+check('plan_current_version_source_uninvoked',type(plan['schema_version'])is int and plan['schema_version']==oldpl['schema_version']+1==4 and plan['new_SourceSet5_targets_uninvoked_by_author']is True and'new_SourceSet4_targets_uninvoked_by_author'not in plan)
+fixture_names={};all_names=[]
+for name,p in sc['FIXTURES'].items():
+ check('fixture_pin_exact_'+name,exact(p))
+ tr=tree(p['path']);rows=constants(tr)['CASE_CATALOGUE'];names=[row['name']for row in rows]
+ fixture_names[name]=names;all_names.extend(names)
+ check('Sup_fixture_literal_names_'+name,sc['EXPECTED_CASE_NAMES_BY_FIXTURE'][name]==names)
+ check('fixture_caps_'+name,p['bytes']<=2097152)
+check('all936_literal_names_count_unique_ASCII',len(all_names)==len(set(all_names))==936 and all(type(n)is str and n.isascii()for n in all_names))
+check('plan_exact_combined_order',plan['original_case_names']==all_names==oldpl['original_case_names'])
+check('Sup_combined_digest_count',sc['EXPECTED_CASE_COUNT']==936 and sc['EXPECTED_CASE_NAMES_SHA256']==sha(json.dumps(all_names,separators=(',',':'),ensure_ascii=True).encode('ascii')))
+check('plan_combined_LF_digest',plan['original_case_names_LF_sha256']==sha(('\n'.join(all_names)+'\n').encode('ascii')))
+parts=plan['partitions'];seen=[]
+check('plan_30_max32',len(parts)==plan['partition_count']==30 and plan['partition_maximum_case_count']==32)
+for i,row in enumerate(parts):
+ prefix='partition_%03d_'%(i+1)
+ check(prefix+'identity_bounds',row['partition_id']=='I13_PARTITION_%03d'%(i+1)and row['first_ordinal']==i*32+1 and row['last_ordinal']==min((i+1)*32,936)and row['case_count']==len(row['case_names'])and 1<=row['case_count']<=32)
+ check(prefix+'ordered_slice',row['case_names']==all_names[i*32:(i+1)*32])
+ check(prefix+'LF_digest',row['case_names_LF_sha256']==sha(('\n'.join(row['case_names'])+'\n').encode('ascii')))
+ check(prefix+'no_admission_results',row['admitted']is row['executed']is False and row['case_results']is None)
+ selected=[];kind_order=[]
+ for selectedrow in row['fixture_selections']:
+  kind={'M3':'m3_publisher','PEER':'peer'}[selectedrow['kind']];kind_order.append(kind)
+  check(prefix+'selection_'+kind,selectedrow['Source']==sc['FIXTURES'][kind]and selectedrow['case_names']==[n for n in row['case_names']if n in fixture_names[kind]]and len(selectedrow['case_names'])>0)
+  selected.extend(selectedrow['case_names'])
+ check(prefix+'selection_complete_order',selected==row['case_names']and kind_order in (['m3_publisher'],['peer'],['m3_publisher','peer']))
+ seen.extend(row['case_names'])
+check('all_partitions_disjoint_complete',seen==all_names and len(seen)==len(set(seen)))
+check('all_plan_partition_order_metadata_exact_predecessor',[(p['partition_id'],p['first_ordinal'],p['last_ordinal'],p['case_names'],[(x['kind'],x['case_names'])for x in p['fixture_selections']])for p in parts]==[(p['partition_id'],p['first_ordinal'],p['last_ordinal'],p['case_names'],[(x['kind'],x['case_names'])for x in p['fixture_selections']])for p in oldpl['partitions']])
+check('plan_runtime_policy_exact_predecessor',plan['runtime_policy']==oldpl['runtime_policy'])
+for k,n in dict(total_seconds=60,wait_seconds=50,cleanup_seconds=10,reap_seconds=5,stdout_maximum_bytes=2097152,stderr_maximum_bytes=2097152).items():check('plan_runtime_'+k,type(plan['runtime_policy'][k])is int and plan['runtime_policy'][k]==n)
+check('plan_runtime_not_guaranteed',plan['runtime_policy']['elapsed_not_guaranteed']is True and type(plan['runtime_policy']['planning_arithmetic_only_seconds_for32_at_prefix_average'])is str)
+changed_plan=sorted(k for k in oldpl.keys()|plan.keys()if oldpl.get(k)!=plan.get(k))
+check('plan_only_version_pin_timestamp_changes',changed_plan==sorted(['author_Source_freeze','schema_version','new_SourceSet4_targets_uninvoked_by_author','new_SourceSet5_targets_uninvoked_by_author','current_kernel_and_API_inputs','partitions','created_utc','subjects']))
+for p in plan['subjects']:check('plan_subject_exact_'+Path(p['path']).name,exact(p))
+check('plan_Root_Source_scope_same',plan['Source_scope']==receipt['Source_scope']and exact(plan['Source_scope']))
+check('plan_Source_scope_adoption_exact',exact(plan['Source_scope_adoption']))
+check('plan_protocol_adoption_exact',exact(plan['compact_descriptor_protocol_adoption'])and plan['compact_descriptor_protocol_adoption']==ap['compact_descriptor_protocol_adoption'])
+scope=load(plan['Source_scope']['path']);now=datetime.datetime.now(datetime.timezone.utc)
+check('current_Source3_end_unchanged',scope['interval_end']=='2026-10-25T18:03:03.861408+00:00')
+check('review_current_Source_strict_reserve',(datetime.datetime.fromisoformat(scope['interval_end'])-now).total_seconds()>60)
+
+prior_dir=R/'SourceSet4_Root_controls_different_Source_review_001';priorcap=prior_dir/'INDEPENDENT_I13_ROOT_CONTROLS005_PLAN005_SUP010_SOURCE_CAPSULE_001.json';priorfull=prior_dir/'INDEPENDENT_I13_ROOT_CONTROLS005_PLAN005_SUP010_FULL_SOURCE_PROOF_001.json'
+pc,pf=load(priorcap),load(priorfull)
+check('prior221_proof_exact',pin(priorfull)['sha256']=='fce04f86cdee1b4e6471a9e6a4a46a587a2c97a46d8efd65a2f470ca6f6d7823'and pc['full_proof']==pin(priorfull))
+check('prior221_genuine_Root_only_scope',pc['reviewer']==pf['reviewer']=='/root/project_architecture'and pc['source_author']==pf['source_author']=='/root'and pc['own_architecture_kernel_or_fixture_semantics_accepted']is pf['own_architecture_kernel_or_fixture_semantics_accepted']is False)
+check('prior221_all_named_checks_true',len(pf['checks'])==pf['checks_passed']==221 and pf['checks_failed']==0 and len({x['name']for x in pf['checks']})==221 and all(x['passed']is True for x in pf['checks']))
+for p in receipt['predecessors']:check('prior221_direct_predecessor_coverage_'+Path(p['path']).name,direct(pc['subjects'],p)and direct(pf['subjects'],p))
+older=R/'SourceSet3_wire_exact_fixtures_supervisor009_Source_review_001';acap=older/'INDEPENDENT_I13_SOURCESET3_WIRE_EXACT_SOURCE_CAPSULE_001.json';afull=older/'INDEPENDENT_I13_SOURCESET3_WIRE_EXACT_FULL_SOURCE_PROOF_001.json'
+ac,af=load(acap),load(afull);adm=pin(admission)
+check('admission_prior289_capsule_exact',pin(acap)['sha256']=='cc2c2011007ce3e1b7db47b57eb80289c685ea54f83eea7ecf9e563f6d1fb20c')
+check('admission_prior289_full_exact',pin(afull)['sha256']=='522e06c61ac7289132fc8bc8db554f44ec26cafd557b29a543691880cfc0fcf0')
+check('admission_prior289_different_Source_review',ac['reviewer']==af['reviewer']=='/root/i13_final_review'and ac['checks_failed']==af['checks_failed']==0 and ac['checks_passed']==af['checks_passed']==289)
+check('admission_prior289_direct_whole_pin',direct(ac['subjects'],adm)and direct(af['subjects'],adm)and exact(adm))
+check('admission_prior289_all_named_checks_true',len(af['checks'])==289 and len({x['name']for x in af['checks']})==289 and all(x['passed']is True for x in af['checks']))
+for k in ('target_execution','operational_authority','scientific_authority','native_Parser_executed','tests_executed'):check('admission_prior289_flag_'+k,ac[k]is af[k]is False)
+check('Root_admission_Source_no_target_launch',not any(isinstance(n,ast.Import)and any(x.name in ('subprocess','importlib')for x in n.names)for n in tree(admission).body))
+
+assert len({r['name']for r in checks})==len(checks)
+assert all(r['passed']is True for r in checks),[r for r in checks if not r['passed']]
+assert not os.path.lexists(O);O.mkdir()
+def save(p,v):
+ b=(json.dumps(v,sort_keys=True,ensure_ascii=True,indent=2,allow_nan=False)+'\n').encode('ascii');assert len(b)<=2097152 and not os.path.lexists(p)
+ assert(datetime.datetime.fromisoformat(scope['interval_end'])-datetime.datetime.now(datetime.timezone.utc)).total_seconds()>60
+ with p.open('xb')as f:f.write(b);f.flush();os.fsync(f.fileno())
+ assert p.read_bytes()==b
+ return pin(p,b)
+common=dict(schema_version=2,reviewer='/root/project_architecture',source_author='/root',created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds'),subjects=subjects,verdict='PASS_SOURCE_ROOT_CONTROLS006_PLAN006_SUPERVISOR011_AND_EXACT_ADMISSION001_ONLY',checks_passed=len(checks),checks_failed=0,target_execution=False,operational_authority=False,scientific_authority=False,native_Parser_executed=False,tests_executed=False,actual_family_publication=False,metadata_only=True,actual_root_control_functions_called=False,actual_composition_route_called=False,own_architecture_kernel_or_fixture_semantics_accepted=False,no_dependent_target_semantic_acceptance=True,all_original_functions_AST_unchanged=True,whole_predecessor_inverses_exact=True,all936_exact_order=True,exact_admission001_directly_covered=True)
+full=dict(common,record_type='Independent_I13_Root_owned_controls_full_Source_proof',checks=checks,scope='Only Root composition006/API006/Plan006/Sup011/admission001 Source/pin/metadata control review. Architecture-authored kernel and fixture bodies receive no semantic acceptance here. Prior Root-only221 complement and different289 exact unchanged admission Source review joined.',prior_Root_controls221_capsule=pin(priorcap),prior_Root_controls221_full=pin(priorfull),prior_different_admission289_capsule=pin(acap),prior_different_admission289_full=pin(afull),review_author_Source=pin(Path(__file__)),new_entries_admitted=False,reviewer_reader001_preserved_refusal=dict(Source=pin(R/'review_Root_SourceSet5_controls_001.py'),cause='Own reader assumed plan schema version equals filename suffix and prior289 subjects are a list. Actual plan schema3-to4 and named once_control001 direct fact3 are preserved valid inputs. Reader refused before proof output; no subject finding or call.'))
+fp=save(O/'INDEPENDENT_I13_ROOT_CONTROLS006_PLAN006_SUP011_FULL_SOURCE_PROOF_001.json',full)
+cp=save(O/'INDEPENDENT_I13_ROOT_CONTROLS006_PLAN006_SUP011_SOURCE_CAPSULE_001.json',dict(common,record_type='Independent_I13_Root_owned_controls_Source_capsule',full_proof=fp))
+print(json.dumps(dict(checks_passed=len(checks),checks_failed=0,capsule=cp,full=fp)))

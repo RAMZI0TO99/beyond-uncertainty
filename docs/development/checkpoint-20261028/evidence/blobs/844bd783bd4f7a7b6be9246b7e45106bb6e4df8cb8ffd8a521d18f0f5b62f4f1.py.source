@@ -1,0 +1,41 @@
+"""Own metadata-only exact scalar repair; no fixture or target invocation."""
+import base64
+import datetime
+import hashlib
+import json
+import os
+from pathlib import Path
+R=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003')
+T=R/'m3_peer_contracts_016'/'i13'
+END=datetime.datetime.fromisoformat('2026-10-25T18:03:03.861408+00:00')
+def pin(p):
+ b=p.read_bytes();return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def wire(v):return(json.dumps(v,sort_keys=True,ensure_ascii=True,indent=2,allow_nan=False)+'\n').encode('utf8')
+def save(name,b):
+ assert END-datetime.datetime.now(datetime.timezone.utc)>datetime.timedelta(seconds=60)and len(b)<=2097152
+ p=T/name
+ with p.open('xb')as f:f.write(b);f.flush();os.fsync(f.fileno())
+ assert p.read_bytes()==b;print(json.dumps(pin(p),sort_keys=True));return p
+def bad(v):raise ValueError('float or nonfinite number forbidden')
+p1=T/'I13_EXACT936_DISJOINT_MAX32_CASE_PARTITION_SOURCE_PLAN_001.json'
+f1=T/'I13_FIXTURES010_008_BOUNDED_PARTITION_SOURCE_FREEZE_001.json'
+raw1=p1.read_bytes();v=json.loads(raw1.decode('utf8'))
+key='planning_arithmetic_only_seconds_for32_at_prefix_average'
+assert type(v['runtime_policy'][key])is float and str(v['runtime_policy'][key])=='9.148343'
+v['runtime_policy'][key]='9.148343';raw2=wire(v)
+assert raw1.count(b'"'+key.encode()+b'": 9.148343,')==1
+assert raw2==raw1.replace(b'"'+key.encode()+b'": 9.148343,',b'"'+key.encode()+b'": "9.148343",')
+json.loads(raw2.decode('utf8'),parse_float=bad,parse_constant=bad)
+p2=save('I13_EXACT936_DISJOINT_MAX32_CASE_PARTITION_SOURCE_PLAN_002.json',raw2)
+fr1=f1.read_bytes();f=json.loads(fr1.decode('utf8'),parse_float=bad,parse_constant=bad)
+assert f['partition_plan']==pin(p1);f['partition_plan']=pin(p2)
+f2=save('I13_FIXTURES010_008_BOUNDED_PARTITION_SOURCE_FREEZE_002.json',wire(f))
+save('I13_PARTITION_PLAN002_STRICT_JSON_SCALAR_AND_WHOLE001_INVERSE_AUTHOR_RECEIPT_001.json',wire(dict(
+ schema_version=2,record_type='I13_partition_plan_exact_float_to_decimal_text_Source_repair',author='/root/project_architecture',
+ plan=pin(p2),predecessor_plan=pin(p1),whole_predecessor_plan_bytes_base64=base64.b64encode(raw1).decode('ascii'),
+ freeze=pin(f2),predecessor_freeze=pin(f1),whole_predecessor_freeze_bytes_base64=base64.b64encode(fr1).decode('ascii'),
+ exact_changed_pointer='/runtime_policy/'+key,old_JSON_token='9.148343',new_JSON_token='"9.148343"',
+ all_other_plan_bytes_exact=True,fixture010_008_and_all_kernels_helpers_unchanged=True,
+ original936_names_and_all30_partitions_exact=True,strict_JSON_parse_float_and_nonfinite_refusal_passed=True,
+ no_partition_fixture_helper_target_or_export_invoked=True,case_results=None,
+ target_execution=False,operational_authority=False,scientific_authority=False,native_Parser_executed=False,actual_family_publication=False)))

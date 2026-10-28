@@ -1,0 +1,145 @@
+"""Independent read/hash/strictJSON/AST-only engineering helper Source review."""
+import ast
+import base64
+import datetime
+import hashlib
+import json
+import os
+from pathlib import Path
+R=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003');OUT=R/'owned_run_bundler_Source_review_001'
+checks=[]
+def ck(name,condition,evidence):
+ assert name not in{x['name']for x in checks};checks.append(dict(name=name,passed=bool(condition),evidence=evidence))
+def pin(p):
+ b=p.read_bytes();return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def src(p):return p.read_bytes().decode('utf8')
+def dump(n):return ast.dump(n,include_attributes=False)
+def fs(t):return{x.name:x for x in t.body if isinstance(x,ast.FunctionDef)}
+def assigns(t):return{x.targets[0].id:x.value for x in t.body if isinstance(x,ast.Assign)and len(x.targets)==1 and isinstance(x.targets[0],ast.Name)}
+def pairs(items):
+ v={}
+ for k,x in items:
+  if k in v:raise ValueError('duplicate JSON key')
+  v[k]=x
+ return v
+def bad(v):raise ValueError('float or nonfinite JSON forbidden')
+def rd(p):return json.loads(p.read_bytes().decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def calls(n,name):return[x for x in ast.walk(n)if isinstance(x,ast.Call)and isinstance(x.func,ast.Name)and x.func.id==name]
+helper=R/'prepare_I13_owned_run_metadata_bundles_002.py';archive=R/'prepare_I13_managed_candidate_006.py'
+ht,at=ast.parse(src(helper)),ast.parse(src(archive));hf,af=fs(ht),fs(at);ha,aa=assigns(ht),assigns(at)
+ph=R/'prepare_I13_owned_run_metadata_bundles_001.py';pa=R/'prepare_I13_managed_candidate_005.py';original=R/'prepare_I13_metadata_helper_source_bundles_001.py';architect=R/'prepare_I13_managed_candidate_003.py'
+oldh,olda=ast.parse(src(ph)),ast.parse(src(pa));oldhf,oldaf=fs(oldh),fs(olda);of=fs(ast.parse(src(original)));archf=fs(ast.parse(src(architect)))
+ck('helper002_exact11612_SHA',pin(helper)['bytes']==11612 and pin(helper)['sha256']=='a8c9fabe925955aa5e7099652df1a4c4e1edfc8e9e5965aa63d1db3856663785',pin(helper))
+ck('archive006_exact27437_SHA',pin(archive)['bytes']==27437 and pin(archive)['sha256']=='242160057615bea80bc31fe71b52f0f77602ded7112fe3c7312078c9e25062a4',pin(archive))
+ck('Root_sources_different_author',all('/root' in ast.get_docstring(t)for t in(ht,at)),'Root authored both successors; reviewer /root/project_architecture did not author either reviewed successor.')
+for label,p in [('helper',helper),('archive',archive)]:
+ for ancestor in(p,*p.parents):
+  info=ancestor.lstat();ck(label+'_ordinary_lineage_'+str(len(str(ancestor))),not ancestor.is_symlink()and not getattr(info,'st_file_attributes',0)&1024,str(ancestor))
+ ck(label+'_single_link',p.stat().st_nlink==1,p.stat().st_nlink)
+for name in('need','wire','pairs','bad','decode','body','pin','fact','exact','occurs','adoption','fresh','save'):
+ ck('helper_carried_AST_exact_'+name,dump(hf[name])==dump(of[name]),dict(name=name,predecessor=pin(original)))
+for name in('need','utc','body','pin','wire','save','occurs','baseline','fresh','pairs','bad','decode','fact','exact','adopted'):
+ ck('archive_carried_AST_exact_'+name,dump(af[name])==dump(archf[name]),dict(name=name,predecessor=pin(architect)))
+ck('helper002_only_create_AST_changed',set(hf)==set(oldhf)and[n for n in hf if dump(hf[n])!=dump(oldhf[n])]==['create'],list(hf))
+ck('archive006_all_functions_AST_exact005',set(af)==set(oldaf)and all(dump(af[n])==dump(oldaf[n])for n in af),list(af))
+ck('archive006_only_run_creator_constant_AST_changed',set(aa)==set(assigns(olda))and[k for k in aa if dump(aa[k])!=dump(assigns(olda)[k])]==['RUN_BUNDLE_AUTHOR_SOURCE'],list(aa))
+for name in('SCOPE','SCOPE_ADOPTION'):
+ value=ast.literal_eval(ha[name]);ck('helper_exact_'+name,pin(Path(value['path']))==value,value)
+for name in('SCOPE_PIN','SCOPE_ADOPTION_PIN','HELPER_BUNDLE_SOURCE_SCOPE_PIN','BUNDLE_AUTHOR_SOURCE','BUNDLE_PLAN','BUNDLE_PLAN_ADOPTION','RUN_BUNDLE_AUTHOR_SOURCE'):
+ value=ast.literal_eval(aa[name]);ck('archive_exact_'+name,pin(Path(value['path']))==value,value)
+ck('archive_run_creator_fixed_to002',ast.literal_eval(aa['RUN_BUNDLE_AUTHOR_SOURCE'])==pin(helper),pin(helper))
+ck('helper_archive_current_scope3_equal',ast.literal_eval(ha['SCOPE'])==ast.literal_eval(aa['SCOPE_PIN']),ast.literal_eval(ha['SCOPE']))
+ck('old_metadata_helpers_keep_scope2_header',ast.literal_eval(aa['HELPER_BUNDLE_SOURCE_SCOPE_PIN'])['sha256']=='caaf2eb42d2394bccb56e34b040259a9f878cb2b57d4c082d2514079885e42b0',ast.literal_eval(aa['HELPER_BUNDLE_SOURCE_SCOPE_PIN']))
+ck('scope3_adoption_explicit_false',all(rd(Path(ast.literal_eval(ha['SCOPE_ADOPTION'])['path']))[k]is False for k in('target_execution','operational_authority','scientific_authority')),'Exact Scope3 Root adoption is read/hash/strictJSON only.')
+for label,t in [('helper',ht),('archive',at)]:
+ imports=[]
+ for n in t.body:
+  if isinstance(n,ast.Import):imports.extend(x.name for x in n.names)
+  if isinstance(n,ast.ImportFrom):imports.append(n.module)
+ ck(label+'_stdlib_imports_only',set(imports)<=set(['base64','datetime','hashlib','json','os','re','pathlib','sys']),imports)
+ ck(label+'_no_loader_process_or_member_execution',not any(isinstance(n,ast.Call)and isinstance(n.func,ast.Name)and n.func.id in('exec','eval','compile','__import__')for n in ast.walk(t)),imports)
+ ck(label+'_no_delete_move_restore_API',not any(isinstance(n,ast.Attribute)and n.attr in('unlink','remove','rmtree','rename','replace','system','Popen','run')for n in ast.walk(t)),'Only ordinary metadata reads and exclusive bounded output writes.')
+
+hs=ast.unparse(hf['create']);ars=ast.unparse(af['run_evidence']);aps=ast.unparse(af['prepare']);aus=ast.unparse(af['publish']);elig=ast.unparse(hf['eligible'])
+ck('helper_archive_eligibility_AST_exact',dump(hf['eligible'])==dump(af['eligible']),elig)
+expected_names={'SCOPE_CLAIM_001.json','CHILD_ENTRY_001.json','CHILD_RESULT_001.json','CHILD_STDOUT_001.txt','CHILD_STDERR_001.txt','SUPERVISOR_RESULT_001.json','PARENT_TOOL_STDOUT_RETAINED_001.txt','ROOT_ACTUAL_PARENT_EXEC_TOOL_RETURN_001.json'}
+sets=[ast.literal_eval(n)for n in ast.walk(hf['eligible'])if isinstance(n,ast.Set)]
+ck('exact_eight_attempt_filename_allowlist',sets==[expected_names],sorted(expected_names))
+ck('no_Source_extensions_in_attempt_allowlist',all(Path(n).suffix in('.json','.txt')for n in expected_names),sorted(expected_names))
+for name,fragment in[
+ ('absolute_canonical_no_parent_alias',"path.is_absolute() and '..' not in path.parts and (path.resolve() == path)"),
+ ('component_root_top_level_only','path.parent == SUBJECTS'),
+ ('attempts_exact_one_level',"path.parent.parent == SUBJECTS / 'owned_memory_runs'"),
+ ('attempt_three_digits',"re.fullmatch('attempt\\\\d{3}', path.parent.name)")]:
+ ck('eligibility_'+name,fragment in elig,elig)
+ck('plan_namespace_root_only',"plan_path.parent == ROOT"in hs and'I13_EXACT_OWNED_RUN_METADATA_BUNDLE_PLAN_'in hs,hs[:1600])
+ck('plan_whole_sha_matches_CLI',"plan_pin['sha256'] == plan_sha"in hs,hs[:1600])
+ck('plan_and_Source_adoptions_precede_member_reads',hs.index('adoption(decode(source_adoption_raw), own)')<hs.index('members = plan[')and hs.index('adoption(decode(plan_adoption_raw), plan_pin)')<hs.index('members = plan['),hs[:1800])
+for name,frag in[
+ ('retained_Source_adoption_buffer','source_adoption_raw = body(source_adoption)'),
+ ('Source_pin_same_validated_buffer','source_adoption_pin = pin(source_adoption, source_adoption_raw)'),
+ ('retained_plan_adoption_buffer','plan_adoption_raw = body(plan_adoption)'),
+ ('plan_pin_same_validated_buffer','plan_adoption_pin = pin(plan_adoption, plan_adoption_raw)'),
+ ('all_bundle_plan_adoption_headers_retained','packaging_plan_Root_adoption=plan_adoption_pin'),
+ ('index_Source_adoption_retained','bundle_author_Source_Root_adoption=source_adoption_pin'),
+ ('final_adoption_equality_before_index','body(source_adoption) == source_adoption_raw and body(plan_adoption) == plan_adoption_raw')]:
+ ck('same_buffer_'+name,frag in hs,frag)
+ck('no_late_unvalidated_adoption_pin_reads',not any(len(n.args)==1 and isinstance(n.args[0],ast.Name)and n.args[0].id in('source_adoption','plan_adoption')for n in calls(hf['create'],'pin')),'All plan/Source adoption pins derive from the exact validated retained buffers.')
+for name,frag in[
+ ('member_count512',"1 <= len(members) <= 512"),('member_unique_casefold',"len(set((p.casefold() for p in names))) == len(names)"),
+ ('original_total64MiB',"sum((p['bytes'] for p in members)) == plan['original_member_bytes'] <= 67108864"),
+ ('whole_strict_inverse','base64.b64decode(text, validate=True) == original'),
+ ('no_split_whole_bundle_cap','len(wire(bundle(len(groups) + 1, current))) <= CAP'),
+ ('bundle_max256','len(tentative) > 256'),('all_outputs_before_mutation',"not os.path.lexists(OUT)"),
+ ('exact_original_before_write',"exact(member['original']) == base64.b64decode(member['canonical_base64'], validate=True)"),
+ ('saved_bundle_equal_full_content','recorded == bundle(len(actual), group)'),('saved_canonical_inverse',"base64.b64encode(decoded).decode('ascii') == member['canonical_base64']"),
+ ('every_member_once',"[m['original'] for m in mapping] == members"),('zero_based_ordinal','member_ordinal=ordinal'),
+ ('actual_review_required','actual_bundle_reconstruction_requires_different_saved_review_and_Root_adoption=True')]:
+ ck('creator_'+name,frag in hs,frag)
+ck('member_bytes_never_JSON_decoded',len([n for n in calls(hf['create'],'decode')if any(isinstance(x,ast.Name)and x.id in('original','decoded','text')for a in n.args for x in ast.walk(a))])==0,'Raw run metadata can contain floats, malformed/partial results or empty streams; only outer bundle is JSON decoded, whole original bytes preserved.')
+ck('empty_saved_stream_preserved','0 <= value[\'bytes\'] <= CAP'in ast.unparse(hf['fact'])and'0 <= before.st_size <= CAP'in ast.unparse(hf['body']),'Zero-length stdout/stderr bodies are legal opaque members; missing files cannot be repaired because exact(subject) must open the original.')
+ck('no_case_PASS_inference',not any(isinstance(n,ast.Constant)and type(n.value)is str and n.value in('CASE_PASS','passed','failed','acceptance_at_record_preparation')for n in ast.walk(hf['create'])),'Archiving records creates no suite/result acceptance flag.')
+for name,frag in[
+ ('fixed_creator_pin',"index['bundle_author_Source'] == RUN_BUNDLE_AUTHOR_SOURCE"),('actual_creator_Source_adoption',"adopted(decode(exact(index['bundle_author_Source_Root_adoption'])), RUN_BUNDLE_AUTHOR_SOURCE)"),
+ ('actual_plan_adoption',"adopted(decode(exact(index['packaging_plan_Root_adoption'])), plan_pin)"),('actual_saved_reconstruction_adoption','adopted(decode(review_raw), index_pin)'),
+ ('index_plan_scope_same',"plan['Source_scope'] == SCOPE_PIN"),('every_index_member_once',"[m['original'] for m in mapping] == members and mapping == index['members']"),
+ ('same_eligible_original',"eligible(Path(original['path']))"),('actual_decoded_original',"decoded == exact(original)"),('bounded256_bundle_members',"1 <= len(value['members']) <= 256")]:
+ ck('archive_run_evidence_'+name,frag in ars,frag)
+for name,frag in[
+ ('exact_disjoint_union',"len({p['original']['path'].casefold() for p in all_members}) == len(all_members)"),
+ ('only_exact_frozen_omission',"source_pin == omitted[str(source)]"),
+ ('every_original_once',"sorted(actual_omitted, key=lambda p: p['path'].casefold()) == sorted([m['original'] for m in all_members], key=lambda p: p['path'].casefold())"),
+ ('direct_bundle_and_indexes',"every helper/run bundle and index direct copied"),
+ ('all_other_inert_Source_suffix_only',"if source.suffix == '.py':"),
+ ('final512and64MiB',"1 <= len(rows) <= 512 and sum((x['source']['bytes'] for x in rows)) <= 67108864")]:
+ ck('archive_prepare_'+name,frag in aps,frag)
+for name,frag in[
+ ('candidate_actual_pin_adoption','adopted(decode(adoption_raw), candidate_pin)'),('same_reviewed_helper',"value['publication_helper'] == pin(Path(__file__))"),
+ ('revalidate_run_context',"run_evidence_value == value['owned_run_metadata_bundles']"),('revalidate_old_helpers',"evidence == value['metadata_helper_bundles']"),
+ ('all_unused_before_write',"not os.path.lexists(destination)"),('contained_destination',"destination.is_relative_to(DEST) or destination == REPO / 'CONTINUE_CURRENT_I13_20261025.json'"),
+ ('actual_64MiB_final',"sum((fact(x['source'])['bytes'] for x in rows)) <= 67108864"),
+ ('managed_bundle_copy_join',"bundle_copy=copies[m['bundle']['path']]"),('per_member_ordinal','member_ordinal=m[\'member_ordinal\']'),
+ ('final_baseline_preserved','final_preservation=baseline()'),('actual_creation_review_remains','actual_creation_requires_different_saved_review_and_Root_adoption=True')]:
+ ck('archive_publish_'+name,frag in aus,frag)
+ck('three_actual_publication_editor_fields_truthful',sum(isinstance(n,ast.keyword)and n.arg=='actual_publication_helper_Source_editor'and isinstance(n.value,ast.Constant)and n.value.value=='/root'for n in ast.walk(at))==3,'Root physical Source editor reflected in candidate/index/receipt; original helper guard author retained in predecessor ancestry.')
+receipts=[('ROOT_I13_OWNED_RUN_BUNDLER002_SAME_BUFFER_SOURCE_AUTHOR_RECEIPT_001.json',ph,helper),('ROOT_I13_MANAGED_HELPER004_RUN_BUNDLE_SOURCE_AUTHOR_RECEIPT_001.json',architect,R/'prepare_I13_managed_candidate_004.py'),('ROOT_I13_MANAGED_HELPER005_SOURCE_EDITOR_PROVENANCE_AUTHOR_RECEIPT_001.json',R/'prepare_I13_managed_candidate_004.py',pa),('ROOT_I13_MANAGED_HELPER006_SAME_BUFFER_BUNDLER_PIN_SOURCE_AUTHOR_RECEIPT_001.json',pa,archive)]
+for i,(name,before,after)in enumerate(receipts):
+ p=R/name;v=rd(p);ck('receipt_'+str(i)+'_before_after_pins',v['before']==pin(before)and v['after']==pin(after),pin(p));ck('receipt_'+str(i)+'_complete_inverse',base64.b64decode(v['before_complete_base64'],validate=True)==before.read_bytes(),pin(p));ck('receipt_'+str(i)+'_no_helper_calls',v.get('actual_helpers_called',False)is False and v['target_execution']is False and v['operational_authority']is False,pin(p))
+ck('original001_finding_repaired_not_rewritten',ph.read_bytes()!=helper.read_bytes()and 'pin(plan_adoption)'in src(ph)and'pin(plan_adoption)'not in src(helper),pin(ph))
+ck('archive004_provenance_gap_preserved',"actual_publication_helper_Source_editor='/root/project_architecture'"in src(R/'prepare_I13_managed_candidate_004.py'),pin(R/'prepare_I13_managed_candidate_004.py'))
+ck('current_Source_reserve',datetime.datetime.fromisoformat(rd(Path(ast.literal_eval(ha['SCOPE'])['path']))['interval_end'])-datetime.datetime.now(datetime.timezone.utc)>datetime.timedelta(seconds=60),'Same original18:03:03.861408 deadline.')
+ck('actual_future_run_plan_still_required',"adoption(decode(plan_adoption_raw), plan_pin)"in hs and'packaging_plan' in ars,'No future selected member plan has been reviewed or adopted by this Source review; consumed status must be genuinely joined in that exact selection/reconstruction review.')
+failed=[x for x in checks if not x['passed']]
+if failed:print(json.dumps(failed,sort_keys=True));raise SystemExit(1)
+OUT.mkdir(exist_ok=False)
+def save(name,value):
+ assert datetime.datetime.now(datetime.timezone.utc)<datetime.datetime.fromisoformat(rd(Path(ast.literal_eval(ha['SCOPE'])['path']))['interval_end'])-datetime.timedelta(seconds=60)
+ b=(json.dumps(value,sort_keys=True,ensure_ascii=True,indent=2,allow_nan=False)+'\n').encode('utf8');assert len(b)<=2097152
+ p=OUT/name
+ with p.open('xb')as f:f.write(b);f.flush();os.fsync(f.fileno())
+ assert p.read_bytes()==b;print(json.dumps(pin(p),sort_keys=True));return p
+common=dict(schema_version=2,author='/root/project_architecture',source_author='/root/project_architecture',reviewer='/root/project_architecture',created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds'),subjects=[pin(helper),pin(archive)],checks_passed=len(checks),checks_failed=0,verdict='PASS_SOURCE_ONLY_RUN_BUNDLER002_AND_MANAGED_HELPER006',target_execution=False,operational_authority=False,scientific_authority=False,native_Parser_executed=False,tests_executed=False,actual_family_publication=False)
+full=save('INDEPENDENT_I13_RUN_BUNDLER002_ARCHIVE006_SOURCE_FULL_PROOF_001.json',dict(common,record_type='genuine_different_Root_run_bundle_and_archive_Source_review',checks=checks,
+ prior_unapproved_findings=[dict(subject=pin(ph),finding='Validated plan/Source adoption bytes were discarded then new pins reread later. Corrected002 retains exact validated buffers/pins and refuses final drift.'),dict(subject=pin(R/'prepare_I13_managed_candidate_004.py'),finding='Root successor emitted architect Source-editor attribution. Corrected005 three literals Root,006 preserves that exact correction.')],
+ caveats=['No helper functions, bundle creator, member Source, target, fixture or process supervisor were invoked.','This approves Source engineering only; future exact consumed-member selection, actual reconstruction, candidate and actual managed creation each require different saved review and Root adoption.','The bundler limits its bundle output byte sum; the final archive gate separately includes every direct bundle/index and all other files in512/64MiB. No final candidate-fit guarantee or cap waiver is inferred.','Opaque archiving does not parse member result content, repair missing/partial results, accept CASE_PASS, infer custody/host quiet, or grant synthetic/operational/runtime/Parser/science entry.']))
+save('INDEPENDENT_I13_RUN_BUNDLER002_ARCHIVE006_SOURCE_CAPSULE_001.json',dict(common,record_type='genuine_different_Root_run_bundle_and_archive_Source_capsule',full_review=pin(full),checks=checks,helpers_invoked=False,actual_bundles_created=False,candidate_or_managed_files_created=False,all_caps_and_execution_holds_unchanged=True))

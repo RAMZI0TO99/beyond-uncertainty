@@ -1,0 +1,54 @@
+"""Author inert fixed-partition supervisor successor; no target calls."""
+import ast, base64, datetime as dt, hashlib, json
+from pathlib import Path
+R=Path(__file__).parent; C=R/'m3_peer_contracts_016'; T=C/'i13'
+def pin(p):
+ b=p.read_bytes(); return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def replace(s,a,b):
+ assert s.count(a)==1,(a[:90],s.count(a)); return s.replace(a,b)
+before=C/'ROOT_I13_ONCE_MEMORY_SUPERVISOR_005.py'; old=before.read_bytes(); assert pin(before)['sha256']=='90b57f22149518ae6bd5850482f3779d0fb213b8b50a84e07334604cd0077222'
+planp=T/'I13_EXACT936_DISJOINT_MAX32_CASE_PARTITION_SOURCE_PLAN_001.json'; plan=json.loads(planp.read_bytes()); assert pin(planp)['sha256']=='91d736b9697f2ad83af0f548a8cf8bf03f2f31a8a52a6a8ddb82d136d477b93e'
+s=old.decode('utf-8'); tree=ast.parse(s)
+fixtures=dict(m3_publisher=pin(T/'exercise_M3_guard_and_publisher_metadata_memory_010.py'),peer=pin(T/'exercise_selected_peer_author_metadata_memory_008.py'))
+n=next(n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='FIXTURES' for t in n.targets))
+lines=s.splitlines(keepends=True); lines[n.lineno-1:n.end_lineno]=['FIXTURES = '+repr(fixtures)+'\n','PARTITION_PLAN = '+repr(pin(planp))+'\n']; s=''.join(lines)
+s=replace(s,"'operational_authority', 'scientific_authority', 'actual_family_publication')\nOUTPUT_KEYS", "'operational_authority', 'scientific_authority', 'actual_family_publication', 'partition_plan', 'partition_id')\nOUTPUT_KEYS")
+added='''def selected_partition(value):
+    need(value['partition_plan'] == PARTITION_PLAN, 'exact fixed whole936 partition plan')
+    plan = decode(read_pin(PARTITION_PLAN))
+    need(type(value['partition_id']) is str, 'builtin exact partition identity')
+    rows = [r for r in plan['partitions'] if r['partition_id'] == value['partition_id']]
+    need(len(rows) == 1, 'one exact fixed partition')
+    row = rows[0]
+    names = row['case_names']
+    need(type(names) is list and type(row['case_count']) is int and 1 <= row['case_count'] <= 32 and len(names) == row['case_count'] and all(type(n) is str for n in names) and len(set(names)) == len(names), 'bounded exact unique partition names')
+    need(hashlib.sha256(('\\n'.join(names)+'\\n').encode()).hexdigest() == row['case_names_LF_sha256'], 'whole exact partition name order')
+    groups = row['fixture_selections']
+    need(type(groups) is list and 1 <= len(groups) <= 2 and [g['kind'] for g in groups] in (['M3'], ['PEER'], ['M3','PEER']), 'fixed nonempty fixture order')
+    need(sum((g['case_names'] for g in groups), []) == names, 'complete partition selection closure')
+    for group in groups:
+        key = 'm3_publisher' if group['kind'] == 'M3' else 'peer'
+        need(group['Source'] == FIXTURES[key] and type(group['case_names']) is list and 1 <= len(group['case_names']) <= 32 and all(type(n) is str for n in group['case_names']), 'exact fixed fixture and bounded names')
+    return row
+
+
+'''
+s=replace(s,'def scope(path, expected_hash):',added+'def scope(path, expected_hash):')
+s=replace(s,"    need(Path(value['supervisor']['path']) == Path(__file__), 'exact supervisor path')", "    selected_partition(value)\n    need(Path(value['supervisor']['path']) == Path(__file__), 'exact supervisor path')")
+s=replace(s,"all(occurs(adoption, value[k]) for k in ('catalogue', 'supervisor'))", "all(occurs(adoption, value[k]) for k in ('catalogue', 'supervisor', 'partition_plan'))")
+s=replace(s,"    print(json.dumps(dict(event='SUITE_ENTRY', case_count=sum(len(f.CASE_CATALOGUE) for f in fixtures.values()))), flush=True)","    partition = selected_partition(value)\n    print(json.dumps(dict(event='SUITE_ENTRY', case_count=partition['case_count'], partition_id=partition['partition_id'])), flush=True)")
+s=replace(s,"    for key in ('m3_publisher', 'peer'):\n        part = fixtures[key].run_diagnostic(m3=m3, publisher=publisher, peer=peer, catalogue_bytes=catalogue_bytes)\n        validate_diagnostic_part(part, EXPECTED_CASE_NAMES_BY_FIXTURE[key])", "    for group in partition['fixture_selections']:\n        key = 'm3_publisher' if group['kind'] == 'M3' else 'peer'\n        part = fixtures[key].run_diagnostic_cases(m3=m3, publisher=publisher, peer=peer, catalogue_bytes=catalogue_bytes, case_names=tuple(group['case_names']))\n        validate_diagnostic_part(part, group['case_names'])")
+pt=s.index('def parent('); end=s.index('\ndef main(',pt); segment=s[pt:end]
+segment=replace(segment,"    outputs = value['outputs']", "    partition = selected_partition(value)\n    expected_names = partition['case_names']\n    expected_case_count = len(expected_names)\n    expected_case_names_sha256 = hashlib.sha256(json.dumps(expected_names, separators=(',', ':'), ensure_ascii=True).encode()).hexdigest()\n    outputs = value['outputs']")
+segment=segment.replace('EXPECTED_CASE_COUNT','expected_case_count').replace('EXPECTED_CASE_NAMES_SHA256','expected_case_names_sha256')
+segment=replace(segment,"            expected_names = sum((EXPECTED_CASE_NAMES_BY_FIXTURE[key] for key in ('m3_publisher','peer')), [])\n",'')
+s=s[:pt]+segment+s[end:]
+newtree=ast.parse(s); compile(newtree,'<I13 supervisor006 Source only>','exec')
+olddefs={n.name:ast.dump(n,include_attributes=False) for n in tree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}; newdefs={n.name:ast.dump(n,include_attributes=False) for n in newtree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+unchanged=[k for k in olddefs if k not in ('scope','child','parent')]; assert all(olddefs[k]==newdefs[k] for k in unchanged)
+out=C/'ROOT_I13_ONCE_MEMORY_SUPERVISOR_006.py'; b=s.encode(); assert len(b)<=2097152
+with out.open('xb') as h: h.write(b)
+receipt=dict(schema_version=1,record_type='Root_I13_supervisor006_exact_bounded_partition_Source_successor',author='/root',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),before=pin(before),before_complete_base64=base64.b64encode(old).decode(),after=pin(out),partition_plan=pin(planp),fixtures=fixtures,unchanged_definition_names=unchanged,changed_definition_names=['scope','child','parent'],new_definition_names=['selected_partition'],budgets_unchanged=dict(total_seconds=60,wait_seconds=50,cleanup_seconds=10,reap_seconds=5,stdout_maximum_bytes=2097152,stderr_maximum_bytes=2097152),acceptance='Exact selected partition only: complete honest diagnostic metadata AND original allpass catalogue AND custody/time/EOF/exit/caps. All936 qualification requires accepted exact coverage; Source plan alone admits no calls.',target_execution=False,tests_executed=False,actual_family_publication=False,operational_authority=False,scientific_authority=False)
+q=C/'ROOT_I13_SUPERVISOR006_BOUNDED_PARTITION_SOURCE_AUTHOR_RECEIPT_001.json'
+with q.open('xb') as h: h.write((json.dumps(receipt,sort_keys=True,indent=2)+'\n').encode())
+print(json.dumps(dict(supervisor=pin(out),receipt=pin(q),target_calls=0)))

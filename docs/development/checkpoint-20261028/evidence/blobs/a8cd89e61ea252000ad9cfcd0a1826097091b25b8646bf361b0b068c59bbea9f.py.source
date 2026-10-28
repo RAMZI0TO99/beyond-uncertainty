@@ -1,0 +1,93 @@
+"""Root saved-refusal metadata only. No original reviewer/subject/query is run."""
+import datetime as dt,hashlib,json,os,stat,sys
+from pathlib import Path
+R=Path(__file__).parent
+OLD=Path('D:/Aenv/pro2/WORK/resume-20261027-004')
+P=Path('D:/Aenv/pro3/runs/coordination/cho51_p3_contracts_20261027_v1')
+def need(v,m):
+ if not v:raise ValueError(m)
+def raw(p):
+ p=Path(p)
+ for q in (p,*p.parents):need(not q.is_symlink() and not getattr(q.lstat(),'st_file_attributes',0)&1024,'direct nonreparse lineage')
+ a=p.stat();need(stat.S_ISREG(a.st_mode) and a.st_nlink==1 and 0<=a.st_size<=2097152,'bounded regular singlelink metadata')
+ with p.open('rb') as h:d=os.fstat(h.fileno());b=h.read(2097153);e=os.fstat(h.fileno())
+ z=p.stat();k=lambda x:(x.st_dev,x.st_ino,x.st_mode,x.st_nlink,x.st_size,x.st_mtime_ns)
+ need(k(a)==k(d)==k(e)==k(z) and len(b)==a.st_size,'stable samebuffer');return b
+def pin(p,b=None):
+ if b is None:b=raw(p)
+ return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def pairs(xs):
+ d={}
+ for k,v in xs:need(k not in d,'duplicate JSON');d[k]=v
+ return d
+def bad(x):raise ValueError('noninteger/nonfinite own metadata JSON')
+def shape(v):
+ t=[(v,0)];n=0
+ while t:
+  x,d=t.pop();n+=1;need(n<=50000 and d<=48,'metadata shape');need(x is None or type(x) in (str,int,bool,list,dict),'builtin ownmetadata')
+  if type(x) is str:need(not any(55296<=ord(c)<=57343 for c in x),'no surrogates')
+  elif type(x) is list:t.extend((a,d+1) for a in x)
+  elif type(x) is dict:
+   need(all(type(k) is str for k in x),'string keys')
+   for k,v in x.items():t.extend(((k,d+1),(v,d+1)))
+def doc(p,expected=None):
+ b=raw(p);f=pin(p,b)
+ if expected:need(f==expected,'exact fact3')
+ v=json.loads(b,object_pairs_hook=pairs,parse_float=bad,parse_constant=bad);shape(v);return v,f
+def fact(p,n,sha):return dict(path=str(p),bytes=n,sha256=sha)
+s,sp=doc(R/'ROOT_CURRENT_BOOTSTRAP004_FAILURE_CLOSEOUT_METADATA_SOURCE_SCOPE_013.json')
+a,ap=doc(R/'ROOT_SOURCE013_DIFFERENT_METADATA_REVIEW_ADOPTION_001.json')
+need(sp==fact(R/'ROOT_CURRENT_BOOTSTRAP004_FAILURE_CLOSEOUT_METADATA_SOURCE_SCOPE_013.json',6065,'c00fe52251923ed2149e11fca2b9fcd72825b53df50c26bacac67a646b74e53f') and ap==fact(R/'ROOT_SOURCE013_DIFFERENT_METADATA_REVIEW_ADOPTION_001.json',2878,'100db1006bed691e0b4679c0892e88e7239ea225642030d4a38dda8cb71777b6') and a['Source_only_scope']==sp and a['Source_only_failure_closeout_scope_adopted'] is True,'actual current013')
+def fresh():
+ n=dt.datetime.now(dt.timezone.utc);need(dt.datetime.fromisoformat(s['interval_start'])<=n and (dt.datetime.fromisoformat(s['interval_end'])-n).total_seconds()>60,'effective013strict60');return n.isoformat()
+def save(name,v):
+ shape(v);b=(json.dumps(v,sort_keys=True,indent=2,ensure_ascii=False,allow_nan=False)+'\n').encode();need(len(b)<=2097152,'own2MiB');fresh();p=R/name
+ with p.open('xb') as h:need(h.write(b)==len(b),'wholeCreateNew');h.flush();os.fsync(h.fileno())
+ need(raw(p)==b,'wholeReadback');return pin(p,b)
+def allchecks(c,f,n):
+ need(c['checks_passed']==f['checks_passed']==n and c['checks_failed']==f['checks_failed']==0,'exact passing integrity count')
+ xs=f['checks'];need(len(xs)==len({x['name'] for x in xs})==n and all(x['passed'] is True for x in xs),'unique nonempty allpass integrity checks')
+
+fresh()
+refreshpin=fact(R/'saved_failure_refresh_review_001/INDEPENDENT_SOURCE013_BOOTSTRAP004_FAILURE_SAVED_BYTE_REFRESH_CAPSULE_001.json',21116,'ae54a8542877a54c7fe3dadbce44c4dae64ab0efee634e4a260b27059308686e')
+refresh,_=doc(refreshpin['path'],refreshpin);rf,rfp=doc(refresh['full_proof']['path'],refresh['full_proof'])
+allchecks(refresh,rf,31)
+need(refresh['reviewer']==rf['reviewer']=='/root/failure_refresh_review' and refresh['verdict']==rf['verdict'] and refresh['verdict'].startswith('PASS_') and refresh['remaining_actionable_integrity_findings']==rf['remaining_actionable_integrity_findings']==[] and refresh['scope']==rf['scope']==sp and refresh['scope_adoption']==rf['scope_adoption']==ap,'genuine fresh saved-byte review')
+need(refresh['snapshot_input_F3']==rf['snapshot_input_F3'] and len(refresh['snapshot_input_F3'])==30,'exact saved snapshot roster')
+for p in refresh['snapshot_input_F3']+[refresh['own_metadata_reviewer_Source']]:need(pin(p['path'])==p,'saved input unchanged')
+callerpin=fact(OLD/'bootstrap004_actual_review_001/caller_independent_001/INDEPENDENT_BOOTSTRAP004_SAVED_CALLER_REFUSAL_UNCLOSED_CUSTODY_CAPSULE_001.json',9353,'3f298eb7d13ecb030c16e387cf90c977a5506e1fde73bd5eaf19a15bbc7ac862')
+diagpin=fact(OLD/'bootstrap004_actual_review_001/source_diagnosis_independent_001/INDEPENDENT_BOOTSTRAP004_SAVED_SOURCE_ROUTE_DIAGNOSIS_CAPSULE_001.json',13589,'48edae10a4222a725894b4a09c9b74cbf475e2d9b636867d148a54119f98bffc')
+caller,_=doc(callerpin['path'],callerpin);cf,cfp=doc(caller['full_proof']['path'],caller['full_proof']);allchecks(caller,cf,64)
+diag,_=doc(diagpin['path'],diagpin);df,dfp=doc(diag['full_proof']['path'],diag['full_proof']);allchecks(diag,df,70)
+need(caller['reviewer']==cf['reviewer']=='/root/i13_final_review' and diag['reviewer']==df['reviewer']=='/root/project_architecture','dated genuine different reviewers')
+for c,f in [(caller,cf),(diag,df)]:
+ need(c['verdict']==f['verdict'] and c['verdict'].startswith('PASS_') and c['remaining_actionable_findings']==f['remaining_actionable_findings']==[] and c['subject_execution_performed'] is f['subject_execution_performed'] is False and c['reviewed_artifacts']==f['reviewed_artifacts'],'intact dated saved-only reviews')
+ for p in c['reviewed_artifacts']:need(pin(p['path'])==p,'all dated reviewed artifacts unchanged')
+need(caller['actual_operation_accepted'] is caller['full_caller_accepted'] is caller['observational_manifest_accepted'] is caller['physical_custody_release_accepted'] is caller['native_request_advancement_admitted'] is False and len(caller['actual_result_blockers'])==4 and len(diag['unestablished_actual_facts'])==5,'actual failure and unknowns never a pass')
+packet,pkt=doc(OLD/'ROOT_BOOTSTRAP004_SAVED_PACKET_AND_D01_MISSING_SUCCESS_EVIDENCE_001.json',fact(OLD/'ROOT_BOOTSTRAP004_SAVED_PACKET_AND_D01_MISSING_SUCCESS_EVIDENCE_001.json',7148,'e39a4403f685a641fa5125384647a58c9d1d145bbf99a303e5f0c3bed93edd9e'))
+need(pin(packet['own_metadata_Source']['path'])==packet['own_metadata_Source'] and packet['D01_full_manifest_schema_payload_coverage_acceptance'] is False and packet['actual_operation_released'] is False and packet['native_preparation_request_prepared'] is False,'Root D01 missing-payload evidence')
+peerreview=fact(P/'bootstrap-actual-review_004.json',8841,'df900ab63aaf0f4ef0febbe11c3db7fa23ff9a178f5d8f65f6233ff35948e098')
+peerdisp=fact(P/'bootstrap-disposition_004.json',2695,'1faf198894e0f210e5bb8692a8c0c4b35f10963a1e2c8c928d545eb808c335ec')
+need(pin(peerreview['path'])==peerreview and pin(peerdisp['path'])==peerdisp,'actual peer failure review/disposition unchanged')
+deny=dict(accepted=False,released=False,actual_bootstrap_accepted=False,observational_manifest_accepted=False,full_caller_accepted=False,physical_custody_release_claimed=False,current_process_absence_or_host_quiet_claimed=False,native_preparation_request_prepared=False,native_preparation_request_review_advanced=False,native_pin_preparation_admitted=False,bootstrap_rerun_or_rearm_admitted=False,automatic_retry_permitted=False,live_query_or_cleanup_or_kill_admitted=False,new_once_admission_issued=False,helper_invocations_granted=0,controller_mode_invocations_granted=0,bounded_cleanup_after_pause_admitted=False,Root_subject_execution_performed=False,retention_activation_admitted=False,raw_capture_admitted=False,Native8=False,Parser=False,actual6=False,runtime=False,training_or_numerical_execution_admitted=False,science=False,actual_family_publication=False,Git_commit_or_push_admitted=False,primary_six_document_publication=False)
+candidate_path=R/'ROOT_BOOTSTRAP004_ACTUAL_FAILURE_REVIEW_DISPOSITION_CANDIDATE_001.json'
+selfpin=pin(Path(__file__))
+need(len(sys.argv)>=2 and sys.argv[1] in ('prepare','adopt'),'explicit ownmetadata mode')
+if sys.argv[1]=='prepare':
+ need(len(sys.argv)==2,'prepare no extra args')
+ value=dict(schema='Root_saved_failure_review_candidate_not_operative_v1',author='/root',created_utc=fresh(),record_is_candidate=True,Root_saved_refusal_adopted=False,actual_disposition='FAILED_UNRELEASED_CONSUMED',scope=sp,scope_adoption=ap,metadata_author_adopter_Source=selfpin,current_saved_byte_refresh=refreshpin,current_saved_byte_refresh_full_proof=rfp,current_saved_byte_refresh_Source=refresh['own_metadata_reviewer_Source'],current_saved_byte_refresh_checks=31,caller_refusal_review=callerpin,caller_refusal_full_proof=cfp,caller_integrity_checks=64,Source_route_diagnosis=diagpin,Source_route_full_proof=dfp,Source_diagnosis_integrity_checks=70,saved_packet_and_D01_missing_success_evidence=pkt,saved_packet_metadata_Source=packet['own_metadata_Source'],peer_failed_saved_review=peerreview,peer_failed_disposition=peerdisp,actual_mode_exit_vector=caller['actual_mode_exit_vector'],actual_QPC=caller['exact_outer_qpc'],actual_failure=packet['actual_failure'],actual_started_child_pid=302124,actual_child_reaped=False,actual_both_stream_EOF=True,actual_custody_closed=False,actual_operation_released=False,actual_result_blockers=caller['actual_result_blockers'],unestablished_actual_facts=diag['unestablished_actual_facts'],proved_Source_route=diag['proved_Source_route'],all_saved_input_F3=refresh['snapshot_input_F3'],tool_identity_precision_limit=caller['tool_identity_precision_limit'],D01_status='NOT_REACHED_MISSING_REQUIRED_SUCCESS_ARTIFACTS',bootstrap004_identity_consumed=True,human_task_completed_scope='Actual bootstrap evidence reviewed and refused. Conditional native preparation request branch not entered because accepted evidence prerequisite failed. This is completion of the requested conditional review, not a passed operation or native qualification.',native_request_hold_reason='Invoke1 plus original unreaped/unclosed/unreleased receipts and absent supervision/helper-attempt/manifest do not meet actual observational acceptance. Timing11.1606095s, emptyEOF streams, successful failure-bookkeeping exits and a later narrow PID sample cannot repair those facts.',peer_claim_boundary='Peer review separately reports15 input hashes (13authority/source plus2runtime binaries) and unchanged original14. Root does not claim a new runtime-binary inventory, native/file-ID/coverage qualification or new original14/test/science measurement.',next_step_recommendation_only='Separately version and independently review bounded refused-row/controller/helper-generation and cleanup-stage/exception diagnostics, with existing guards/caps unchanged. No presumed harmless process/descendant whitelist or guessed PID kill. Source authoring needs separate fresh Source scheduling; any future operation needs distinct unused identity, actual custody disposition and genuinely reviewed exact peer/Root admission. No rerun004.',all_original_caps_budgets_spent_identities_and_science_unchanged=True,prior_scopes_or_operational_windows_extended=False,**deny)
+ out=save(candidate_path.name,value);print(json.dumps(dict(candidate=out,metadata_Source=selfpin,no_result_or_execution_accepted=True)));sys.exit(0)
+need(len(sys.argv)==4,'adopt requires exact creation review path+SHA');cp=Path(sys.argv[2]);need(cp.is_relative_to(R/'failure_disposition_creation_review_001'),'owned creation review path')
+c,crp=doc(cp);need(crp['sha256']==sys.argv[3],'exact creation capsule SHA');f,frp=doc(c['full_proof']['path'],c['full_proof'])
+need(c['reviewer']==f['reviewer'] and c['reviewer']!='/root' and c['verdict']==f['verdict'] and c['verdict'].startswith('PASS_') and c['remaining_actionable_findings']==f['remaining_actionable_findings']==[] and c['scope']==f['scope']==sp,'genuine current different creation review')
+allchecks(c,f,c['checks_passed']);need(c['checks_passed']>0 and c['reviewed_artifacts']==f['reviewed_artifacts'],'positive same roster')
+arts=c['reviewed_artifacts'];need(len(arts)>0 and len({p['path'].casefold() for p in arts})==len(arts),'unique creation roster')
+for p in arts:need((Path(p['path']).is_relative_to(R) or Path(p['path']).is_relative_to(OLD)) and pin(p['path'])==p,'unchanged reviewed Rootmetadata')
+v,vp=doc(candidate_path);by={p['path']:p for p in arts}
+for p in [selfpin,vp,pkt,packet['own_metadata_Source'],refreshpin,rfp,refresh['own_metadata_reviewer_Source']]:need(by.get(p['path'])==p,'genuine review covers critical Root candidate/writer/freeze/refresh')
+need(c['candidate']==f['candidate']==vp and v['metadata_author_adopter_Source']==selfpin and v['record_is_candidate'] is True and v['schema']=='Root_saved_failure_review_candidate_not_operative_v1' and v['current_saved_byte_refresh']==refreshpin and v['caller_refusal_review']==callerpin and v['Source_route_diagnosis']==diagpin and v['actual_result_blockers']==caller['actual_result_blockers'] and v['unestablished_actual_facts']==diag['unestablished_actual_facts'],'same frozen failure candidate')
+for k,val in deny.items():need(type(v[k]) is type(val) and v[k]==val,'denied '+k)
+value=dict(v,schema='Root_actual_saved_bootstrap004_failure_review_adoption_v1',record_is_candidate=False,Root_saved_refusal_adopted=True,adopted_utc=fresh(),frozen_candidate=vp,genuine_different_creation_review=crp,full_creation_review_proof=frp,creation_integrity_checks_passed=c['checks_passed'],creation_integrity_checks_failed=0,metadata_review_completed=True)
+actual=save('ROOT_BOOTSTRAP004_ACTUAL_FAILURE_REVIEW_ADOPTION_AND_NATIVE_REQUEST_HOLD_001.json',value)
+handoff=save('ROOT_CURRENT_BOOTSTRAP004_FAILURE_AND_NATIVE_REQUEST_HELD_HANDOFF_001.json',dict(record_type='Root_current_bootstrap004_failed_evidence_review_handoff',created_utc=fresh(),author='/root',actual_review_adoption=actual,scope=sp,scope_adoption=ap,scope_end_utc=s['interval_end'],actual_disposition='FAILED_UNRELEASED_CONSUMED',actual_mode_exit_vector=[0,1,0,0],timing_seconds_literal='11.1606095',timing_is_not_custody_or_success=True,caller_integrity_checks=64,Source_diagnosis_integrity_checks=70,current_refresh_integrity_checks=31,creation_integrity_checks=c['checks_passed'],actual_result_blockers=caller['actual_result_blockers'],unestablished_actual_facts=diag['unestablished_actual_facts'],bootstrap004_identity_consumed=True,native_request_branch='NOT_ENTERED_PREREQUISITE_FAILED',next_step_recommendation_only=value['next_step_recommendation_only'],metadata_author_adopter_Source=selfpin,prior_complete_bytes_preserved=True,no_original_measurement_or_science_recount=True,**deny))
+print(json.dumps(dict(actual_failure_review_adoption=actual,current_handoff=handoff,native_request_not_prepared=True,no_retry_or_execution_or_physical_release_granted=True)))

@@ -1,0 +1,197 @@
+"""Owned strict-JSON/hash/AST Source review only; no target import or invocation."""
+import ast
+from datetime import datetime, timezone
+import hashlib
+import json
+from pathlib import Path
+
+BASE = Path(r"D:\Aenv\pro2\WORK\resume-20261025-001\i2_receipt_contract_014")
+PROTOCOL = BASE / "ROOT_I11_EXACT_FINITE8_CANONICAL_RECEIPT_ABI_METADATA_QUALIFICATION_PROTOCOL_001.json"
+API_CLARIFICATION = BASE / "ROOT_I11_PROTOCOL001_EXACT_API_AND_RECORDED_CHRONOLOGY_CLARIFICATION_001.json"
+HERE = BASE / "protocol_review_001"
+checks = []
+inputs = {}
+
+
+def check(name, condition, detail=None):
+    checks.append({"name": name, "passed": bool(condition), "detail": detail})
+
+
+def unique_pairs(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key: " + key)
+        result[key] = value
+    return result
+
+
+def reject_number(value):
+    raise ValueError("float or nonfinite JSON number: " + value)
+
+
+def strict_json(data):
+    value = json.loads(data.decode("utf-8", "strict"), object_pairs_hook=unique_pairs,
+                       parse_float=reject_number, parse_constant=reject_number)
+    def walk(node):
+        if type(node) is str:
+            node.encode("utf-8", "strict")
+        elif type(node) is dict:
+            for key, child in node.items():
+                walk(key)
+                walk(child)
+        elif type(node) is list:
+            for child in node:
+                walk(child)
+    walk(value)
+    return value
+
+
+def pin(path):
+    body = path.read_bytes()
+    return {"path": str(path), "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}
+
+
+def resolve(path):
+    original = Path(path)
+    if original.is_file():
+        return original
+    prefix = "D:\\Aenv\\pro2\\"
+    if path.startswith(prefix):
+        for workspace in ("step080-20261025-001", "workspace"):
+            candidate = Path(r"D:\Aenv\pro2\github-portable-20261012-001\.continuation") / workspace / path[len(prefix):]
+            if candidate.is_file():
+                return candidate
+    return original
+
+
+def read_pinned(name, expected):
+    physical = resolve(expected["path"])
+    actual = pin(physical)
+    check("pin:" + name, (actual["bytes"], actual["sha256"]) == (expected["bytes"], expected["sha256"]),
+          {"expected": expected, "physical_read": actual})
+    inputs[name] = {"expected": expected, "physical_read": actual}
+    if actual["bytes"] > 2097152:
+        raise ValueError("review metadata/Source input exceeds 2 MiB")
+    return physical.read_bytes()
+
+
+def literal(node):
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "frozenset" and len(node.args) == 1 and not node.keywords:
+        return frozenset(literal(node.args[0]))
+    return ast.literal_eval(node)
+
+
+def constants(tree):
+    result = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            try:
+                value = literal(node.value)
+            except (ValueError, TypeError, SyntaxError):
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    result[target.id] = value
+    return result
+
+
+def closed_literals(tree):
+    result = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and len(node.args) > 1 and "closed" in node.func.id:
+            try:
+                keys = literal(node.args[1])
+            except (ValueError, TypeError, SyntaxError):
+                continue
+            if type(keys) in (tuple, list, set, frozenset):
+                result.append(set(keys))
+    return result
+
+
+def main():
+    protocol_bytes = PROTOCOL.read_bytes()
+    check("exact_protocol_input", len(protocol_bytes) == 66934 and hashlib.sha256(protocol_bytes).hexdigest() == "82152c6d49b5ae1aca46e8cf8a8197264e634097b09102f478d14fdf358a7ff5")
+    protocol = strict_json(protocol_bytes)
+    inputs["protocol"] = pin(PROTOCOL)
+    companion_bytes = API_CLARIFICATION.read_bytes()
+    check("exact_API_companion_input", len(companion_bytes) == 4825 and hashlib.sha256(companion_bytes).hexdigest() == "cfccde238f4e2d7ca306fe50db3dc0a1bf75a9295b587c00a12c14d584f03bbb")
+    companion = strict_json(companion_bytes)
+    inputs["API_and_chronology_clarification"] = pin(API_CLARIFICATION)
+    check("companion_pins_protocol", companion["protocol"] == inputs["protocol"])
+    source_scope = strict_json(read_pinned("source_scope", protocol["source_scope"]))
+    check("scope_metadata_only_and_preserved_caps", source_scope["operational_authority"] is False and source_scope["scientific_authority"] is False and source_scope["target_execution"] is False and source_scope["metadata_only_cap_bytes"] == 2097152 and source_scope["phase_Source_cap_bytes"] == 65536 and source_scope["model_export_cap_bytes"] == 131072)
+    check("scope_review_then_adoption_then_target_authoring", source_scope["new_target_Source_authoring_requires_reviewed_exact_protocol"] is True and source_scope["new_target_import_call_test_before_Source_adoption_and_fresh_scope_authorized"] is False)
+    check("scope_agent_and_reserve_limits", source_scope["maximum_local_agents_including_Root"] == 3 and source_scope["reserved_overlap_slots"] == 2 and source_scope["maximum_shared_including_both_roots_and_overlap"] == 5 and source_scope["publication_reserve_seconds"] == 60)
+    check("scope_current_window", datetime.fromisoformat(source_scope["interval_start"]) <= datetime.now(timezone.utc) < datetime.fromisoformat(source_scope["interval_end"]))
+    evidence = {}
+    trees = {}
+    values = {}
+    for name, expected in protocol["pinned_authoritative_evidence"].items():
+        body = read_pinned(name, expected)
+        if name.startswith(("I2_", "I6_", "I7_", "I8_", "I9_")) and "Source00" in name:
+            trees[name] = ast.parse(body.decode("utf-8", "strict"), filename=expected["path"])
+            values[name] = constants(trees[name])
+            check("AST_parse_only:" + name, True, {"functions_read_as_AST": sum(isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) for n in ast.walk(trees[name]))})
+        elif expected["path"].endswith(".json"):
+            evidence[name] = strict_json(body)
+            check("strict_JSON:" + name, True)
+    read_pinned("protocol_author_tool", protocol["author_tool"])
+    for name, expected in protocol["exact_literals"].items():
+        if type(expected) is dict and {"path", "bytes", "sha256"} <= set(expected):
+            read_pinned("literal:" + name, expected)
+        elif name == "historical_leases_immutable":
+            for index, lease in enumerate(expected):
+                read_pinned("literal:historical_lease:" + str(index), lease)
+    schemas = protocol["exact_closed_schemas"]
+    for name, schema in schemas.items():
+        check("schema_closed_unique_count:" + name, schema["additional_fields_allowed"] is False and len(schema["keys"]) == len(set(schema["keys"])) == schema["field_count"])
+    for source in ("I6_Source002", "I7_Source002"):
+        for name, schema in values[source]["SCHEMAS"].items():
+            check("actual_schema:" + source + ":" + name, set(schemas[name]["keys"]) == set(schema["keys"]) and schemas[name].get("record_type") == schema.get("record_type"))
+    mapping = {
+        "I2_Source003": {"M3_facts21_v2": "FACT_KEYS", "generated_M3_receipt22_v2": "RECEIPT_KEYS", "canonical_dependency9": "DEPENDENCY_KEYS", "selection13_v2": "SELECTION_KEYS", "selection_row9": "ROW_KEYS", "lease_support5": "LEASE_SUPPORT_KEYS", "selection_support3": "SELECTION_SUPPORT_KEYS"},
+        "I6_Source002": {"owner_support3": "SCOPE_KEYS", "stage_purpose6": "PURPOSE_KEYS", "expected_code_support5": "CODE_KEYS", "proof4": "PROOF4_KEYS", "proof6": "PROOF6_KEYS"},
+        "I7_Source002": {"recorded_observation12": "OBSERVATION_KEYS", "owner_support3": "OWNER_SUPPORT_KEYS", "lease_support5": "LEASE_SUPPORT_KEYS", "selection_row9": "SELECTED_ROW_KEYS"},
+        "I8_Source003": {"publisher_actual45_catalogue11": "I8_CATALOGUE11"}
+    }
+    for source, pairs in mapping.items():
+        for schema, constant in pairs.items():
+            check("actual_key_constant:" + source + ":" + schema, set(schemas[schema]["keys"]) == set(values[source][constant]))
+    for schema in ("fact3", "recorded_publication_pair2", "publisher_catalogue_row3", "subject_support3"):
+        found = any(set(schemas[schema]["keys"]) in closed_literals(tree) for tree in trees.values())
+        check("actual_inline_closed_shape:" + schema, found)
+    for schema in ("metadata_provenance6", "receipt_steps4", "resource3"):
+        wanted = set(schemas[schema]["keys"])
+        found = any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "dict" and {key.arg for key in node.keywords} == wanted for node in ast.walk(trees["I2_Source003"]))
+        check("actual_generated_dict_shape:" + schema, found)
+    literals = protocol["exact_literals"]
+    for field, constant in (("ROLE_SOURCE_CAPS", "ROLE_SOURCE_CAPS"), ("M3_roles17", "M3_ROLES"), ("phase_bound4", "PHASE_BOUND_ROLES"), ("templates5", "TEMPLATE_ROLES"), ("peer_roles3_unsupported_top_query", "PEER_ROLES"), ("M3_inventory17_pin", "INVENTORY_PIN"), ("current_selection_pin", "CURRENT_ROOT_SELECTION"), ("catalogue_Source024_provenance_pin", "SOURCE024")):
+        actual = values["I2_Source003"][constant]
+        check("actual_I2_literal:" + field, literals[field] == (list(actual) if type(actual) is tuple else actual))
+    for source in ("I6_Source002", "I7_Source002"):
+        for field, constant in (("finite8_role_order", "ROLE_ORDER"), ("original_guards", "ORIGINAL_GUARDS"), ("historical_leases_immutable", "HISTORICAL_LEASES"), ("historical_publisher_provenance", "HISTORICAL_PUBLISHER"), ("publication_verdict", "PUB_VERDICT"), ("reconciliation_verdict", "RECON_VERDICT"), ("reconciliation_flag_scope", "RECON_FLAG_SCOPE")):
+            actual = values[source][constant]
+            check("actual_literal:" + source + ":" + field, literals[field] == (list(actual) if type(actual) is tuple else actual))
+    for field in ("SHARED7", "RENAME8", "RECON_FALSE_KEYS", "RECON_PIN_KEYS"):
+        check("actual_I7_literal:" + field, literals[field] == list(values["I7_Source002"][field]))
+    for adapter in companion["code_API_adapters"]:
+        key = "I2_API003" if adapter["which"] == "producer" else "I7_API002"
+        source = protocol["pinned_authoritative_evidence"]["I2_Source003" if adapter["which"] == "producer" else "I7_Source002"]
+        api = evidence[key]
+        check("actual_API_adapter:" + adapter["which"], api["schema_version"] == adapter["schema_version"] and api["record_type"] == adapter["record_type"] and api[adapter["author_field"]] == api[adapter["editor_field"]] and api[adapter["flag_field"]] is False and (api[adapter["Source_field"]]["bytes"], api[adapter["Source_field"]]["sha256"]) == (source["bytes"], source["sha256"]))
+    holds = {name: {key: value for key, value in constants.items() if "QUALIFIED" in key and type(value) is bool} for name, constants in values.items()}
+    check("old_Source_qualification_flags_remain_false", bool(holds["I2_Source003"]) and all(value is False for constants in holds.values() for value in constants.values()), holds)
+    check("protocol_metadata_only_holds", protocol["operational_authority"] is False and protocol["scientific_authority"] is False and protocol["target_execution"] is False and protocol["tests_executed"] is False and protocol["scope_choice"]["actual_I2_external_ABI_flag_changed"] is False and protocol["scope_choice"]["full_G01_external_receipt_and_producer_caller_qualification_closed"] is False)
+    check("proposed_matrix_unique_and_finite", len(protocol["separate_owned_synthetic_qualification_proposal"]["positive_matrix"]) == 8 and len(protocol["separate_owned_synthetic_qualification_proposal"]["refusal_matrix"]) == 27 and len({r["id"] for r in protocol["separate_owned_synthetic_qualification_proposal"]["positive_matrix"] + protocol["separate_owned_synthetic_qualification_proposal"]["refusal_matrix"]}) == 35)
+    check("no_target_fixture_execution_in_review", True)
+    result = {"schema_version": 1, "record_type": "independent_I11_protocol_Source_AST_and_pin_review_full_proof", "reviewer": "/root/project_architecture", "created_utc": datetime.now(timezone.utc).isoformat(), "checks": checks, "checks_failed": sum(not row["passed"] for row in checks), "inputs": inputs, "protocol": pin(PROTOCOL), "verdict": "PASS_SOURCE_MECHANICAL_PROTOCOL_INPUTS" if all(row["passed"] for row in checks) else "REFUSED_SOURCE_PROTOCOL_INPUT_MISMATCH", "actor_exclusion_clarification_separately_required": True, "original_source_imports_or_function_calls": 0, "target_execution": False, "operational_authority": False, "scientific_authority": False}
+    output = HERE / "INDEPENDENT_I11_PROTOCOL_SOURCE_PIN_AND_AST_FULL_PROOF_001.json"
+    with output.open("x", encoding="utf-8", newline="\n") as handle:
+        json.dump(result, handle, sort_keys=True, indent=2)
+        handle.write("\n")
+    print(json.dumps({"output": pin(output), "checks": len(checks), "checks_failed": result["checks_failed"], "failures": [r for r in checks if not r["passed"]]}))
+
+
+if __name__ == "__main__":
+    main()

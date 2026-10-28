@@ -1,0 +1,100 @@
+"""Author a fresh fixed diagnostic supervisor; no target import or child launch."""
+import ast,hashlib,json,re
+from pathlib import Path
+R=Path(__file__).parent;C=R/'m3_peer_contracts_016';cache={}
+def raw(p):
+ p=Path(p);key=str(p.resolve()).casefold()
+ if key not in cache:
+  with p.open('rb') as h:b=h.read(2097153)
+  assert 0<len(b)<=2097152;cache[key]=b
+ return cache[key]
+def sha(b):return hashlib.sha256(b).hexdigest()
+def readpin(p,cap=2097152):
+ assert type(p) is dict and set(p)=={'path','bytes','sha256'} and Path(p['path']).resolve().is_relative_to(C.resolve())
+ b=raw(p['path']);assert 0<len(b)==p['bytes']<=cap and sha(b)==p['sha256'];return b
+m=json.loads(raw(C/'I13_FINAL_ONCE_SOURCE_INPUT_MANIFEST_004.json'))
+assert set(m['modules'])==set(m['APIs'])=={'m3','peer','publisher'} and set(m['fixtures'])==set(m['case_names_by_fixture'])=={'m3_publisher','peer'}
+for p in m['modules'].values():ast.parse(readpin(p,65536),filename=p['path'])
+for p in m['fixtures'].values():
+ t=ast.parse(readpin(p),filename=p['path']);f=next(n for n in t.body if isinstance(n,ast.FunctionDef) and n.name=='run_diagnostic')
+ assert not f.args.args and not f.args.posonlyargs and not f.args.vararg and not f.args.kwarg and [a.arg for a in f.args.kwonlyargs]==['m3','publisher','peer','catalogue_bytes'] and all(x is None for x in f.args.kw_defaults)
+for key,p in m['APIs'].items():assert json.loads(readpin(p))['Source']==m['modules'][key]
+names=sum((m['case_names_by_fixture'][key] for key in ('m3_publisher','peer')),[])
+assert len(names)==len(set(names))==m['combined_case_count'] and all(type(n) is str and re.fullmatch('[A-Za-z0-9_.:-]+',n) for n in names)
+prior=C/'ROOT_I13_ONCE_MEMORY_SUPERVISOR_003.py';before=raw(prior);assert len(before)==73905 and sha(before)=='655cfe82d2ce3e2a4558189aeb817e3703943f1f147c2e47b039bc761727dfc4'
+s=before.decode('utf8')
+def assignment(name,value):
+ global s
+ s,n=re.subn(r'^'+name+r' = .*?$',lambda _:name+' = '+repr(value),s,flags=re.M);assert n==1,name
+for key,value in [('SOURCES',m['modules']),('APIS',m['APIs']),('FIXTURES',m['fixtures']),('CATALOGUE',m['catalogue']),('EXPECTED_CASE_COUNT',len(names)),('EXPECTED_CASE_NAMES_SHA256',sha(json.dumps(names,separators=(',',':'),ensure_ascii=True).encode())),('EXPECTED_CASE_NAMES_BY_FIXTURE',m['case_names_by_fixture'])]:assignment(key,value)
+helper='''DIAGNOSTIC_PART_KEYS = {'cases','passed','failed','failures','metadata_only','actual_family_publication','target_execution','operational_authority','scientific_authority'}
+
+def validate_diagnostic_part(part, expected_names):
+    need(type(part) is dict and all(type(k) is str for k in part) and set(part) == DIAGNOSTIC_PART_KEYS, 'closed diagnostic fixture result')
+    need(part['metadata_only'] is True and all(part[k] is False for k in ('actual_family_publication','target_execution','operational_authority','scientific_authority')), 'diagnostic metadata holds')
+    cases, failures = part['cases'], part['failures']
+    need(type(cases) is list and len(cases) == len(expected_names) and all(type(c) is dict and all(type(k) is str for k in c) and set(c) == {'name','passed'} and type(c['name']) is str and type(c['passed']) is bool for c in cases), 'typed complete diagnostic cases')
+    need([c['name'] for c in cases] == expected_names, 'exact diagnostic case order')
+    passed = sum(c['passed'] is True for c in cases)
+    need(type(part['passed']) is int and part['passed'] == passed and type(part['failed']) is int and part['failed'] == len(cases)-passed, 'honest diagnostic counts')
+    need(type(failures) is list and len(failures) == part['failed'], 'bounded diagnostic failure count')
+    for f in failures:
+        need(type(f) is dict and all(type(k) is str for k in f) and set(f) == {'name','exception_type','expected_code','actual_code','message'}, 'closed five-field diagnostic failure')
+        need(type(f['name']) is str and type(f['exception_type']) is str and 0 < len(f['exception_type']) <= 128 and type(f['message']) is str and len(f['message']) <= 512 and all(f[k] is None or type(f[k]) is str and 0 < len(f[k]) <= 128 for k in ('expected_code','actual_code')), 'bounded typed diagnostic failure')
+    need([f['name'] for f in failures] == [c['name'] for c in cases if c['passed'] is False], 'exact failed-case detail correspondence')
+
+
+'''
+assert '\ndef child(' in s;s=s.replace('\ndef child(', '\n'+helper+'def child(',1)
+start=s.index('    cases = []\n',s.index('def child('));end=s.index('    result.update(owned_pid',start)
+s=s[:start]+'''    cases = []
+    failures = []
+    for key in ('m3_publisher', 'peer'):
+        part = fixtures[key].run_diagnostic(m3=m3, publisher=publisher, peer=peer, catalogue_bytes=catalogue_bytes)
+        validate_diagnostic_part(part, EXPECTED_CASE_NAMES_BY_FIXTURE[key])
+        cases.extend(part['cases'])
+        failures.extend(part['failures'])
+    passed = sum(c['passed'] is True for c in cases)
+    result = dict(schema_version=1, record_type='I13_owned_synthetic_memory_case_results', cases=cases, passed=passed, failed=len(cases)-passed, failures=failures,
+                  metadata_only=True, actual_family_publication=False, target_execution=False, operational_authority=False, scientific_authority=False)
+'''+s[end:]
+anchor='\n    events = None\n';assert s.count(anchor)==1
+parent_check='''    diagnostic_complete = False
+    diagnostic_failures = None
+    if result is not None:
+        try:
+            child_value = result['value']
+            need(type(child_value) is dict and child_value.get('record_type') == 'I13_owned_synthetic_memory_case_results' and type(child_value.get('schema_version')) is int and child_value['schema_version'] == 1 and child_value.get('scope') == scope_pin and type(child_value.get('owned_pid')) is int and child_value['owned_pid'] == proc.pid, 'diagnostic child identity')
+            projection = {key: child_value.get(key) for key in DIAGNOSTIC_PART_KEYS}
+            expected_names = sum((EXPECTED_CASE_NAMES_BY_FIXTURE[key] for key in ('m3_publisher','peer')), [])
+            validate_diagnostic_part(projection, expected_names)
+            diagnostic_complete = True
+            diagnostic_failures = projection['failed']
+        except (ValueError, TypeError, KeyError):
+            diagnostic_complete = False
+    events = None
+'''
+s=s.replace(anchor,'\n'+parent_check,1)
+old="    known_pass_prefix = None if events is None else sum(type(e) is dict and e.get('event') == 'CASE_PASS' for e in events)"
+new="""    known_pass_events = None if events is None else sum(type(e) is dict and e.get('event') == 'CASE_PASS' for e in events)
+    known_fail_events = None if events is None else sum(type(e) is dict and e.get('event') == 'CASE_FAIL' for e in events)
+    known_pass_prefix = None if events is None else 0
+    if events is not None:
+        for event in events:
+            if type(event) is dict and event.get('event') == 'CASE_FAIL':
+                break
+            if type(event) is dict and event.get('event') == 'CASE_PASS':
+                known_pass_prefix += 1
+    if reason is None and diagnostic_complete and diagnostic_failures > 0:
+        reason = 'SYNTHETIC_CASE_FAILURES'"""
+assert s.count(old)==1;s=s.replace(old,new,1)
+old='                   actual_case_catalogue_valid=catalogue_valid, expected_case_count=EXPECTED_CASE_COUNT,'
+new='                   diagnostic_complete_case_catalogue_valid=diagnostic_complete, diagnostic_failure_count=diagnostic_failures, known_case_pass_events_from_complete_stdout=known_pass_events, known_case_fail_events_from_complete_stdout=known_fail_events,\n'+old
+assert s.count(old)==1;s=s.replace(old,new,1)
+assert 'fixtures[key].run(' not in s and s.count('fixtures[key].run_diagnostic(')==1
+t=ast.parse(s);compile(t,str(C/'ROOT_I13_ONCE_MEMORY_SUPERVISOR_004.py'),'exec')
+oldtree=ast.parse(before);oldfunc={n.name:ast.dump(n,include_attributes=False) for n in oldtree.body if isinstance(n,ast.FunctionDef)};newfunc={n.name:ast.dump(n,include_attributes=False) for n in t.body if isinstance(n,ast.FunctionDef)}
+assert all(newfunc[name]==value for name,value in oldfunc.items() if name not in ('child','parent'))
+out=C/'ROOT_I13_ONCE_MEMORY_SUPERVISOR_004.py';b=s.encode('utf8');assert len(b)<=2097152
+with out.open('xb') as h:assert h.write(b)==len(b)
+print(json.dumps(dict(supervisor=dict(path=str(out),bytes=len(b),sha256=sha(b)),expected_case_count=len(names),expected_case_names_sha256=m['combined_case_names_sha256'],target_execution=False,admission_issued=False)))

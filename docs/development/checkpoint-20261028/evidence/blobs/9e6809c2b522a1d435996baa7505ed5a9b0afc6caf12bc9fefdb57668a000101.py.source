@@ -1,0 +1,419 @@
+"""Independent read/hash/text-only supervisor review. Never loads a subject module."""
+from pathlib import Path
+import base64
+import datetime as dt
+import decimal
+import difflib
+import hashlib
+import json
+
+R = Path(r'D:\Aenv\pro2\WORK\resume-20261025-003')
+A = Path(r'D:\Aenv\pro3\runs\coordination\cho51_canonical_boundary_20261025_v5_aggregate')
+OUT = R / 'pro3_aggregate_supervisor_v2_Source_review_001'
+LIMIT = 2097152
+END = dt.datetime.fromisoformat('2026-10-25T21:55:00+00:00')
+FULL_NAME = 'INDEPENDENT_PRO3_AGGREGATE_SUPERVISOR_V2_SOURCE_FULL_PROOF_001.json'
+CAP_NAME = 'INDEPENDENT_PRO3_AGGREGATE_SUPERVISOR_V2_SOURCE_CAPSULE_001.json'
+
+def reserve():
+    assert (END - dt.datetime.now(dt.timezone.utc)).total_seconds() > 60
+
+def digest(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+def fact(path, raw):
+    return {'path': str(path), 'bytes': len(raw), 'sha256': digest(raw)}
+
+def pairs(rows):
+    value = {}
+    for key, member in rows:
+        assert key not in value, ('duplicate key', key)
+        value[key] = member
+    return value
+
+def strict(raw):
+    assert len(raw) <= LIMIT
+    return json.loads(raw.decode('utf8'), object_pairs_hook=pairs,
+                      parse_float=decimal.Decimal,
+                      parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
+
+def encode(value):
+    raw = (json.dumps(value, indent=2, sort_keys=True, ensure_ascii=True) + '\n').encode('utf8')
+    assert len(raw) <= LIMIT
+    return raw
+
+reserve()
+paths = {
+    'repaired_supervisor_Source': A / 'supervise_v2.ps1',
+    'preserved_original_supervisor_Source': A / 'supervise.ps1',
+    'unchanged_aggregate_Source': A / 'aggregate.py',
+    'preserved_original_refusal_full': R / 'pro3_aggregate_allocation_review_001' / 'INDEPENDENT_PRO3_AGGREGATE_ALLOCATION001_SOURCE_REFUSAL_FULL_PROOF_001.json',
+    'preserved_original_refusal_capsule': R / 'pro3_aggregate_allocation_review_001' / 'INDEPENDENT_PRO3_AGGREGATE_ALLOCATION001_SOURCE_REFUSAL_CAPSULE_001.json',
+    'current_Source006': R / 'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_006.json',
+    'current_Source006_Root_adoption': R / 'ROOT_I13_CURRENT_SOURCE_SCOPE006_DIFFERENT_REVIEW_ADOPTION_001.json',
+}
+expected = {
+    'repaired_supervisor_Source': (39054, '16d2d5f86c16b42de9a07b4933f8a46c7967ed0a5a048bb39440f97e458d0124'),
+    'preserved_original_supervisor_Source': (34510, '41e3bb54cccd22f792d261b4f94c7bdcd1250c132f9572c452deeaa98d1faae7'),
+    'unchanged_aggregate_Source': (39159, 'eb85e2bb7b682a4215c373ee080bda9a4638708e54190bda3170474c09c3fab8'),
+    'preserved_original_refusal_full': (63267, '9cfa424b36f062b435a5b864e10fd588c355bc5472a4c565a24aae4102881e69'),
+    'preserved_original_refusal_capsule': (22671, 'ee7ab088b26972f0631f8943b7211746a0a9943ac987041ccef1a04d22b67fd1'),
+    'current_Source006': (17107, '9196eaca8c1988c357abfa72881b3e505317ce7faff50dc352b700407848d821'),
+    'current_Source006_Root_adoption': (2324, 'e139f7ade01ea2c005f70eb7e4befff7be06e9fcdfc9e7706b45c2b8878cfea8'),
+}
+raws = {key: path.read_bytes() for key, path in paths.items()}
+pins = {key: fact(paths[key], raw) for key, raw in raws.items()}
+for key, raw in raws.items():
+    assert (len(raw), digest(raw)) == expected[key], key
+old = raws['preserved_original_supervisor_Source']
+new = raws['repaired_supervisor_Source']
+old_text = old.decode('utf8')
+text = new.decode('utf8')
+old_lines = old.splitlines(keepends=True)
+new_lines = new.splitlines(keepends=True)
+lines = text.splitlines()
+prior = strict(raws['preserved_original_refusal_full'])
+prior_cap = strict(raws['preserved_original_refusal_capsule'])
+scope = strict(raws['current_Source006'])
+adoption = strict(raws['current_Source006_Root_adoption'])
+checks = []
+
+def check(name, condition, evidence):
+    assert type(condition) is bool
+    checks.append({'name': name, 'passed': condition, 'evidence': evidence})
+    assert condition, name
+
+def excerpt(first, last=None):
+    start = next(i for i, line in enumerate(lines) if first in line)
+    end = start if last is None else next(i for i in range(start, len(lines)) if last in lines[i])
+    raw = b''.join(new_lines[start:end + 1])
+    return {'start_line': start + 1, 'end_line': end + 1,
+            'bytes': len(raw), 'sha256': digest(raw),
+            'Source': raw.decode('utf8')}
+
+def has(name, strings, first, last=None, conclusion=None):
+    check(name, all(string in text for string in strings),
+          {'Source_region': excerpt(first, last), 'conclusion': conclusion or 'Exact inspected Source predicates are present.'})
+
+check('current_Source006_exact_Root_adopted_and_reserved',
+      adoption['Source_scope'] == pins['current_Source006'] and adoption['checks_failed'] == 0
+      and scope['publication_reserve_seconds'] == 60 and scope['maximum_local_agents_including_Root'] == 3
+      and scope['maximum_shared_including_both_roots_and_overlap'] == 5
+      and scope['interval_end'] == END.isoformat(),
+      'Adopted Source006 authorizes this bounded Source-only review; it does not allocate an interpreter or admit any target. Strict >60-second reserve is checked before each own write.')
+check('exact_39054_repaired_Source_and_34510_original_preserved', True,
+      {'new': pins['repaired_supervisor_Source'], 'old': pins['preserved_original_supervisor_Source']})
+check('unchanged_aggregate_whole_Source_pin', True, pins['unchanged_aggregate_Source'])
+check('prior_genuine_refusal_preserved_not_overwritten',
+      prior['allocation_review_passed'] is False and prior['checks_failed'] == 1
+      and prior_cap['full_proof'] == pins['preserved_original_refusal_full']
+      and prior['remaining_actionable_findings'][0]['id'] == 'STALE_TOOLHELP_PID_PARENT_TO_OPENED_HANDLE_OWNERSHIP_GAP',
+      'The prior allocation001 refusal remains valid for its original Source. This review addresses only the separate repaired Source.')
+
+# A complete, reversible byte-line edit stream, independently derived from both physical Sources.
+operations = []
+reconstructed = bytearray()
+for tag, i, j, k, l in difflib.SequenceMatcher(a=old_lines, b=new_lines, autojunk=False).get_opcodes():
+    before = b''.join(old_lines[i:j])
+    after = b''.join(new_lines[k:l])
+    record = {'kind': tag, 'old_lines_zero_based_half_open': [i, j],
+              'new_lines_zero_based_half_open': [k, l],
+              'old_bytes': len(before), 'old_sha256': digest(before),
+              'new_bytes': len(after), 'new_sha256': digest(after)}
+    if tag == 'equal':
+        assert before == after
+        reconstructed.extend(after)
+    else:
+        record['complete_old_fragment_Base64'] = base64.b64encode(before).decode('ascii')
+        record['complete_new_fragment_Base64'] = base64.b64encode(after).decode('ascii')
+        assert base64.b64decode(record['complete_old_fragment_Base64'], validate=True) == before
+        assert base64.b64decode(record['complete_new_fragment_Base64'], validate=True) == after
+        reconstructed.extend(base64.b64decode(record['complete_old_fragment_Base64'], validate=True))
+    operations.append(record)
+check('complete_new_to_old_fragment_inverse_reconstructs_whole_original', bytes(reconstructed) == old,
+      {'reconstructed_original_bytes': len(reconstructed), 'reconstructed_original_sha256': digest(reconstructed),
+       'edit_regions': sum(row['kind'] != 'equal' for row in operations),
+       'unchanged_regions': sum(row['kind'] == 'equal' for row in operations)})
+check('complete_original_whole_inverse_canonical_Base64',
+      base64.b64decode(base64.b64encode(old), validate=True) == old,
+      'Full original bytes and every changed fragment are retained in this proof, independently of peer author bookkeeping.')
+
+def region(source, start, stop):
+    return source[source.index(start):source.index(stop, source.index(start))]
+
+protected = [
+    ('physical_Pin_nonreparse_singlelink_and_retained_identity', '    static Exception Failure', '    static ProcessBasicInformation BasicIdentity', '    public sealed class OwnedProcess'),
+    ('known_root_fallback_and_bounded_drain', '    public static bool StopRetainedRoot', "'@", "'@"),
+    ('strict_JSON_metadata_and_pause_resource_helpers', 'function Require(', '$process=$null;', '$process=$null;'),
+    ('grant_budgets_fixed_proofs_and_launch_cleanup_complement', " foreach($row in @(@('maximum_jobs',0)", '  $identities=@(', '  $identities=@('),
+    ('supervision_schema_and_final_acceptance', "  $super=[ordered]@", '\n}finally{', '\n}finally{'),
+]
+for name, start, new_end, old_end in protected:
+    before = region(old_text, start, old_end)
+    after = region(text, start, new_end)
+    check('protected_whole_Source_complement_' + name, before == after,
+          {'bytes': len(after.encode('utf8')), 'sha256': digest(after.encode('utf8')),
+           'meaning': 'Exact byte-identical region, not merely token or AST similarity.'})
+
+has('class0_query_structure_six_native_pointer_width_slots',
+    ['[StructLayout(LayoutKind.Sequential)] public struct ProcessBasicInformation { public IntPtr Reserved, Peb, Reserved2, Reserved3; public UIntPtr Pid, ParentPid; }',
+     'NtQueryInformationProcess(SafeFileHandle process, int informationClass, out ProcessBasicInformation information, uint length, out uint returned)'],
+    '[StructLayout(LayoutKind.Sequential)] public struct ProcessBasicInformation',
+    conclusion='Sequential six pointer-width slots place PID and inherited-parent PID at slots 4 and 5: 24 bytes on a 32-bit caller or 48 bytes on a 64-bit caller. Signed NTSTATUS is represented by int; the two lengths are 32-bit uint; handle is retained SafeFileHandle. This is a static ABI inspection, not a compiler, API-availability or native-query measurement.')
+has('class0_query_exact_success_length_and_PID_range_fail_closed',
+    ['NtQueryInformationProcess(handle,0,out information,length,out returned)',
+     'status!=0 || returned!=length', 'information.Pid.ToUInt64()==0',
+     'information.Pid.ToUInt64()>UInt32.MaxValue', 'information.ParentPid.ToUInt64()>UInt32.MaxValue'],
+    '    static ProcessBasicInformation BasicIdentity', '        return information;',
+    'Any nonzero NTSTATUS, unsupported size, zero PID or unrepresentable PID/parent causes refusal. There is no cached-row fallback or silent parent-query waiver.')
+has('handle_PID_independently_crosschecked_by_GetProcessId',
+    ['uint actualPid=GetProcessId(handle); if(actualPid==0)',
+     'actualPid!=expectedPid || before.Pid.ToUInt64()!=expectedPid || after.Pid.ToUInt64()!=expectedPid'],
+    '    static ProcessIdentity ExactProcessIdentity', '        return new ProcessIdentity',
+    'Both retained class0 query samples and GetProcessId must agree with the expected PID before the handle can be adopted.')
+has('creation_parent_and_exit_stability_brackets',
+    ['GetProcessTimes(handle,out createdBefore,out exitedBefore',
+     'GetProcessTimes(handle,out createdAfter,out exitedAfter',
+     'before.ParentPid!=after.ParentPid', 'createdBefore.Value==0 || createdBefore.Value!=createdAfter.Value',
+     'exitedBefore.Value!=0 && exitedBefore.Value!=exitedAfter.Value'],
+    '    static ProcessIdentity ExactProcessIdentity', '        return new ProcessIdentity',
+    'Creation and parent are stable across two samples. A live process may legitimately transition from exit-time zero to nonzero; an already nonzero exit-time must remain equal.')
+has('retained_root_duplicated_and_authenticated_before_owned_record',
+    ['DuplicateHandle(GetCurrentProcess(),handle,GetCurrentProcess(),out copy,0,false,2)',
+     'var actual=ExactProcessIdentity(copy,pid); Records.Add(new OwnedProcess',
+     'ParentPid=actual.ParentPid,Created=actual.Created,Handle=copy',
+     'catch { copy.Dispose(); throw; }'],
+    '        public void Root(',
+    conclusion='The root is the exact retained handle returned for the one started Process. Failed authentication disposes its duplicate; it never substitutes a PID-only open.')
+has('retained_parent_generation_revalidated_each_use',
+    ['var actual=ExactProcessIdentity(process.Handle,process.Pid)',
+     'actual.Created!=process.Created || actual.ParentPid!=process.ParentPid'],
+    '        static ProcessIdentity RetainedIdentity',
+    conclusion='Every later retained identity lookup binds PID, parent and creation back to the stored generation.')
+has('all_owned_records_revalidated_before_and_after_snapshot',
+    ['foreach(var member in Records) RetainedIdentity(member);'],
+    '        public void Discover()', '            Snapshots++;',
+    'The exact same revalidation loop appears on both sides of the Toolhelp enumeration. Retained handles remain owned while this occurs.')
+check('two_snapshot_side_generation_loops_present',
+      text.count('foreach(var member in Records) RetainedIdentity(member);') == 2,
+      'Exact count two, within Discover before capture and after the checked snapshot.')
+has('before_snapshot_native_UTC_cutoff_and_QPC_brackets',
+    ['long snapshotTicks=Stopwatch.GetTimestamp(); ulong snapshotStarted=PreciseTime(); long snapshotTicksAfter=Stopwatch.GetTimestamp();',
+     'GetSystemTimePreciseAsFileTime(out time)', 'if(time.Value==0)'],
+    '    static ulong PreciseTime()', '    public sealed class OwnedProcess',
+    'Snapshot cutoff is obtained before Toolhelp capture. Native API absence/query failure refuses rather than granting custody.')
+has('snapshot_clock_discontinuity_screen_preserves_bounded_tolerance',
+    ['(before-afterTicks)*10000000.0/Stopwatch.Frequency',
+     '(after-beforeTicks)*10000000.0/Stopwatch.Frequency',
+     'observed<started || observed-started<minimum-10000.0 || observed-started>maximum+10000.0'],
+    '    static void SnapshotClock', '    public sealed class OwnedProcess',
+    'Later UTC progress is checked against QPC brackets with an explicit 10,000 FILETIME-tick (1 ms) tolerance. This is a refusal screen, not a proof that every adversarial/transient clock alteration can be detected.')
+has('snapshot_row_and_250ms_bounds_not_widened',
+    ['rows.Count>8192 || watch.ElapsedMilliseconds>250',
+     'Process32FirstW(snapshot,ref entry)', 'Process32NextW(snapshot,ref entry)',
+     'Marshal.GetLastWin32Error()!=18'],
+    '            using(var snapshot=CreateToolhelp32Snapshot', '            Snapshots++;',
+    'Toolhelp enumeration remains bounded and error-checked; no native query was run by this reviewer.')
+has('owned_discovery_750ms_64rounds_64records_preserved',
+    ['round<64', 'watch.ElapsedMilliseconds>750', 'Records.Count>=64'],
+    '            for(int round=0;round<64;', '            throw new IOException("owned process closure rounds exceeded")',
+    'All three original numeric bounds remain. Native calls are not themselves cancellable; complete caller walltime remains the final budget evidence.')
+has('opened_candidate_requires_query_information_right_and_refuses_open_failure',
+    ['OpenProcess(0x00101401,false,row.Pid)',
+     'handle.Dispose(); throw new Win32Exception(error,"snapshot descendant cannot be authenticated")'],
+    '                    var handle=OpenProcess',
+    '                    try {',
+    'Added 0x400 PROCESS_QUERY_INFORMATION supports class0 native querying. Invalid candidate handles are disposed/refused; prior error-87 silent continuation is removed.')
+check('no_silent_error87_candidate_waiver', 'if(error==87) continue' not in text,
+      'Uncertain snapshot descendants cannot be silently classified absent or owned.')
+has('native_parent_must_equal_snapshot_edge_and_retained_parent_PID',
+    ['actual.ParentPid!=row.ParentPid || actual.ParentPid!=owner.Pid'],
+    '                        var actual=ExactProcessIdentity(handle,row.Pid)',
+    '                        var confirmed=ExactProcessIdentity(handle,row.Pid)',
+    'This adds the missing row-to-opened-handle ownership join. A PID-reused unrelated process with a different inherited parent cannot enter Records.')
+has('candidate_generation_must_postdate_retained_parent_and_predate_snapshot',
+    ['actual.Created<=owner.Created || actual.Created>snapshotStarted',
+     'owner.Exited!=0 && actual.Created>owner.Exited'],
+    '                        var actual=ExactProcessIdentity(handle,row.Pid)',
+    '                        var confirmed=ExactProcessIdentity(handle,row.Pid)',
+    'Conservatively rejects equal/earlier creation, creation after snapshot cutoff, and creation after the retained parent ended. Holding the native handle prevents the accepted object itself being replaced.')
+has('child_and_parent_confirmed_again_before_adoption',
+    ['var confirmed=ExactProcessIdentity(handle,row.Pid); var confirmedOwner=RetainedIdentity(parent);',
+     'confirmed.ParentPid!=actual.ParentPid || confirmed.Created!=actual.Created',
+     'confirmedOwner.Exited!=0 && actual.Created>confirmedOwner.Exited'],
+    '                        var confirmed=ExactProcessIdentity(handle,row.Pid)',
+    '                        Records.Add(new OwnedProcess',
+    'Both handle identities and parent lifetime are checked again before transfer into the owned set.')
+has('clock_screen_rechecked_before_transfer_to_owned_set',
+    ['SnapshotClock(snapshotStarted,snapshotTicks,snapshotTicksAfter);',
+     'SnapshotCutoff=snapshotStarted,Handle=handle'],
+    '                        var confirmed=ExactProcessIdentity(handle,row.Pid)',
+    '                    } catch { handle.Dispose(); throw; }',
+    'The last clock screen, count bound and adoption occur inside the same try block with no candidate termination before adoption.')
+check('three_clock_screen_calls_exact',
+      text.count('SnapshotClock(snapshotStarted,snapshotTicks,snapshotTicksAfter);') == 3,
+      'Three calls: after capture, before querying a candidate, and immediately before its adoption; the declaration is separate. No fourth call is claimed.')
+has('uncertain_candidate_closed_refused_without_becoming_owned',
+    ['} catch { handle.Dispose(); throw; }',
+     'Records.Add(new OwnedProcess { Pid=actual.Pid,ParentPid=actual.ParentPid,Created=actual.Created,SnapshotCutoff=snapshotStarted,Handle=handle });'],
+    '                    var handle=OpenProcess',
+    '                if(!changed) return;',
+    'All checks precede Records.Add; throwing closes the unadopted handle. Termination is only later over Records, so an unauthenticated candidate is not terminated by this new path. Discovery failure is reported and forbids successful full-custody claims.')
+has('liveness_revalidates_before_and_after_wait',
+    ['public bool Exited(OwnedProcess process) { RetainedIdentity(process); uint result=WaitForSingleObject(process.Handle,0);',
+     'RetainedIdentity(process); return result==0;'],
+    '        public bool Exited(',
+    conclusion='Liveness is queried only against an authenticated retained generation, with failure propagated.')
+has('termination_revalidates_exact_retained_generation',
+    ['public void Terminate(OwnedProcess process) { RetainedIdentity(process);',
+     'if(!Exited(process) && !TerminateProcess(process.Handle,1) && !Exited(process))',
+     'throw Failure("exact owned termination"); RetainedIdentity(process);'],
+    '        public void Terminate(',
+    conclusion='Termination uses the retained handle; repeated identity checks never reopen a stored PID for killing.')
+has('reap_revalidates_before_and_after_bounded_wait',
+    ['public bool Reap(OwnedProcess process,int milliseconds) { RetainedIdentity(process);',
+     'WaitForSingleObject(process.Handle,(uint)Math.Max(0,milliseconds))',
+     'throw Failure("bounded exact owned reap"); RetainedIdentity(process);'],
+    '        public bool Reap(',
+    conclusion='Reap remains a caller-bounded wait, with failure state retained rather than forced true.')
+has('known_exact_root_fallback_remains_handle_only',
+    ['StopRetainedRoot($process.Handle,(Remaining-Milliseconds 1000))',
+     'if($tree.Records.Count -eq 0){$discoveryComplete=$false;'],
+    '   if($tree.Records.Count -eq 0)',
+    conclusion='If root registration fails, fallback cleanup receives only the original started Process.Handle and sets discovery incomplete. It does not terminate the uncertain descendant handle.')
+has('cleanup_operates_only_on_authenticated_owned_records',
+    ['foreach($member in @($tree.Records)){try{$tree.Terminate($member)}',
+     '$reaped=$discoveryComplete -and $tree.Records.Count -gt 0'],
+    '   for($round=0;$round -lt 4',
+    '  foreach($drain in @($outDrain,$errDrain))',
+    'Final discovery failures set discoveryComplete false and retain errors. Even if known handles are cleaned up, unknown descendants do not become a claimed complete tree.')
+has('v2_exact_path_and_review_binding_separate_identity',
+    ["$PSCommandPath -cne (Join-Path $run 'supervise_v2.ps1')",
+     "Join-Path $run 'supervisor-review_v2.json'", "aggregate/supervise_v2.ps1'",
+     'Require-Text $review.files $reviewSelf $supervisorSha'],
+    " $reviewPin=Hold-File", ' Require-Text $review.files $reviewSelf $supervisorSha',
+    'The repaired source requires its own v2 path and exact v2 review pin. The old accepted preparatory review cannot silently authenticate this new Source.')
+has('snapshot_cutoff_saved_for_each_owned_identity',
+    ['snapshot_cutoff_filetime=$_.SnapshotCutoff.ToString()'],
+    '  $identities=@(',
+    conclusion='Each descendant records the exact pre-capture cutoff used for admission; the known root retains its default zero cutoff. Output identity is evidence only, not an independent actual ownership proof.')
+has('zero_Jobs_one_exact_stdlib_interpreter_fixed_command',
+    ["@('maximum_jobs',0)", "@('maximum_interpreter_invocations',1)",
+     "@('-I','-S','-B',$source,'--expect-proofs',$ProofsSha256,'--expect-admission',$AdmissionSha256)",
+     '$info.UseShellExecute=$false', '$info.CreateNoWindow=$true'],
+    ' $info=[Diagnostics.ProcessStartInfo]',
+    " $info.Environment['CUDA_VISIBLE_DEVICES']",
+    'No extra interpreter, arbitrary command, Job, candidate import, numerical or test admission is added by the repair.')
+has('strict_eight_integer_zero_budget_and_no_retry_preserved',
+    ["$value[$name] -is [long]", "function Require-Zero($value)",
+     "Require-Boolean $record 'automatic_retry_permitted' $false", "Require-Zero $record.expected_numerical_budget"],
+    'function Require-Integer(', 'function Utc-Time(',
+    'Eight exact-key integer zeros remain; Boolean false does not substitute for a required long zero.')
+has('all_five_pause_paths_and_4_4_20_resource_floors_preserved',
+    ["@('20261007','20261012','20261013','20261015','20261025')", '$availableRam -ge 4GB', '$availableDisk -ge 20GB',
+     "@('startup_ram_gib',4)", "@('active_ram_gib',4)", "@('disk_gib',20)"],
+    '$pauses=@(', 'function Floors',
+    'Prestart and active-loop Floors remain mandatory. This review makes no live physical RAM/disk/pause/process absence claim.')
+has('300_total_45_cleanup_and_absolute_window_minimum_preserved',
+    ['$hardEnd=$entry.AddSeconds(300)', '$cleanupEnd=$hardEnd.AddSeconds(-2)', '$stopAt=$hardEnd.AddSeconds(-45)',
+     "Require (($stopAt-$now).TotalSeconds -ge 60)", 'Remaining-Milliseconds'],
+    ' $hardEnd=$entry.AddSeconds(300)', ' Require (($stopAt-$now).TotalSeconds -ge 60)',
+    'Planned total300 includes reserved cleanup45, with waits limited to remaining cleanup. Peer grant window600 is an allocation boundary to be checked later, not created here.')
+has('one_MiB_each_pipe_overflow_and_actual_EOF_honest',
+    ['bytes.Length+count>1048576', 'Overflow=true; return;', 'if(count==0) { Eof=true; return; }',
+     '$stdoutEof=$outDrain.Eof -and -not $outDrain.Overflow -and -not $outDrain.Error',
+     '$stderrEof=$errDrain.Eof -and -not $errDrain.Overflow -and -not $errDrain.Error'],
+    '    public sealed class BoundedDrain', "'@",
+    'Streams retain a bounded prefix and refuse success on overflow/error; closing a stream does not manufacture EOF.')
+has('once_consumption_before_start_and_no_automatic_retry',
+    ['[IO.FileMode]::CreateNew', "Write-New (Join-Path $run 'supervisor-attempt_001.json')", 'if(-not $process.Start())'],
+    " Write-New (Join-Path $run 'supervisor-attempt_001.json')", '  if(-not $process.Start())',
+    'Unused output identities and a durable exclusive attempt marker precede start; the repair introduces no retry loop.')
+has('physical_inputs_nonreparse_singlelink_retained_hash_read_bounds_unchanged',
+    ['(info.Attributes & 0x400)!=0', '(!directory && info.Links!=1)',
+     'retained identity changed', 'reopened path/ancestor identity changed',
+     'if(total>(ulong)maximum)'],
+    '    static SafeFileHandle Open(', '    public static bool Exists(',
+    'This confirms exact unchanged Source guards, not that this reviewer opened native handles or measured host stability.')
+has('runtime_and_Source_rechecks_before_start_and_after_cleanup',
+    ['foreach($pin in $pinsHeld){$pin.Recheck()}', 'final retained source/input identity',
+     'Hold-File $path $authenticatedPins.runtime_files[$path] 67108864 $false'],
+    " $runtime=@('", ' $info=[Diagnostics.ProcessStartInfo]',
+    'Unchanged runtime identities are streamed by peer Source and physical Sources are held/rechecked. Reviewer never loads or starts them.')
+has('success_requires_full_owned_reap_both_EOF_no_errors_timeout',
+    ['if(-not $started -or $exitCode -ne 0 -or -not $reaped -or -not $stdoutEof -or -not $stderrEof -or $stopReason -or $errors.Count -ne 0 -or $timedOut -or $observedEnd -gt $hardEnd){exit 1}'],
+    ' if(-not $started -or $exitCode',
+    conclusion='The final success predicate is byte-identical to the refused predecessor and remains fail-closed when ownership discovery is uncertain.')
+has('outer_actual_caller_walltime_required_after_internal_stopwatch_limit',
+    ['$observedEnd=[DateTimeOffset]::UtcNow;$watch.Stop()', "Write-New (Join-Path $run 'supervision_001.json') $super", '$super|ConvertTo-Json -Depth 12'],
+    '  $observedEnd=[DateTimeOffset]::UtcNow;$watch.Stop()', '  $super|ConvertTo-Json -Depth 12',
+    'Internal elapsed stops before final supervision write, console serialization and outer disposal. A later run must independently retain caller-observed invocation-to-completion/reap walltime <=300 seconds including those operations; the internal value alone is insufficient. This retained limitation is not a runtime acceptance or timing guarantee.')
+
+check('pending_v2_peer_review_input_and_request_are_not_accepted', True,
+      'No supervisor-review_v2.json, input-review_v2.json, compute-request_002.json, Root allocation helper invocation, admission, grant020 or aggregate result is accepted by this Source-only proof. Their eventual exact pins and joins need a separate genuine allocation audit.')
+check('no_large_external_pinmap_parsed_or_copied_by_this_review', True,
+      'This narrow review reads only bounded Source/proof/Source-scope files listed in reviewed_file_pins. No >2MiB external map is loaded, parsed or copied; the earlier 36-ref stream-hash review is historical context only, not refreshed here.')
+check('no_peer_compiler_interpreter_API_test_or_Job_execution', True,
+      'Reviewer performed only own stdlib file read/hash, strict bounded JSON, byte-line diff and Base64 inverse. No Add-Type, PS parser, C# compiler, peer import/export, interpreter, aggregate, Job, native live-process query, test or Pro2 target was invoked.')
+check('no_allocation_or_result_scientific_or_operational_acceptance', True,
+      'PASS applies to the repaired Source ownership boundary and unchanged Source complement only. Allocation remains not reviewed/not allocated; no engineering, aggregate input/result, full133, runtime or science acceptance follows.')
+
+assert len({row['name'] for row in checks}) == len(checks)
+assert all(type(row['passed']) is bool and row['passed'] for row in checks)
+for key, path in paths.items():
+    assert path.read_bytes() == raws[key], ('Source changed during review', key)
+created = dt.datetime.now(dt.timezone.utc).isoformat()
+flags = {key: False for key in ['target_execution', 'tests_executed', 'native_Parser_executed',
+         'operational_authority', 'scientific_authority', 'actual_family_publication',
+         'peer_result_accepted', 'scientific_admission', 'peer_Code_compiled', 'peer_Code_imported',
+         'peer_aggregate_executed', 'allocation_review_performed', 'allocation_review_passed']}
+common = {
+    'schema_version': 1, 'reviewer': '/root/i13_final_review', 'created_utc': created,
+    'verdict': 'PASS_SOURCE_ONLY_REPAIR', 'source_review_passed': True,
+    'allocation_verdict': 'NOT_REVIEWED_NOT_ALLOCATED',
+    'checks_passed': len(checks), 'checks_failed': 0,
+    'remaining_actionable_findings': [], 'reviewed_file_pins': pins,
+    'subjects': list(pins.values()), 'peer_interpreter_invocations': 0, 'live_Job_queries_by_reviewer': 0,
+    'prior_refusal_preserved': True,
+    'resolved_Source_finding_id': 'STALE_TOOLHELP_PID_PARENT_TO_OPENED_HANDLE_OWNERSHIP_GAP',
+    'claim_limit': 'Genuine narrow static Source review only. Native PID/PPID/creation checks now precede descendant adoption and retained owned operations. Exact predecessor inverse and unchanged complement are verified. No compiler/native call or runtime behavior was measured. Separate successor reviews/input/request/allocation audit and fresh Root decision remain required. The actual outer caller must prove complete <=300-second walltime including final writes/disposal; internal stopwatch alone does not. All original Pro2 gates and caps remain held.',
+    **flags,
+}
+full = {**common, 'record_type': 'Independent_Pro3_aggregate_supervisor_v2_Source_full_proof',
+        'checks': checks,
+        'complete_original_Source_Base64': base64.b64encode(old).decode('ascii'),
+        'whole_original_Source_inverse': pins['preserved_original_supervisor_Source'],
+        'byte_line_inverse_operations': operations,
+        'complete_unified_Source_diff': ''.join(difflib.unified_diff(old_text.splitlines(keepends=True), text.splitlines(keepends=True), fromfile='supervise.ps1', tofile='supervise_v2.ps1')),
+        'static_ABI_layout': {'field_count_pointer_width': 6, 'bytes_for_pointer_width4': 24, 'bytes_for_pointer_width8': 48,
+                              'PID_offset_in_pointer_slots': 4, 'parent_PID_offset_in_pointer_slots': 5,
+                              'actual_native_layout_or_query_measured': False},
+        'Source_limitations': ['No Source-only audit proves complete host process absence or future runtime custody.',
+                               'Discovery is conservative; inaccessible, exited/reused or otherwise uncertain candidates cause refusal without candidate termination.',
+                               'Clock checks use a 1ms tolerance and do not prove adversarial clock immunity.',
+                               'Native calls themselves are not asynchronously cancelled; a later actual complete caller walltime remains mandatory.',
+                               'A successful Source review does not establish syntax compilation, API availability, runtime fit, aggregation success or scientific validity.'],
+        'pending_successor_metadata_accepted': False}
+reserve()
+full_raw = encode(full)
+assert not (OUT/FULL_NAME).exists() and not (OUT/CAP_NAME).exists()
+with (OUT/FULL_NAME).open('xb') as handle:
+    handle.write(full_raw)
+full_pin = fact(OUT/FULL_NAME, full_raw)
+capsule = {**common, 'record_type': 'Independent_Pro3_aggregate_supervisor_v2_Source_capsule',
+           'full_proof': full_pin,
+           'checks': [{'name': row['name'], 'passed': row['passed'], 'evidence': 'Full proof contains exact Source region and independent finding.'} for row in checks],
+           'pending_successor_metadata_accepted': False,
+           'caller_observed_complete_supervisor_walltime_required': True,
+           'complete_supervisor_walltime_maximum_seconds': 300,
+           'supervisor_internal_stopwatch_alone_proves_complete_walltime': False,
+           'post_stop_evidence_write_latency_must_be_included_in_caller_observation': True}
+reserve()
+cap_raw = encode(capsule)
+with (OUT/CAP_NAME).open('xb') as handle:
+    handle.write(cap_raw)
+assert (OUT/FULL_NAME).read_bytes() == full_raw and (OUT/CAP_NAME).read_bytes() == cap_raw
+assert strict(cap_raw)['full_proof'] == full_pin
+print(json.dumps({'checks_passed': len(checks), 'checks_failed': 0,
+                  'full_proof': full_pin, 'capsule': fact(OUT/CAP_NAME, cap_raw),
+                  'source_verdict': common['verdict'], 'allocation': common['allocation_verdict']}))

@@ -1,0 +1,434 @@
+"""Own stdlib Source/data authoring only. Never imports or calls target exports."""
+from pathlib import Path
+import ast
+import base64
+import collections
+import copy
+import datetime
+import difflib
+import hashlib
+import io
+import json
+import os
+import re
+import tokenize
+import zlib
+
+R = Path(r'D:\Aenv\pro2\WORK\resume-20261025-003')
+C = R / 'm3_peer_contracts_016'
+T = C / 'i13'
+A = C / 'm3_protocol_audit_001'
+P = A / 'descriptor_dictionary_factor_protocol_proposal_001'
+CAP = 2097152
+PREFIX = '$I13_DESCRIPTOR:'
+
+def wire(value):
+    return (json.dumps(value, sort_keys=True, ensure_ascii=True, separators=(',', ':'), allow_nan=False) + '\n').encode('ascii')
+
+def pretty(value):
+    return (json.dumps(value, sort_keys=True, ensure_ascii=True, indent=2, allow_nan=False) + '\n').encode('ascii')
+
+def pin(path, raw=None):
+    path = Path(path)
+    raw = path.read_bytes() if raw is None else raw
+    return dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+
+def fresh():
+    now = datetime.datetime.now(datetime.timezone.utc)
+    assert (datetime.datetime.fromisoformat('2026-10-25T18:03:03.861408+00:00') - now).total_seconds() > 60
+    return now.isoformat(timespec='microseconds')
+
+def save(path, raw, cap=CAP):
+    path = Path(path)
+    assert path.is_relative_to(C) and type(raw) is bytes and len(raw) <= cap
+    if os.path.lexists(path):
+        allowed={'I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_008.json','validate_M3_guard_contract_metadata_010.py','CURRENT_OWNER_M3_GUARD_CONTRACT_METADATA_INERT_API_010.json','validate_selected_peer_author_packet_metadata_010.py','CURRENT_OWNER_SELECTED_PEER_CANONICAL_AUTHOR_METADATA_INERT_API_010.json'}
+        assert path.name in allowed and path.read_bytes()==raw,'only exact known author001 partial bytes may be reused'
+        return pin(path,raw)
+    fresh()
+    with path.open('xb') as handle:
+        assert handle.write(raw) == len(raw)
+        handle.flush()
+        os.fsync(handle.fileno())
+    assert path.read_bytes() == raw
+    return pin(path, raw)
+
+def nodes(value):
+    if type(value) is dict:
+        return 1 + sum(1 + nodes(child) for child in value.values())
+    if type(value) is list:
+        return 1 + sum(nodes(child) for child in value)
+    return 1
+
+def key(value):
+    return wire(value).decode('ascii')[:-1]
+
+def ast_hash(raw):
+    return hashlib.sha256(ast.dump(ast.parse(raw.decode('utf8')), include_attributes=False).encode('utf8')).hexdigest()
+
+def definitions(raw):
+    tree = ast.parse(raw.decode('utf8'))
+    result = {}
+    def visit(items, prefix=''):
+        for node in items:
+            if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+                name = prefix + node.name
+                result[name] = hashlib.sha256(ast.dump(node, include_attributes=False).encode('utf8')).hexdigest()
+                if isinstance(node, ast.ClassDef):
+                    visit(node.body, name + '.')
+    visit(tree.body)
+    return result
+
+def inverse(before, after):
+    """Exact newline-fragment inverse; never repeats an entire fixture unnecessarily."""
+    b, a = before.splitlines(keepends=True), after.splitlines(keepends=True)
+    offsets = [0]
+    for line in a:
+        offsets.append(offsets[-1] + len(line))
+    changes = []
+    for tag, a0, a1, b0, b1 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
+        if tag != 'equal':
+            old = b''.join(b[b0:b1])
+            new = b''.join(a[a0:a1])
+            changes.append(dict(after_start=offsets[a0], after_end=offsets[a1], after_fragment_sha256=hashlib.sha256(new).hexdigest(), predecessor_fragment_base64=base64.b64encode(old).decode('ascii')))
+    recovered = after
+    for change in reversed(changes):
+        lo, hi = change['after_start'], change['after_end']
+        assert hashlib.sha256(recovered[lo:hi]).hexdigest() == change['after_fragment_sha256']
+        recovered = recovered[:lo] + base64.b64decode(change['predecessor_fragment_base64'], validate=True) + recovered[hi:]
+    assert recovered == before
+    return changes
+
+def compact(text):
+    tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
+    starts, position = [], 0
+    for line in text.splitlines(keepends=True):
+        starts.append(position)
+        position += len(line)
+    skip = {tokenize.INDENT, tokenize.DEDENT, tokenize.NEWLINE, tokenize.NL, tokenize.ENDMARKER}
+    edits = []
+    for left, right in zip(tokens, tokens[1:]):
+        if left.type in skip or right.type in skip or left.end[0] != right.start[0]:
+            continue
+        lo, hi = starts[left.end[0] - 1] + left.end[1], starts[right.start[0] - 1] + right.start[1]
+        gap = text[lo:hi]
+        if not gap or gap.strip() or '\n' in gap or '\r' in gap:
+            continue
+        if left.type in (tokenize.NAME, tokenize.NUMBER) and right.type in (tokenize.NAME, tokenize.NUMBER):
+            continue
+        if left.type == right.type == tokenize.OP and left.string[-1:] + right.string[:1] in ('==', '!=', '<=', '>=', '<<', '>>', '**', '//', ':=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '->', '..'):
+            continue
+        edits.append((lo, hi))
+    after = text
+    for lo, hi in reversed(edits):
+        after = after[:lo] + after[hi:]
+    def lex(value):
+        return [(t.type, t.string) for t in tokenize.generate_tokens(io.StringIO(value).readline) if t.type not in (tokenize.INDENT, tokenize.DEDENT)]
+    assert lex(text) == lex(after)
+    assert ast_hash(text.encode('utf8')) == ast_hash(after.encode('utf8'))
+    return after
+
+def once(text, old, new):
+    assert text.count(old) == 1, (old[:160], text.count(old))
+    return text.replace(old, new, 1)
+
+def assignment(text, name, value):
+    tree = ast.parse(text)
+    node = next(n for n in tree.body if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name) and n.targets[0].id == name)
+    lines = text.splitlines(keepends=True)
+    lines[node.lineno - 1:node.end_lineno] = [name + ' = ' + repr(value) + '\n']
+    return ''.join(lines)
+
+def source_value(text, name):
+    tree = ast.parse(text)
+    return next(ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in n.targets))
+
+adoption = R / 'ROOT_I13_COMPACT_DESCRIPTOR_GRAMMAR002_AND_JOINT_EVENT_PROTOCOL_DIFFERENT_REVIEW_ADOPTION_001.json'
+assert pin(adoption)['sha256'] == 'cb93db3e12f1a2b56a2b81162fb9259d9bf0d1d32fa5c534420cc0dc7a5ffefe'
+adopted = json.loads(adoption.read_bytes())
+assert adopted['author'] == '/root' and adopted['verdict'].startswith('ACCEPT_')
+assert all(adopted[k] is False for k in ('target_execution', 'operational_authority', 'scientific_authority'))
+fresh()
+proposal = json.loads((P / 'I13_EXACT_COMPACT_DESCRIPTOR_GRAMMAR_PROTOCOL_PROPOSAL_002.json').read_bytes())
+old_catalogue_path = A / 'I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_007.json'
+old_catalogue = json.loads(old_catalogue_path.read_bytes())
+DICT5 = {'builtin_type', 'additional_fields_allowed', 'exact_keys', 'field_count', 'fields'}
+LIST3 = {'builtin_type', 'exact_length', 'items_by_ordinal'}
+conversions = []
+
+def normalize(value, path=()):
+    if type(value) is dict:
+        result = {k: normalize(v, path + (k,)) for k, v in value.items()}
+        if set(value) == DICT5 and value['builtin_type'] == 'dict' and value['additional_fields_allowed'] is False and type(value['fields']) is dict and value['exact_keys'] == list(value['fields']) and type(value['field_count']) is int and value['field_count'] == len(value['fields']):
+            conversions.append((path, 'dict'))
+            return {k: result[k] for k in ('additional_fields_allowed', 'fields')}
+        if set(value) == LIST3 and value['builtin_type'] == 'list' and type(value['exact_length']) is int and type(value['items_by_ordinal']) is list and value['exact_length'] == len(value['items_by_ordinal']):
+            conversions.append((path, 'list'))
+            return {'items_by_ordinal': result['items_by_ordinal']}
+        return result
+    if type(value) is list:
+        return [normalize(v, path + (i,)) for i, v in enumerate(value)]
+    if type(value) is str:
+        assert not value.startswith(PREFIX)
+    return value
+
+normal = {k: normalize(v, ('schemas', k)) for k, v in old_catalogue['schemas'].items()}
+frequency, values = collections.Counter(), {}
+def scan(value):
+    if type(value) is dict:
+        frequency[key(value)] += 1
+        values[key(value)] = value
+        for child in value.values():
+            scan(child)
+    elif type(value) is list:
+        for child in value:
+            scan(child)
+for descriptor in normal.values():
+    for child in descriptor.values():
+        scan(child)
+def eligible(v):
+    return type(v) is dict and ('builtin_type' in v or set(v) == {'additional_fields_allowed', 'fields'} or set(v) == {'items_by_ordinal'})
+selected = {k for k, v in values.items() if eligible(v) and frequency[k] >= 2 and nodes(v) > 1}
+header = proposal['exact_representation']['encoding_header_closed5']
+def encode(selection):
+    ids = {k: 'D%04d' % (i + 1) for i, k in enumerate(sorted(selection))}
+    def item(value, root=False):
+        k = key(value) if type(value) is dict else None
+        if not root and k in ids:
+            return PREFIX + ids[k]
+        if type(value) is dict:
+            return {k: item(v) for k, v in value.items()}
+        if type(value) is list:
+            return [item(v) for v in value]
+        return value
+    result = copy.deepcopy(old_catalogue)
+    result['schemas'] = {k: item(v, True) for k, v in normal.items()}
+    result['schema_descriptor_encoding'] = copy.deepcopy(header)
+    result['schema_descriptor_definitions'] = {ids[k]: item(values[k], True) for k in ids}
+    return result
+catalogue = encode(selected)
+while selected:
+    score, remove = min((nodes(encode(selected - {k})), k) for k in sorted(selected))
+    if score >= nodes(catalogue):
+        break
+    selected -= {remove}
+    catalogue = encode(selected)
+assert nodes(catalogue) == 5378 and len(selected) == 30
+assert collections.Counter(q[1] for q in conversions) == {'dict': 79, 'list': 23}
+defs = catalogue['schema_descriptor_definitions']
+def expand(value, stack=()):
+    if type(value) is str and value.startswith(PREFIX):
+        name = value[len(PREFIX):]
+        assert name in defs and name not in stack
+        return expand(defs[name], stack + (name,))
+    if type(value) is dict:
+        result = {k: expand(v, stack) for k, v in value.items()}
+        if set(result) == {'additional_fields_allowed', 'fields'} and result['additional_fields_allowed'] is False:
+            return dict(additional_fields_allowed=False, builtin_type='dict', exact_keys=list(result['fields']), field_count=len(result['fields']), fields=result['fields'])
+        if set(result) == {'items_by_ordinal'}:
+            return dict(builtin_type='list', exact_length=len(result['items_by_ordinal']), items_by_ordinal=result['items_by_ordinal'])
+        return result
+    if type(value) is list:
+        return [expand(v, stack) for v in value]
+    return value
+assert wire(expand(catalogue['schemas'])) == wire(old_catalogue['schemas'])
+catalogue['predecessor_unadopted_catalogue'] = pin(old_catalogue_path)
+catalogue['state'] = 'FIXED_COMPACT_DESCRIPTOR_DATA_V2_SOURCE_ONLY_ROOT_ADOPTED_PROTOCOL_NO_EXECUTION'
+assert nodes(catalogue) == 5378
+catalogue_path = A / 'I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_008.json'
+catalogue_pin = save(catalogue_path, pretty(catalogue))
+
+ADAPTERS = r'''
+def _descriptor(catalogue, descriptor):
+ if type(descriptor)is str and descriptor.startswith('$I13_DESCRIPTOR'):
+  _need(descriptor.startswith('$I13_DESCRIPTOR:')and re.fullmatch(r'D[0-9]{4}',descriptor[16:])is not None,'E_CATALOGUE_PIN')
+  name=descriptor[16:];definitions=catalogue['schema_descriptor_definitions']
+  _need(name in definitions,'E_CATALOGUE_PIN');descriptor=definitions[name]
+ return descriptor
+def _descriptor_keys(catalogue, descriptor):
+ descriptor=_descriptor(catalogue,descriptor)
+ return descriptor['fields'].keys()if set(descriptor)=={'additional_fields_allowed','fields'}else descriptor['exact_keys']
+def _check_descriptor_encoding(catalogue):
+ header=catalogue.get('schema_descriptor_encoding');definitions=catalogue.get('schema_descriptor_definitions')
+ _closed(header,('schema_version','reference_prefix','namespace','mode','descriptor_grammar'),'E_CATALOGUE_PIN')
+ _need(type(header['schema_version'])is int and header['schema_version']==2 and header['reference_prefix']=='$I13_DESCRIPTOR:'and header['namespace']=='I13_CATALOGUE_DESCRIPTOR_DEFINITIONS_V2'and header['mode']=='COUNT_COMPLETE_ENCODED_GRAPH_ONCE_PER_LOCAL_CACHE_NO_EXPANSION'and header['descriptor_grammar']=='CLOSED2_FIELDS_OR_CLOSED1_ORDINALS_LOSSLESS_V1','E_CATALOGUE_PIN')
+ _closed(definitions,tuple('D%04d'%i for i in range(1,31)),'E_CATALOGUE_PIN')
+ for value in definitions.values():
+  _need(type(value)is dict and ('builtin_type'in value or set(value)=={'additional_fields_allowed','fields'}or set(value)=={'items_by_ordinal'}),'E_CATALOGUE_PIN')
+ done=set()
+ def walk(value,chain=()):
+  if type(value)is str and value.startswith('$I13_DESCRIPTOR'):
+   _need(value.startswith('$I13_DESCRIPTOR:')and re.fullmatch(r'D[0-9]{4}',value[16:])is not None and value[16:]in definitions and value[16:]not in chain,'E_CATALOGUE_PIN')
+   name=value[16:]
+   if name not in done:walk(definitions[name],chain+(name,));done.add(name)
+  elif type(value)is dict:
+   _need(not any(k.startswith('$I13_DESCRIPTOR')for k in value),'E_CATALOGUE_PIN')
+   if 'fields'in value and 'builtin_type'not in value:
+    _closed(value,('additional_fields_allowed','fields'),'E_CATALOGUE_PIN');_need(value['additional_fields_allowed']is False and type(value['fields'])is dict,'E_CATALOGUE_PIN')
+   if 'items_by_ordinal'in value and 'builtin_type'not in value:
+    _closed(value,('items_by_ordinal',),'E_CATALOGUE_PIN');_need(type(value['items_by_ordinal'])is list,'E_CATALOGUE_PIN')
+   for k,child in value.items():
+    if k!='literal':walk(child,chain)
+  elif type(value)is list:
+   for child in value:walk(child,chain)
+ try:walk(catalogue['schemas'])
+ except (KeyError,TypeError,RecursionError):raise I13MetadataError('E_CATALOGUE_PIN')from None
+ _need(done==set(definitions),'E_CATALOGUE_PIN')
+'''
+assert len('$I13_DESCRIPTOR:') == 16
+
+COMPACT_BRANCH = '''  desc = _descriptor(cat,desc)
+  if type(desc)is dict and set(desc)=={'additional_fields_allowed','fields'}:
+    _closed(value,desc['fields'].keys())
+    for key,field in desc['fields'].items():_type(value[key],field,cat,value)
+    return
+  if type(desc)is dict and set(desc)=={'items_by_ordinal'}:
+    fields=desc['items_by_ordinal'];_list(value,len(fields),len(fields))
+    for child,field in zip(value,fields):_type(child,field,cat)
+    return
+'''
+products, records = {}, [dict(before=pin(old_catalogue_path),after=catalogue_pin,exact_new_to_predecessor_fragment_inverse=inverse(old_catalogue_path.read_bytes(),Path(catalogue_pin['path']).read_bytes()))]
+def record_product(old_path, path, raw, cap=CAP, cosmetic=None):
+    before = old_path.read_bytes() if old_path else None
+    result = save(path, raw, cap)
+    entry = dict(after=result)
+    if before is not None:
+        entry.update(before=pin(old_path, before), exact_new_to_predecessor_fragment_inverse=inverse(before, raw))
+        if path.suffix == '.py' or path.name.endswith('.py.source'):
+            old_defs, new_defs = definitions(before), definitions(raw)
+            entry.update(before_AST_sha256=ast_hash(before), after_AST_sha256=ast_hash(raw), changed_definition_ASTs={name:dict(before=old_defs.get(name),after=new_defs.get(name))for name in sorted(set(old_defs)|set(new_defs))if old_defs.get(name)!=new_defs.get(name)})
+    if cosmetic is not None:
+        entry['pre_adapter_cosmetic_layout_proof'] = cosmetic
+    records.append(entry)
+    return result
+
+def kernel(kind, old_source, old_api, new_source, new_api):
+    old_raw = (T / old_source).read_bytes()
+    text = old_raw.decode('utf8')
+    cosmetic = compact(text)
+    layout = dict(before=pin(T/old_source,old_raw), cosmetic_only_bytes=len(cosmetic.encode('utf8')),cosmetic_only_sha256=hashlib.sha256(cosmetic.encode('utf8')).hexdigest(),non_layout_token_lexemes_identical=True,whole_AST_identical=ast_hash(old_raw)==ast_hash(cosmetic.encode('utf8')))
+    text = assignment(text, 'COMMON_CATALOGUE_PIN' if kind=='peer' else 'CATALOGUE_PIN', catalogue_pin)
+    marker = 'def _enum(' if kind!='peer' else 'def _i13_result('
+    assert text.count(marker) == 1
+    adapters=ADAPTERS
+    if kind=='publisher':
+        names={'header':'h','definitions':'ds','done':'z','value':'v','chain':'s','name':'n','child':'x'}
+        toks=list(tokenize.generate_tokens(io.StringIO(adapters).readline))
+        adapters=tokenize.untokenize([(tok.type,names.get(tok.string,tok.string)if tok.type==tokenize.NAME else tok.string)for tok in toks])
+    text = text.replace(marker, adapters + '\n' + marker, 1)
+    if kind in ('m3','publisher'):
+        function = next(n for n in ast.parse(text).body if isinstance(n,ast.FunctionDef)and n.name=='_type')
+        lines=text.splitlines(keepends=True)
+        if kind=='m3':
+            lines[function.lineno:function.lineno]=[COMPACT_BRANCH]
+        else:
+            branch='\n'.join(line[1:]if line.startswith(' ')else line for line in COMPACT_BRANCH.splitlines())+'\n'
+            # Publisher's private argument q1 is the value; preserve exact body local names.
+            branch=branch.replace('value','q1')
+            lines[function.lineno:function.lineno]=[branch]
+        text=''.join(lines)
+        if kind=='m3':
+            text=once(text,'    self.c = self.s.record(CATALOGUE_PIN)\n','    self.c = self.s.record(CATALOGUE_PIN)\n    _check_descriptor_encoding(self.c)\n')
+            text=once(text,"self.c['schemas']['selection_row9']['exact_keys']","_descriptor_keys(self.c,self.c['schemas']['selection_row9'])")
+            old="    result = {key: (rule['literal'] if type(rule) is dict and 'literal' in rule else None) for key, rule in fields.items()}"
+            text=once(text,old,"    result = {}\n    for key,rule in fields.items():\n      rule=_descriptor(self.c,rule)\n      result[key]=rule['literal'] if type(rule)is dict and 'literal'in rule else None")
+        else:
+            text=once(text,'  q2.c = q2.s.record(CATALOGUE_PIN)\n','  q2.c = q2.s.record(CATALOGUE_PIN)\n  _check_descriptor_encoding(q2.c)\n')
+            text=text.replace("q2.c['schemas']['selection_row9']['exact_keys']","_descriptor_keys(q2.c,q2.c['schemas']['selection_row9'])")
+            text=text.replace("g.c['schemas']['held_peer_API14']['exact_keys']","_descriptor_keys(g.c,g.c['schemas']['held_peer_API14'])")
+            text=text.replace("g.c['schemas']['peer_author_wrapper14']['exact_keys']","_descriptor_keys(g.c,g.c['schemas']['peer_author_wrapper14'])")
+            text=once(text,"expected['record_type']['literal']","_descriptor(g.c,expected['record_type'])['literal']")
+            text=once(text," out = {k: rule['literal'] if type(rule) is dict and 'literal' in rule else None for k, rule in fields.items()}"," out = {}\n for k,rule in fields.items():\n  rule=_descriptor(g.c,rule)\n  out[k]=rule['literal']if type(rule)is dict and 'literal'in rule else None")
+            fixed=source_value(text,'FIXED_PORTS')
+            fixed['M3'].update(Source=products['m3_source'],API=products['m3_api'])
+            fixed['PEER'].update(Source=products['peer_source'],API=products['peer_api'])
+            text=assignment(text,'FIXED_PORTS',fixed)
+    else:
+        text=once(text,'    common=store.record(COMMON_CATALOGUE_PIN)\n','    common=store.record(COMMON_CATALOGUE_PIN)\n    _check_descriptor_encoding(common)\n')
+        text=text.replace("common['schemas']['result54']['exact_keys']","_descriptor_keys(common,common['schemas']['result54'])")
+        text=once(text,"    for key,typ in common['schemas']['result54']['fields'].items():\n","    for key,typ in common['schemas']['result54']['fields'].items():\n        typ=_descriptor(common,typ)\n")
+    raw=compact(text).encode('utf8')
+    compile(raw,str(T/new_source),'exec',dont_inherit=True)
+    sp=record_product(T/old_source,T/new_source,raw,65536,layout)
+    api=json.loads((T/old_api).read_bytes());api['Source']=sp
+    if kind!='peer':api['catalogue']=catalogue_pin
+    if kind=='publisher':api['fixed_ports']=source_value(raw.decode('utf8'),'FIXED_PORTS')
+    ap=record_product(T/old_api,T/new_api,pretty(api))
+    products[kind+'_source'],products[kind+'_api']=sp,ap
+
+kernel('m3','validate_M3_guard_contract_metadata_009.py','CURRENT_OWNER_M3_GUARD_CONTRACT_METADATA_INERT_API_009.json','validate_M3_guard_contract_metadata_010.py','CURRENT_OWNER_M3_GUARD_CONTRACT_METADATA_INERT_API_010.json')
+kernel('peer','validate_selected_peer_author_packet_metadata_009.py','CURRENT_OWNER_SELECTED_PEER_CANONICAL_AUTHOR_METADATA_INERT_API_009.json','validate_selected_peer_author_packet_metadata_010.py','CURRENT_OWNER_SELECTED_PEER_CANONICAL_AUTHOR_METADATA_INERT_API_010.json')
+kernel('publisher','validate_selected_role_publisher_metadata_004.py','CURRENT_OWNER_SELECTED_ROLE_PUBLISHER_METADATA_INERT_API_004.json','validate_selected_role_publisher_metadata_005.py','CURRENT_OWNER_SELECTED_ROLE_PUBLISHER_METADATA_INERT_API_005.json')
+
+# New fixture-local descriptor readers: no cross-module helper imports/callbacks.
+FIXTURE_READERS = '''\ndef _ow_descriptor(catalogue,descriptor):
+    if type(descriptor)is str and descriptor.startswith('$I13_DESCRIPTOR:'):
+        return catalogue['schema_descriptor_definitions'][descriptor[16:]]
+    return descriptor
+def _ow_descriptor_keys(catalogue,descriptor):
+    descriptor=_ow_descriptor(catalogue,descriptor)
+    return descriptor['fields'].keys()if set(descriptor)=={'additional_fields_allowed','fields'}else descriptor['exact_keys']
+'''
+old_helper=T/'I13_NEW_OUTER_ENVELOPE_FIXTURE_HELPER_009.py.source'
+helper=old_helper.read_bytes().decode('utf8')+FIXTURE_READERS
+products['helper']=record_product(old_helper,T/'I13_NEW_OUTER_ENVELOPE_FIXTURE_HELPER_010.py.source',helper.encode('utf8'))
+old_helper_text=old_helper.read_bytes().decode('utf8')
+
+def fixture(kind, old_name, new_name, old_catalogue_name, new_catalogue_name):
+    before=(T/old_name).read_bytes();text=before.decode('utf8')
+    assert text.count(old_helper_text)==1
+    text=text.replace(old_helper_text,helper,1)
+    if kind=='m3':
+        text=once(text,"for i,key in enumerate(desc['exact_keys'])","for i,key in enumerate(_ow_descriptor_keys(self.cat,desc))")
+        text=once(text,"selections={k:v['literal']for k,v in self.cat['schemas']['capture_role_selections3']['fields'].items()}","selections={k:_ow_descriptor(self.cat,v)['literal']for k,v in self.cat['schemas']['capture_role_selections3']['fields'].items()}")
+        text=once(text,"for k in self.cat['schemas']['M3_read_observation9']['exact_keys']","for k in _ow_descriptor_keys(self.cat,self.cat['schemas']['M3_read_observation9'])")
+        for shape in('selected_publication32','selected_reconciliation25'):
+            old="{k:copy.deepcopy(v['literal'])if type(v)is dict and'literal'in v else None for k,v in self.cat['schemas']['"+shape+"']['fields'].items()}"
+            new="{k:copy.deepcopy(_ow_descriptor(self.cat,v)['literal'])if type(_ow_descriptor(self.cat,v))is dict and'literal'in _ow_descriptor(self.cat,v)else None for k,v in self.cat['schemas']['"+shape+"']['fields'].items()}"
+            text=once(text,old,new)
+        text=once(text,'        for dep in sorted(required):descriptors.append(self.prior(dep))', '''        for dep in sorted(required):
+            row=self.rows[dep];raw=('synthetic prior recorded '+dep+'\\n').encode()
+            self.deps[dep]=o.add_raw('dep_canonical_'+dep,raw,row['canonical_path'])
+            o.add_raw('dep_draft_'+dep,raw,row['draft_path'])
+        if required:
+            marker=o.add('dep_reference_group',dict(record_type='synthetic_prior_reference_complete_stage_group',target_execution=False,operational_authority=False,subjects=[self.deps[dep]for dep in sorted(required)]))
+            for dep in sorted(required):o.b['labels']['dep_reference_'+dep]=marker['path']
+        for dep in sorted(required):descriptors.append(self.prior(dep))''')
+        text=once(text,"        o=self.o;row=self.rows[role];raw=('synthetic prior recorded '+role+'\\n').encode();canonical=o.add_raw('dep_canonical_'+role,raw,row['canonical_path']);draft=o.add_raw('dep_draft_'+role,raw,row['draft_path']);self.deps[role]=canonical\n        dummy=o.add('dep_reference_'+role,dict(record_type='synthetic_prior_reference_'+role,target_execution=False,operational_authority=False))", "        o=self.o;row=self.rows[role];canonical=o.p('dep_canonical_'+role);draft=o.p('dep_draft_'+role);dummy=o.p('dep_reference_'+role)")
+        text=once(text,"                sr,sa=o.proof('binding_proof_'+key,[sp],5,6);supports[key]=dict(source=sp,different_review=sr,Root_adoption=sa);bindings[key]=sp['sha256']", "                supports[key]=dict(source=sp);bindings[key]=sp['sha256']\n            joint=[supports[key]['source']for key in sorted(supports)]\n            sr,sa=o.proof('binding_proof_joint',joint,5,6,extra=dict(binding_source_group_purpose='One complete nine-Source capture binding metadata review event'))\n            for support in supports.values():support.update(different_review=sr,Root_adoption=sa)")
+    else:
+        text=once(text,"    view=_json(raw);fields=_json(catalogue_bytes)['schemas']['result54']['fields']", "    view=_json(raw);catalogue=_json(catalogue_bytes);fields=catalogue['schemas']['result54']['fields']")
+        text=once(text,"    for key,rule in fields.items():\n        if type(rule)is dict and 'literal'in rule:", "    for key,rule in fields.items():\n        rule=_ow_descriptor(catalogue,rule)\n        if type(rule)is dict and 'literal'in rule:")
+    # Refresh only literal fixed new-kernel captures, retaining every legacy capture.
+    fixed=source_value(text,'FIXED')
+    for label in tuple(fixed):
+        pin_key=next((name for name in ('m3_source','m3_api','peer_source','peer_api','publisher_source','publisher_api')if fixed[label]['pin']==products.get(name)),None)
+        # Existing captures have predecessor pins; route by exact old Source/API facts below.
+        for product in ('m3','peer','publisher'):
+            for suffix in ('source','api'):
+                keyname=product+'_'+suffix
+                old_pin=next(row['before']for row in records if row['after']==products[keyname])
+                if fixed[label]['pin']==old_pin:
+                    body=Path(products[keyname]['path']).read_bytes()
+                    fixed[label]=dict(pin=products[keyname],compressed_base64=base64.b64encode(zlib.compress(body)).decode('ascii'))
+    text=assignment(text,'FIXED',fixed)
+    raw=text.encode('utf8');compile(raw,str(T/new_name),'exec',dont_inherit=True)
+    old_cases=source_value(before.decode('utf8'),'CASE_CATALOGUE');new_cases=source_value(text,'CASE_CATALOGUE');assert wire(old_cases)==wire(new_cases)
+    old_defs,new_defs=definitions(before),definitions(raw)
+    for name in('run','run_diagnostic','run_diagnostic_cases'):
+        assert old_defs[name]==new_defs[name],name
+    sp=record_product(T/old_name,T/new_name,raw)
+    catalogue=json.loads((T/old_catalogue_name).read_bytes())
+    catalogue.update(Source=sp,previous_Source=pin(T/old_name,before),previous_catalogue=pin(T/old_catalogue_name),helper=products['helper'],M3_Source=products['m3_source'],peer_Source=products['peer_source'],publisher_Source=products['publisher_source'],publisher_API=products['publisher_api'],actual_successor_Source_editor='/root/project_architecture',original_case_rows_exact=True,compact_descriptor_grammar_protocol=pin(P/'I13_EXACT_COMPACT_DESCRIPTOR_GRAMMAR_PROTOCOL_PROPOSAL_002.json'),compact_descriptor_catalogue=catalogue_pin,shared_complete_prior_reference_marker=True,joint_nine_binding_Source_event=True if kind=='m3' else False)
+    cp=record_product(T/old_catalogue_name,T/new_catalogue_name,pretty(catalogue))
+    products[kind+'_fixture'],products[kind+'_literal_catalogue']=sp,cp
+
+fixture('m3','exercise_M3_guard_and_publisher_metadata_memory_012.py','exercise_M3_guard_and_publisher_metadata_memory_013.py','I13_M3_FIXTURE_LITERAL_CASE_CATALOGUE_012.json','I13_M3_FIXTURE_LITERAL_CASE_CATALOGUE_013.json')
+fixture('peer','exercise_selected_peer_author_metadata_memory_010.py','exercise_selected_peer_author_metadata_memory_011.py','I13_PEER_FIXTURE_LITERAL_CASE_CATALOGUE_010.json','I13_PEER_FIXTURE_LITERAL_CASE_CATALOGUE_011.json')
+products['catalogue']=catalogue_pin
+
+receipt_path=T/'I13_COMPACT_DESCRIPTOR_SOURCESET4_FRAGMENT_INVERSES_AND_AUTHOR_FREEZE_001.json'
+receipt=dict(schema_version=2,record_type='I13_compact_descriptor_SourceSet4_actual_Source_author_freeze',author='/root/project_architecture',created_utc=fresh(),protocol=pin(P/'I13_EXACT_COMPACT_DESCRIPTOR_GRAMMAR_PROTOCOL_PROPOSAL_002.json'),protocol_clarification=pin(P/'I13_PROTOCOL002_EXACT_TEMPLATE_CHOICES_DESCRIPTOR_KEYS_CLARIFICATION_001.json'),Root_protocol_adoption=pin(adoption),products=products,changes=records,metadata_author001_refusal=dict(Source=pin(R/'author_I13_compact_SourceSet4_implementation_001.py'),reason='publisher candidate buffer exceeded65536 and was refused before Source write; catalogue/M3/peer partial bytes retained exact',target_functions_called=False),catalogue_nodes=nodes(catalogue),descriptor_definitions=30,grammar_conversion_counts=dict(conversions=102,closed_dict=79,fixed_list=23),all65_schema_canonical_wire_bytes_exact=True,all936_literal_cases_and_runner_AST_preserved=True,source_only_compile_AST_read_hash=True,target_functions_called=False,fixture_builders_called=False,tests_executed=False,target_execution=False,operational_authority=False,scientific_authority=False,native_Parser_executed=False,full_original_I2_DAG_closed=False,counter_mode='CONSERVATIVE_SUM_PER_INVOCATION_CACHE',metadata_node_budget=50000,fit_proved=False,runtime_proved=False,API_protocol_basis='Original semantic core protocol pins retained; exact compact protocol/adoption/clarification joined here and through new catalogue and whole Source pins. Peer API remains closed14.',inverse_method='Apply exact new-to-predecessor fragments in descending after offsets after verifying each after-fragment SHA; recover exact predecessor whole bytes/pin. Complete predecessor files remain retained direct; no source invoked.')
+freeze=save(receipt_path,pretty(receipt))
+order=('m3_source','m3_api','peer_source','peer_api','publisher_source','publisher_api','catalogue','m3_fixture','peer_fixture','m3_literal_catalogue','peer_literal_catalogue')
+print(json.dumps(dict(products=[products[k]for k in order]+[freeze],receipt=freeze)))

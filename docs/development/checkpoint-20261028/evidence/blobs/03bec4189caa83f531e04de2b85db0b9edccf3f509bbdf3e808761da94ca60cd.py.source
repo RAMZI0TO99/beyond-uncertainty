@@ -1,0 +1,62 @@
+"""Retain actual Root tool console/exit and exact owned snapshot result pins; no subject calls."""
+import datetime as dt,hashlib,json,os,sys
+from pathlib import Path
+R=Path(__file__).parent;C=R/'m3_peer_contracts_016';LIMIT=2097152
+def raw(p):
+ p=Path(p);a=p.stat();assert p.is_file() and not p.is_symlink() and a.st_nlink==1 and a.st_size<=LIMIT
+ for q in(p,*p.parents):assert not getattr(q.lstat(),'st_file_attributes',0)&1024
+ b=p.read_bytes();z=p.stat();assert b==p.read_bytes() and len(b)==a.st_size==z.st_size and a.st_mtime_ns==z.st_mtime_ns
+ return b
+def pin(p):
+ p=Path(p);b=raw(p);return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def read(p):return json.loads(raw(p))
+sourcep=R/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_003.json';source=read(sourcep)
+assert pin(sourcep)['sha256']=='726c201dd6349aca56122129acf71b259b821a667c0720a3a4838ffb8aefe1ad'
+def save(p,b):
+ now=dt.datetime.now(dt.timezone.utc)
+ assert (dt.datetime.fromisoformat(source['interval_end'])-now).total_seconds()>60
+ assert len(b)<=LIMIT and not os.path.lexists(p)
+ with p.open('xb')as h:assert h.write(b)==len(b);h.flush();os.fsync(h.fileno())
+ assert raw(p)==b;return pin(p)
+assert len(sys.argv)==2 and sys.argv[1].isdigit();number=int(sys.argv[1]);assert number>=1
+scopep=C/('ROOT_I13_ONCE_INPUT_SNAPSHOT_SCOPE_%03d.json'%number);scope=read(scopep);scpin=pin(scopep)
+owned=Path(scope['outputs']['supervisor_result']).parent
+toolp=owned/'ROOT_ACTUAL_PARENT_EXEC_TOOL_RETURN_001.json';tool=read(toolp)
+assert type(tool['Root_observed_tool_exit_code'])is int and tool['Root_observed_tool_exit_code']in(0,1)
+assert type(tool['Root_observed_tool_wall_time_seconds_decimal'])is str and type(tool['output'])is str
+lines=[json.loads(x)for x in tool['output'].splitlines()if x.strip()]
+assert len(lines)==1 and type(lines[0])is dict;console=lines[0]
+resultp=Path(scope['outputs']['supervisor_result']);result=read(resultp)
+assert pin(resultp)==console['supervisor_result'] and result['scope']==scpin
+assert result['owned_pid']==console['owned_pid'] and result['exit_code']==console['exit_code']
+assert result['reaped']is result['streams_drained']is True and all(x is True for x in result['actual_stream_EOF'].values())
+assert all(x is None for x in result['stream_pump_errors'].values()) and result['custody_error']is None
+assert result['acceptance_at_record_preparation']==console['acceptance_at_record_preparation']
+accepted=(tool['Root_observed_tool_exit_code']==0 and console['accepted']is True and result['acceptance_at_record_preparation']is True
+ and console['final_elapsed_nanoseconds']<=60000000000 and result['exact_snapshot_ledger_valid']is True)
+assert accepted==(tool['Root_observed_tool_exit_code']==0)
+for name in('stdout','stderr'):
+ p=result[name];assert pin(p['path'])==p
+childp=None;child=None
+if result['child_result']is not None:
+ childp=result['child_result']['pin'];assert pin(childp['path'])==childp;child=read(childp['path'])
+ assert child['scope']==scpin and child['owned_pid']==result['owned_pid']
+entryp=Path(scope['outputs']['child_entry']);entry=read(entryp)
+assert entry['scope']==scpin and entry['pid']==result['owned_pid']
+consolepin=save(owned/'ROOT_SAVED_PARENT_CONSOLE_001.txt',tool['output'].encode('utf8'))
+v=dict(schema_version=1,record_type='Root_I13_input_snapshot_actual_tool_console_and_exit_witness',author='/root',
+ created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),scope=scpin,source_adoption=scope['source_adoption'],
+ actual_Root_tool_return=pin(toolp),Root_observed_tool_exit_code=tool['Root_observed_tool_exit_code'],
+ Root_observed_tool_chunk_id=tool.get('Root_observed_tool_chunk_id'),Root_observed_tool_wall_time_seconds_decimal=tool['Root_observed_tool_wall_time_seconds_decimal'],
+ saved_parent_console=consolepin,supervisor_result=pin(resultp),child_entry=pin(entryp),child_result=childp,
+ stdout=result['stdout'],stderr=result['stderr'],owned_pid=result['owned_pid'],owned_child_exit_code=result['exit_code'],
+ reaped=True,streams_drained=True,actual_stream_EOF=result['actual_stream_EOF'],stream_pump_errors=result['stream_pump_errors'],
+ final_elapsed_nanoseconds=console['final_elapsed_nanoseconds'],acceptance_at_record_preparation=result['acceptance_at_record_preparation'],
+ final_console_and_actual_tool_exit_acceptance=accepted,roles=result['roles'],saved_own_custody_closed=True,
+ child_result_record_type=None if child is None else child.get('record_type'),reported_typed_refusal=result['reported_typed_refusal'],
+ metadata_only=True,validator_exports_called=0,old936_qualification=False,plan_is_actual_target_trace=False,
+ target_execution=False,actual_family_publication=False,operational_authority=False,scientific_authority=False,
+ physical_host_or_PID_absence_proved=False,claim_reuse_or_replay_authorized=False)
+out=C/('ROOT_I13_INPUT_SNAPSHOT%03d_PARENT_TOOL_CONSOLE_AND_EXIT_WITNESS_001.json'%number)
+w=save(out,(json.dumps(v,sort_keys=True,indent=2,allow_nan=False)+'\n').encode())
+print(json.dumps(dict(witness=w,accepted=accepted,roles=result['roles'],saved_own_custody_closed=True)))

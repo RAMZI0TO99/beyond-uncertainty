@@ -1,0 +1,31 @@
+"""Preserve uninvoked001; pin the exact validated adoption buffers."""
+import ast,base64,datetime as dt,hashlib,json
+from pathlib import Path
+R=Path(__file__).parent
+def pin(p):
+ b=p.read_bytes();return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+p=R/'prepare_I13_owned_run_metadata_bundles_001.py';before=p.read_bytes();s=before.decode()
+a="scope=fresh();own=pin(Path(__file__));adoption(decode(body(source_adoption)),own)";assert s.count(a)==1
+s=s.replace(a,"scope=fresh();own=pin(Path(__file__));source_adoption_raw=body(source_adoption);adoption(decode(source_adoption_raw),own);source_adoption_pin=pin(source_adoption,source_adoption_raw)")
+a="plan=decode(plan_raw);adoption(decode(body(plan_adoption)),plan_pin)";assert s.count(a)==1
+s=s.replace(a,"plan=decode(plan_raw);plan_adoption_raw=body(plan_adoption);adoption(decode(plan_adoption_raw),plan_pin);plan_adoption_pin=pin(plan_adoption,plan_adoption_raw)")
+assert s.count('packaging_plan_Root_adoption=pin(plan_adoption)')==2
+s=s.replace('packaging_plan_Root_adoption=pin(plan_adoption)','packaging_plan_Root_adoption=plan_adoption_pin')
+assert s.count('bundle_author_Source_Root_adoption=pin(source_adoption)')==1
+s=s.replace('bundle_author_Source_Root_adoption=pin(source_adoption)','bundle_author_Source_Root_adoption=source_adoption_pin')
+a="result=save(INDEX,wire(index));fresh();print(";assert s.count(a)==1
+s=s.replace(a,"need(body(source_adoption)==source_adoption_raw and body(plan_adoption)==plan_adoption_raw,'validated adoption bytes still exact before index');result=save(INDEX,wire(index));fresh();print(")
+b=s.encode();ast.parse(b);q=R/'prepare_I13_owned_run_metadata_bundles_002.py'
+with q.open('xb')as h:h.write(b)
+v=dict(schema_version=1,record_type='Root_I13_owned_run_bundler002_same_validated_adoption_buffer_Source_successor',author='/root',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),before=pin(p),before_complete_base64=base64.b64encode(before).decode(),after=pin(q),Source_finding='Uninvoked001 reread adoption files after validation to record pins;002 retains exact validated raw buffers/fact3 throughout and refuses changed final bytes before index.',target_execution=False,tests_executed=False,actual_family_publication=False,operational_authority=False,scientific_authority=False)
+rp=R/'ROOT_I13_OWNED_RUN_BUNDLER002_SAME_BUFFER_SOURCE_AUTHOR_RECEIPT_001.json'
+with rp.open('xb')as h:h.write((json.dumps(v,sort_keys=True,indent=2)+'\n').encode())
+# Only the archive pin changes after the same-buffer Source successor.
+ap=R/'prepare_I13_managed_candidate_005.py';ab=ap.read_bytes();at=ast.parse(ab);lines=ab.decode().splitlines(keepends=True)
+n=next(n for n in at.body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='RUN_BUNDLE_AUTHOR_SOURCE'for t in n.targets));lines[n.lineno-1:n.end_lineno]=['RUN_BUNDLE_AUTHOR_SOURCE = '+repr(pin(q))+'\n'];nb=''.join(lines).encode();ast.parse(nb)
+aq=R/'prepare_I13_managed_candidate_006.py'
+with aq.open('xb')as h:h.write(nb)
+ar=R/'ROOT_I13_MANAGED_HELPER006_SAME_BUFFER_BUNDLER_PIN_SOURCE_AUTHOR_RECEIPT_001.json'
+av=dict(schema_version=1,record_type='Root_I13_managed_helper006_exact_run_bundler002_pin_successor',author='/root',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),before=pin(ap),before_complete_base64=base64.b64encode(ab).decode(),after=pin(aq),only_changed_constant='RUN_BUNDLE_AUTHOR_SOURCE',all_functions_AST_exact=True,target_execution=False,tests_executed=False,actual_family_publication=False,operational_authority=False,scientific_authority=False)
+with ar.open('xb')as h:h.write((json.dumps(av,sort_keys=True,indent=2)+'\n').encode())
+print(json.dumps(dict(bundler=pin(q),bundler_receipt=pin(rp),archive=pin(aq),archive_receipt=pin(ar),calls=0)))

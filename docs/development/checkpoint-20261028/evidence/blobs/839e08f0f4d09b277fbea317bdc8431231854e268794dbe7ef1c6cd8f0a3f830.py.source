@@ -1,0 +1,401 @@
+"""Independent Source014 whole-buffer static metadata review; no subject invocation."""
+import ast
+import base64
+import datetime as dt
+import hashlib
+import json
+import os
+import stat
+from pathlib import Path
+
+HERE = Path(__file__).parent
+ROOT = HERE.parent
+R5 = ROOT.parent
+OLD = Path('D:/Aenv/pro2/WORK/resume-20261027-002/coordination/pro3_bootstrap002_source_review_001')
+REVIEWER = '/root/coexistence014_final_review'
+AUTHOR = '/root/scope013_review'
+CAP = 2097152
+END = dt.datetime(2026, 10, 28, 9, 30, tzinfo=dt.timezone.utc)
+CHECKS = []
+FINDINGS = []
+
+
+def require(value, message):
+    if not value:
+        raise ValueError(message)
+
+
+def current():
+    now = dt.datetime.now(dt.timezone.utc)
+    require(now.date() == dt.date(2026, 10, 28) and now < END - dt.timedelta(seconds=60),
+            'current finite review window with strict original sixty-second reserve')
+    return now
+
+
+def shape(value):
+    stack = [(value, 0)]
+    count = 0
+    deepest = 0
+    while stack:
+        item, depth = stack.pop()
+        count += 1
+        deepest = max(deepest, depth)
+        require(count <= 50000 and depth <= 48, 'own metadata node/depth limits')
+        require(item is None or type(item) in (str, int, bool, list, dict), 'float-free builtin metadata')
+        if type(item) is str:
+            require(not any(55296 <= ord(char) <= 57343 for char in item), 'no surrogate strings')
+        elif type(item) is list:
+            stack.extend((x, depth + 1) for x in item)
+        elif type(item) is dict:
+            require(all(type(k) is str for k in item), 'string dictionary keys')
+            for key, value in item.items():
+                stack.append((key, depth + 1))
+                stack.append((value, depth + 1))
+    return {'nodes': count, 'max_depth': deepest}
+
+
+def pairs(items):
+    answer = {}
+    for key, value in items:
+        require(key not in answer, 'duplicate JSON key')
+        answer[key] = value
+    return answer
+
+
+def reject_number(token):
+    raise ValueError('fractional or nonfinite JSON token forbidden: ' + token)
+
+
+def strict(data):
+    require(type(data) is bytes and len(data) <= CAP, 'strict JSON bounded bytes')
+    value = json.loads(data.decode('utf-8'), object_pairs_hook=pairs,
+                       parse_float=reject_number, parse_constant=reject_number)
+    shape(value)
+    return value
+
+
+def read(path):
+    path = Path(path)
+    for part in (path, *path.parents):
+        metadata = part.lstat()
+        require(not part.is_symlink() and not getattr(metadata, 'st_file_attributes', 0) & 1024,
+                'nonreparse direct metadata lineage')
+    before = path.stat()
+    require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1 and 0 <= before.st_size <= CAP,
+            'bounded ordinary single-link saved metadata')
+    with path.open('rb') as handle:
+        opened = os.fstat(handle.fileno())
+        data = handle.read(CAP + 1)
+        closed_sample = os.fstat(handle.fileno())
+    after = path.stat()
+    identity = lambda s: (s.st_dev, s.st_ino, s.st_mode, s.st_nlink, s.st_size, s.st_mtime_ns)
+    require(identity(before) == identity(opened) == identity(closed_sample) == identity(after),
+            'stable whole-buffer saved metadata read')
+    require(len(data) == before.st_size and len(data) <= CAP, 'whole bounded file buffer')
+    return data
+
+
+def pin(path, data=None):
+    if data is None:
+        data = read(path)
+    return {'path': str(path), 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}
+
+
+def checked(name, result, evidence=None):
+    require(type(name) is str and name and all(x['name'] != name for x in CHECKS), 'unique positive check name')
+    require(type(result) is bool, 'actual boolean check result')
+    row = {'name': name, 'passed': result}
+    if evidence is not None:
+        shape(evidence)
+        row['evidence'] = evidence
+    CHECKS.append(row)
+    if not result:
+        FINDINGS.append({'check': name, 'evidence': evidence})
+
+
+def load(label, path, byte_count, digest, is_json=True):
+    data = read(path)
+    item = pin(path, data)
+    checked(label + '.exact_bytes_and_sha256', item['bytes'] == byte_count and item['sha256'] == digest, item)
+    value = strict(data) if is_json else data.decode('utf-8')
+    checked(label + '.whole_bounded_single_link_nonreparse_stable_read', True,
+            {'bytes': len(data), 'strict_JSON_shape': shape(value) if is_json else None})
+    return value, item, data
+
+
+def save(name, value):
+    require(Path(name).name == name, 'fixed own review output filename')
+    require(HERE.is_relative_to(R5) and HERE.name == 'different_review_001', 'only owned reviewer directory')
+    shape(value)
+    data = (json.dumps(value, sort_keys=True, indent=2, ensure_ascii=False, allow_nan=False) + '\n').encode('utf-8')
+    require(len(data) <= CAP, 'own review output cap')
+    current()
+    destination = HERE / name
+    with destination.open('xb') as handle:
+        require(handle.write(data) == len(data), 'whole CreateNew review output write')
+        handle.flush()
+        os.fsync(handle.fileno())
+    require(read(destination) == data and strict(read(destination)) == value, 'whole strict flushed readback')
+    return pin(destination, data)
+
+
+began = current().isoformat()
+scope, scope_pin, scope_bytes = load('scope014', ROOT / 'ROOT_PRO3_NEW_FINITE_SOURCE_ONLY_COEXISTENCE_SCOPE_014_001.json',
+    10760, '4059a9d6b67f3ca73f86ed0eb609ffb2ed847ad1da26f07084998f163691ddf4')
+source, source_pin, source_bytes = load('author_adopter_Source014', ROOT / 'prepare_or_adopt_Source014_source_only_coexistence_001.py',
+    19754, '67003a268e83613bde4a60c40fc8c28582f86d0b1a8deb698505670d52dc79e3', False)
+inverse, inverse_pin, inverse_bytes = load('inverse014', ROOT / 'ROOT_SOURCE014_COMPLETE_EXPIRED_SOURCE011_AND_ADOPTION_INVERSE_001.json',
+    19284, 'b73509d7946c7625ccf53c3cfed1ec54c70973f04cbec15ff0fe774f2c681e11')
+old, old_pin, old_bytes = load('expired_Source011', OLD / 'ROOT_PRO3_NEW_FINITE_SOURCE_ONLY_COEXISTENCE_SCOPE_011_001.json',
+    9049, 'c52dbbfc4a5202bc5476e6b41071d72a1163b339e8bcaad29acf2a6dae70a540')
+old_adoption, old_adoption_pin, old_adoption_bytes = load('historical_Source011_adoption', OLD / 'ROOT_PRO3_SOURCE_ONLY_COEXISTENCE011_DIFFERENT_REVIEW_ADOPTION_001.json',
+    4571, '6994cedd8c25318563d4aa398d6681c00e61e91f61bccd8d5ca67c75b554e378')
+context13, context13_pin, context13_bytes = load('separate_Source013', R5 / 'ROOT_CURRENT_BOOTSTRAP004_FAILURE_CLOSEOUT_METADATA_SOURCE_SCOPE_013.json',
+    6065, 'c00fe52251923ed2149e11fca2b9fcd72825b53df50c26bacac67a646b74e53f')
+adoption13, adoption13_pin, adoption13_bytes = load('actual_Source013_adoption', R5 / 'ROOT_SOURCE013_DIFFERENT_METADATA_REVIEW_ADOPTION_001.json',
+    2878, '100db1006bed691e0b4679c0892e88e7239ea225642030d4a38dda8cb71777b6')
+
+checked('reviewer.genuinely_different_from_author_and_adopter', REVIEWER not in (AUTHOR, '/root'),
+        {'reviewer': REVIEWER, 'physical_Source_author': AUTHOR, 'Root_adopter': '/root'})
+checked('historical_Source011.actual_adoption_binding', old_adoption['Source_only_scope'] == old_pin and old_adoption['Source_only_coexistence_adopted'] is True)
+checked('historical_Source011.expired_unchanged', old['interval_end'] == old_adoption['interval_end'] == '2026-10-27T18:30:00+00:00')
+checked('separate_Source013.actual_adoption_binding', adoption13['Source_only_scope'] == context13_pin and adoption13['Source_only_failure_closeout_scope_adopted'] is True)
+checked('separate_Source013.unextended_current_end', context13['interval_end'] == '2026-10-28T10:00:00+00:00')
+
+checked('inverse.exact_schema', set(inverse) == {'record_type', 'created_utc', 'physical_Source_author', 'metadata_author_Source', 'items'})
+checked('inverse.type_and_author', inverse['record_type'] == 'Root_Source014_complete_expired_Source011_and_adoption_inverse' and inverse['physical_Source_author'] == AUTHOR)
+checked('inverse.author_Source_binding', inverse['metadata_author_Source'] == source_pin)
+checked('inverse.exact_two_ordered_predecessors', type(inverse['items']) is list and len(inverse['items']) == 2)
+for index, (entry, f3, original) in enumerate(zip(inverse['items'], (old_pin, old_adoption_pin), (old_bytes, old_adoption_bytes))):
+    checked('inverse.item' + str(index) + '.schema', set(entry) == {'path', 'bytes', 'sha256', 'base64'})
+    checked('inverse.item' + str(index) + '.F3', {key: entry[key] for key in ('path', 'bytes', 'sha256')} == f3)
+    restored = base64.b64decode(entry['base64'], validate=True)
+    checked('inverse.item' + str(index) + '.whole_original_bytes', restored == original and len(restored) == f3['bytes'] and hashlib.sha256(restored).hexdigest() == f3['sha256'])
+    checked('inverse.item' + str(index) + '.strict_JSON_equal', strict(restored) == (old, old_adoption)[index])
+
+HOLDS = [
+ 'operational_authority', 'target_execution', 'subject_function_or_mode_invocation_admitted',
+ 'bootstrap_or_controller_or_helper_rerun_admitted', 'new_operative_bootstrap_admitted',
+ 'live_native_or_process_or_resource_or_pause_query_admitted', 'CSharp_compilation_or_loading_admitted',
+ 'Python_target_or_test_or_Job_admitted', 'Pro3_Python_tests_or_Job_admitted',
+ 'native_pin_preparation_admitted', 'native_preparation_request_advancement_permitted',
+ 'native_preparation_operation_admitted', 'new_once_admission_issued',
+ 'new_operational_execution_lease_issued', 'new_runtime_or_native_admission_issued',
+ 'new_compute_grant_issued', 'Root_current_compute_reservation_issued',
+ 'Root_current_pause_request_issued', 'resource_availability_measured',
+ 'all_five_pause_inventory_checked', 'physical_custody_release_claimed', 'whole_host_quiet_claimed',
+ 'cleanup_or_arbitrary_descendant_kill_admitted', 'PID_whitelisting_or_guessed_PID_kill_admitted',
+ 'automatic_retry_permitted', 'raw_capture_admitted', 'new_raw_retention_operation_admitted',
+ 'new_retention_Source_authoring_or_activation_admitted', 'external_closeout_operation_admitted',
+ 'training_or_numerical_execution_admitted', 'scientific_authority', 'Native8', 'Parser',
+ 'actual6', 'runtime', 'science', 'actual_family_publication', 'Git_commit_or_push_admitted',
+ 'primary_six_document_publication', 'peer_Source_or_review_results_accepted',
+ 'failed_bootstrap004_custody_closed', 'failed_bootstrap004_operation_released',
+ 'failed_bootstrap004_observational_result_accepted', 'predecessor_periods_or_grants_extended',
+ 'Source013_period_or_authority_extended', 'original_guard_or_cap_waiver_granted',
+]
+expected = {
+ 'record_type': 'Root_NEW_finite_Source_only_Pro3_coexistence_scope014_proposal', 'schema_version': 14,
+ 'proposal_owner': '/root', 'physical_Source_author': AUTHOR,
+ 'created_utc': '2026-10-28T08:04:01.558234+00:00', 'interval_start': '2026-10-28T08:04:01.558234+00:00',
+ 'interval_start_Riyadh': '2026-10-28T11:04:01.558234+03:00',
+ 'interval_end': '2026-10-28T09:30:00+00:00', 'interval_end_Riyadh': '2026-10-28T12:30:00+03:00',
+ 'publication_reserve_seconds': 60, 'Pro2_max_including_Root': 3, 'Pro3_max_including_Root_and_reviewer': 2,
+ 'shared_max_including_both_roots_reviewers_children_and_overlap': 5, 'additional_slots_granted': 0,
+ 'Pro3_author_and_different_reviewer_serialized': True,
+ 'Pro3_active_work_shape': 'At most Pro3 Root plus one Source author OR one different Source reviewer; author and reviewer are serialized, never concurrent extra slots.',
+ 'metadata_cap_bytes': CAP, 'metadata_depth': 48, 'metadata_nodes': 50000,
+ 'metadata_author_adopter_Source': source_pin, 'complete_predecessor_inverse': inverse_pin,
+ 'historical_expired_Source011': old_pin, 'historical_expired_Source011_adoption': old_adoption_pin,
+ 'Source011_end_unchanged': '2026-10-27T18:30:00+00:00', 'earlier_Source008_009_010_periods_and_bytes_unchanged': True,
+ 'separate_Root_failure_closeout_Source013_context': context13_pin,
+ 'separate_Root_failure_closeout_Source013_adoption_context': adoption13_pin,
+ 'Source013_remains_separate_Root_saved_failure_metadata_only': True,
+ 'new_scope_preparation_authority': 'New direct human next-step instruction in Pro3, independently verified in trusted app read_thread, interpreted with its immediately preceding failed-bootstrap handoff as bounded Source diagnostics only. This proposal is not prepared under expired Source011 or by extending Source013.',
+ 'verified_new_direct_human': {'thread_id': '01a171ac-fe4f-71c0-b078-f9c56c579f08',
+   'turn_id': '01a18180-ded3-72d3-a1d7-58dbfd26121a', 'user_message_id': '01a18180-df18-7171-bcea-f30a69fd6037',
+   'exact_text': 'off to the next step! \n',
+   'verification_method': 'Physical metadata author independently read actual userMessage with trusted app read_thread this preparation turn; Root separately verified it.'},
+ 'immediate_prior_handoff_context': {'thread_id': '01a171ac-fe4f-71c0-b078-f9c56c579f08',
+   'turn_id': '01a1817f-f803-7d40-8b01-914694a95ffd', 'final_message_id': 'msg_0c31757a8e132009016ae1aa1d0cec8191a26d9ed3268290e6',
+   'verified_saved_context': "Bootstrap failed on unexpected descendant; cleanup remained unverified, no automatic retry, 117 tests and 34 guard controls unexecuted. Next stated step was bounded process-tree and cleanup diagnostics, independent review, then fresh coordination and admission; yesterday's windows expired.",
+   'verification_method': 'Trusted app read_thread turnLimit2; metadata author read actual immediately preceding final handoff.'},
+ 'prospective_Source_diagnostics_005': {'status': 'SOURCE_ONLY_PROPOSAL_NOT_OPERATIVE',
+   'allowed': 'Pro3-owned separately versioned supervisor/protocol Source005 diagnostics authoring and genuinely different text/hash/strictJSON/Source-AST review only.',
+   'prospective_instrumentation': 'Source may describe bounded refusal-row, controller/helper generation and cleanup-stage/type/HResult/message evidence capture for a future separately decided/admitted operation. This grants no actual capture or call now.',
+   'prohibited': 'No whitelist, guessed-PID kill, bypass, normalization, replay, rerun or reinterpretation of failed004. Diagnostic code is unexecuted Source; all original guards and budgets remain unchanged.'},
+ 'permitted_Source_only_work': [
+   'Root bounded coordination/proposal metadata and exact saved-file read/hash/strictJSON/Source-text/metadata-AST review with own bounded metadata helpers only.',
+   'Pro3-owned separately versioned Source005 supervisor/protocol diagnostic authoring, text/hash/strictJSON/Source-AST inspection and genuinely different Source review under the serialized two-agent peer ceiling.',
+   'Preserve complete original Sources001-004, all original guard predicates and control inventories, refusals, decisions, consumed identities, frozen partial outputs, and all prior bytes. No Source or results are accepted by this scheduling proposal.',
+   'Create only newly named bounded Source/proposal/review metadata. Source authoring/review is never a function/mode/helper/controller/native/test/Job/capture operation, runtime result or operational admission.'],
+ 'Root_budgets_unchanged': {'Parser_cleanup': 10, 'Parser_reap': 5, 'Parser_total': 120, 'Parser_wait': 110,
+   'RAM_floor_bytes': 1073741824, 'ack_total': 510, 'admission_reserve': 1200, 'both_ages': 90,
+   'context_runtime': 600, 'disk_floor_bytes': 10737418240, 'resource_age': 60, 'retained': 3600,
+   'root_ack': 450, 'shared_after': 60},
+ 'all_original_Root_and_peer_Source_and_output_caps_unchanged': True,
+ 'peer_phase_resource_proposal_data': {'Root_floors_unchanged': 'Root RAM1GiB/disk10GiB and every original Root budget remain exact; peer proposal data grants no current waiver or measured resources.',
+   'active_RAM_bytes': 4294967296, 'disk_floor_bytes': 21474836480, 'startup_RAM_bytes': 4294967296,
+   'status': 'DATED_PHASE_PROPOSAL_DATA_ONLY_NOT_AVAILABILITY_OR_ACTIVE_ADMISSION'},
+ 'standing_preservation': 'All75 spent identities; consumed snapshots001/002/003 and bootstrap004; complete Source001-004, original guards/control inventories, refusals, decisions, partial outputs and all prior bytes remain immutable without replay. Frozen936state20PASS12FAIL904unestablished/11ABIblockers and dated150fits/270models/111untouched are unchanged and not recounted.',
+ 'unclosed_failed004_and_native_hold': 'Failed bootstrap004 remains FAILED_UNRELEASED_CONSUMED, unclosed and unreleased. No D01 success manifest or accepted observational result follows. The human native-request step remains conditional and unmet; Source014 neither un-closes004 nor prepares/advances any native request.',
+ 'unknowns_preserved': [
+   'Unexpected process-table identity and guard call ordinal were not captured.',
+   'Secondary cleanup stage/exception and original retained-handle reap remain unestablished.',
+   'A later narrow PID absence sample never establishes earlier/current whole-family or host release.'],
+ 'Source_only_scheduling_not_operative_lease': True, 'new_interval_requires_actual_time_at_or_after_start': True,
+ 'requires_genuinely_different_metadata_review_and_separate_Root_adoption_before_reliance': True,
+ 'physical_author_must_not_review_or_adopt_this_proposal': True,
+ 'Root_alone_may_invoke_adopt_after_genuine_different_review': True,
+ 'future_operation_requirements': 'Every future operation requires distinct exact separately versioned frozen Source/protocol/request, genuine different reviews, explicit Root decisions, current unused admission and current resources/pause/custody controls. A Source-only scheduling ACK grants none and never reuses an old identity or extends a predecessor window.',
+}
+expected.update({name: False for name in HOLDS})
+checked('scope.whole_exact_keyset', set(scope) == set(expected), {'actual_key_count': len(scope), 'expected_key_count': len(expected)})
+for key, value in expected.items():
+    checked('scope.field.' + key, type(scope.get(key)) is type(value) and scope.get(key) == value, value)
+checked('scope.entire_independent_expected_document', scope == expected)
+checked('scope.original_Root_budgets_whole_preserved', scope['Root_budgets_unchanged'] == old['inherited_Root_budgets'] == context13['Root_budgets_unchanged'])
+checked('scope.original_unknowns_whole_preserved', scope['unknowns_preserved'] == context13['unknowns_preserved'])
+start = dt.datetime.fromisoformat(scope['interval_start'])
+checked('scope.current_interval_and_strict_reserve', start <= current() < END - dt.timedelta(seconds=60))
+checked('scope.new_phase_does_not_extend_expired_periods', start > dt.datetime.fromisoformat(old['interval_end']) and scope['predecessor_periods_or_grants_extended'] is False and scope['Source013_period_or_authority_extended'] is False)
+checked('scope.shared_agent_arithmetic_and_serialized_peer', scope['Pro2_max_including_Root'] + scope['Pro3_max_including_Root_and_reviewer'] == scope['shared_max_including_both_roots_reviewers_children_and_overlap'] == 5 and scope['Pro3_author_and_different_reviewer_serialized'] is True and scope['additional_slots_granted'] == 0)
+
+tree = ast.parse(source, filename=source_pin['path'], mode='exec')
+checked('Source.AST_parse_only_no_import_or_invocation', isinstance(tree, ast.Module))
+imports = []
+for node in ast.walk(tree):
+    if isinstance(node, ast.Import):
+        imports.extend(alias.name for alias in node.names)
+    elif isinstance(node, ast.ImportFrom):
+        imports.append(node.module + ':' + ','.join(alias.name for alias in node.names))
+checked('Source.exact_metadata_stdlib_imports', sorted(imports) == sorted(['base64', 'datetime', 'hashlib', 'json', 'os', 'stat', 'sys', 'pathlib:Path']), imports)
+checked('Source.no_dynamic_import_or_eval_or_native_or_process_launch', not any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in {'eval', 'exec', 'compile', '__import__', 'open', 'input'} for n in ast.walk(tree)))
+getattrs = [ast.unparse(n) for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == 'getattr']
+checked('Source.getattr_only_saved_file_attribute', getattrs == ["getattr(info, 'st_file_attributes', 0)"], getattrs)
+checked('Source.no_fractional_numeric_constants', not any(isinstance(n, ast.Constant) and isinstance(n.value, (float, complex)) for n in ast.walk(tree)))
+checked('Source.no_async_class_or_decorator_escape', not any(isinstance(n, (ast.AsyncFunctionDef, ast.ClassDef, ast.Await)) for n in ast.walk(tree)) and not any(isinstance(n, ast.FunctionDef) and n.decorator_list for n in ast.walk(tree)))
+functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+checked('Source.exact_metadata_function_inventory', set(functions) == {'need', 'raw', 'fact', 'pairs', 'bad_number', 'shape', 'document', 'fresh', 'save', 'make_scope'}, sorted(functions))
+holds_node = next(node.value for node in tree.body if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'HOLDS' for t in node.targets))
+checked('Source.HOLDS_dictcomprehension_false_exact_inventory', isinstance(holds_node, ast.DictComp) and isinstance(holds_node.value, ast.Constant) and holds_node.value.value is False and ast.literal_eval(holds_node.generators[0].iter) == HOLDS)
+open_calls = [ast.unparse(n) for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == 'open']
+checked('Source.only_saved_metadata_rb_and_CreateNew_xb_opens', sorted(open_calls) == ["path.open('rb')", "path.open('xb')"], open_calls)
+os_calls = sorted({ast.unparse(n.func) for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and isinstance(n.func.value, ast.Name) and n.func.value.id == 'os'})
+checked('Source.os_only_file_metadata_and_flush', os_calls == ['os.fstat', 'os.fsync'], os_calls)
+write_calls = [ast.unparse(n) for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr in {'write', 'write_bytes', 'write_text', 'unlink', 'rename', 'replace', 'mkdir', 'rmdir', 'chmod'}]
+checked('Source.single_bounded_writer_no_delete_rename_or_external_writer', write_calls == ['handle.write(data)'], write_calls)
+make_call = functions['make_scope'].body[0].value
+literal_keys = [kw.arg for kw in make_call.keywords if kw.arg is not None]
+checked('Source.make_scope_exact_keyword_and_HOLDS_keyset', set(literal_keys).isdisjoint(HOLDS) and set(literal_keys) | set(HOLDS) == set(expected) and len(literal_keys) == len(set(literal_keys)) and len([kw for kw in make_call.keywords if kw.arg is None]) == 1)
+checked('Source.make_scope_only_HOLDS_unpack', all(isinstance(kw.value, ast.Name) and kw.value.id == 'HOLDS' for kw in make_call.keywords if kw.arg is None))
+
+SOURCE_REQUIREMENTS = {
+ 'raw.nonreparse_lineage': "not parent.is_symlink() and not getattr(info, 'st_file_attributes', 0) & 1024",
+ 'raw.single_link_regular_cap': 'stat.S_ISREG(first.st_mode) and first.st_nlink == 1 and 0 <= first.st_size <= CAP',
+ 'raw.whole_identity_stability': 'key(first) == key(opened) == key(last) == key(after) and len(data) == first.st_size',
+ 'JSON.reject_duplicate_keys': "need(key not in out, 'duplicate JSON key')",
+ 'JSON.reject_fractional_nonfinite': 'parse_float=bad_number, parse_constant=bad_number',
+ 'JSON.node_depth_bounds': "need(count <= 50000 and depth <= 48, 'metadata node and depth bounds')",
+ 'JSON.float_free_types': "type(obj) in (str, int, bool, list, dict)",
+ 'JSON.surrogate_rejection': 'not any(55296 <= ord(char) <= 57343 for char in obj)',
+ 'fresh.strict_date': 'now.date() == dt.date(2026, 10, 28)',
+ 'fresh.strict_sixty_reserve': 'now < dt.datetime.fromisoformat(END) - dt.timedelta(seconds=60)',
+ 'save.fixed_filename': 'Path(name).name == name',
+ 'save.cap': "need(len(data) <= CAP, 'own metadata output cap')",
+ 'save.CreateNew': "with path.open('xb') as handle:",
+ 'save.whole_write': "need(handle.write(data) == len(data), 'whole CreateNew write')",
+ 'save.flush': 'handle.flush()\n        os.fsync(handle.fileno())',
+ 'save.whole_readback': "need(raw(path) == data, 'whole output readback')",
+ 'save.strict_readback': "need(document(path)[0] == value, 'strict output readback')",
+ 'mode.explicit_prepare_adopt': "len(sys.argv) >= 2 and sys.argv[1] in ('prepare', 'adopt')",
+ 'prepare.no_extra_arguments': "need(len(sys.argv) == 2, 'prepare takes no other arguments')",
+ 'prepare.whole_inverse': "base64.b64encode(raw(pin['path'])).decode('ascii')",
+ 'adopt.exact_arg_count': "len(sys.argv) == 4, 'Root adopt requires exact capsule path and SHA256 after different review'",
+ 'adopt.capsule_workspace': "capsule_path.is_absolute() and capsule_path.is_relative_to(R5)",
+ 'adopt.exact_capsule_SHA': "capsule_pin['sha256'] == sys.argv[3]",
+ 'adopt.proof_workspace': 'proof_path.is_absolute() and proof_path.is_relative_to(R5)',
+ 'adopt.exact_proof_F3': "document(proof_path, capsule['full_proof'])",
+ 'adopt.different_reviewer': "capsule['reviewer'] not in (AUTHOR, '/root')",
+ 'adopt.same_reviewer': "capsule['reviewer'] == proof['reviewer']",
+ 'adopt.same_PASS_verdict': "capsule['verdict'] == proof['verdict'] and capsule['verdict'].startswith('PASS_')",
+ 'adopt.empty_same_findings': "capsule['remaining_actionable_findings'] == proof['remaining_actionable_findings'] == []",
+ 'adopt.positive_named_boolean_checks': "x.get('passed') is True for x in checks",
+ 'adopt.unique_check_names': "len({x['name'] for x in checks}) == len(checks)",
+ 'adopt.exact_positive_pass_count': "type(reviewed['checks_passed']) is int and reviewed['checks_passed'] == len(checks)",
+ 'adopt.exact_zero_failure_count': "type(reviewed['checks_failed']) is int and reviewed['checks_failed'] == 0",
+ 'adopt.entire_scope_expected': "scope == make_scope(scope['created_utc'], inverse_pin)",
+ 'adopt.actual_interval_and_reserve': 'start <= fresh() < dt.datetime.fromisoformat(END) - dt.timedelta(seconds=60)',
+ 'adopt.two_predecessors': "len(inverse['items']) == 2",
+ 'adopt.whole_inverse_restore': "base64.b64decode(item['base64'], validate=True) == raw(pin['path'])",
+ 'adopt.exact_ordered_artifacts': 'artifacts = [scope_pin, self_pin, inverse_pin]',
+ 'adopt.same_exact_candidate': "capsule['candidate'] == proof['candidate'] == scope_pin",
+ 'adopt.same_exact_review_roster': "capsule['reviewed_artifacts'] == proof['reviewed_artifacts'] == artifacts",
+ 'adopt.fresh_exact_roster': "fact(Path(pin['path'])) == pin",
+ 'adopt.every_gate_bool_false': 'type(scope[key]) is bool and scope[key] is val is False',
+ 'adopt.fixed_adoption_output': 'adoption = save(ADOPTION_NAME, dict(',
+ 'adopt.no_operative_permission_output': 'Source_only_scheduling_not_operative_lease=True',
+}
+for name, fragment in SOURCE_REQUIREMENTS.items():
+    checked('Source.guard.' + name, fragment in source, fragment)
+checked('Source.fixed_END_and_author', "END = '2026-10-28T09:30:00+00:00'" in source and "AUTHOR = '/root/scope013_review'" in source)
+checked('Source.capsule_proof_checks_before_adoption_save', source.index("capsule, capsule_pin = document(capsule_path)") < source.index("adoption = save(ADOPTION_NAME") and source.index("for key, val in HOLDS.items():") < source.index("adoption = save(ADOPTION_NAME"))
+checked('Source.prepare_and_adopt_are_separate_exit_paths', "sys.exit(0)\n\nneed(len(sys.argv) == 4" in source)
+checked('Source.no_subject_import_API_or_call', all(token not in imports for token in ('subprocess', 'ctypes', 'socket', 'multiprocessing', 'threading', 'importlib')) and all(token not in source for token in ('Popen(', 'CreateProcess', 'Add-Type', 'ParseFile(', 'Get-CimInstance', 'Get-Process', 'kill(', 'os.system(', 'os.popen(')))
+
+provenance = {
+ 'method': 'Reviewer independently used trusted app read_thread with exact thread; then page cursor read the preceding completed turn. No message was sent to peer.',
+ 'thread_id': '01a171ac-fe4f-71c0-b078-f9c56c579f08',
+ 'human_turn_id': '01a18180-ded3-72d3-a1d7-58dbfd26121a',
+ 'human_message_id': '01a18180-df18-7171-bcea-f30a69fd6037',
+ 'human_exact_text': 'off to the next step! \n',
+ 'preceding_turn_id': '01a1817f-f803-7d40-8b01-914694a95ffd',
+ 'preceding_final_message_id': 'msg_0c31757a8e132009016ae1aa1d0cec8191a26d9ed3268290e6',
+ 'preceding_handoff_confirmed': 'Bootstrap failed on unexpected descendant; cleanup could not be verified. No automatic retry. 117 tests and 34 guards remain unexecuted. Next bounded process-tree and cleanup diagnostics, independent review, then fresh coordination and admission; prior windows expired.',
+ 'interpretation': 'Fresh bounded Source005 diagnostics/protocol authoring and separate Source review are supported; operative action remains separately conditioned and held.',
+}
+checked('human.independently_verified_exact_direct_instruction', scope['verified_new_direct_human']['exact_text'] == provenance['human_exact_text'] and scope['verified_new_direct_human']['turn_id'] == provenance['human_turn_id'] and scope['verified_new_direct_human']['user_message_id'] == provenance['human_message_id'])
+checked('human.independently_verified_preceding_failed_handoff', scope['immediate_prior_handoff_context']['turn_id'] == provenance['preceding_turn_id'] and scope['immediate_prior_handoff_context']['final_message_id'] == provenance['preceding_final_message_id'])
+checked('interpretation.only_new_finite_Source_phase', scope['Source_only_scheduling_not_operative_lease'] is True and all(scope[name] is False for name in HOLDS) and scope['prospective_Source_diagnostics_005']['status'] == 'SOURCE_ONLY_PROPOSAL_NOT_OPERATIVE')
+
+artifacts = [scope_pin, source_pin, inverse_pin]
+for index, fact in enumerate(artifacts):
+    checked('final_refresh.reviewed_artifact_' + str(index), pin(Path(fact['path'])) == fact, fact)
+for label, fact in [('old_scope', old_pin), ('old_adoption', old_adoption_pin), ('scope13', context13_pin), ('adoption13', adoption13_pin)]:
+    checked('final_refresh.unchanged_context_' + label, pin(Path(fact['path'])) == fact, fact)
+checked('final_review.current_strict_reserve', start <= current() < END - dt.timedelta(seconds=60))
+passed = sum(1 for row in CHECKS if row['passed'])
+failed = len(CHECKS) - passed
+require(passed > 0 and passed + failed == len(CHECKS), 'positive exact proof count')
+verdict = 'PASS_WHOLE_SOURCE014_NEW_FINITE_SOURCE_ONLY_METADATA' if not FINDINGS else 'FAIL_SOURCE014_METADATA_ACTIONABLE_FINDINGS'
+common = dict(reviewer=REVIEWER, physical_Source_author=AUTHOR, intended_Root_adopter='/root',
+    verdict=verdict, candidate=scope_pin, reviewed_artifacts=artifacts,
+    checks_passed=passed, checks_failed=failed, remaining_actionable_findings=FINDINGS,
+    started_utc=began, completed_utc=current().isoformat(), interval_end=scope['interval_end'],
+    publication_reserve_seconds=60, metadata_cap_bytes=CAP, metadata_depth=48, metadata_nodes=50000,
+    review_authority='New direct human Source-only phase independently corroborated; separate Source013 saved-failure closeout context is unchanged. No old period is extended.',
+    review_scope='Whole exact Scope014, author/adopter Source014 text/AST, exact two-predecessor whole inverse, strict saved metadata and trusted app human/handoff provenance only.',
+    Root_decision_made=False, Source_only_coexistence_adopted=False,
+    subject_or_author_or_adopter_invoked=False, subject_Source_imported=False,
+    process_or_native_or_resource_or_pause_query_performed=False,
+    Python_target_or_tests_or_Job_invoked=False, Git_or_capture_or_science_performed=False,
+    operational_authority=False, failed004_release_or_result_acceptance=False,
+    native_request_advancement=False)
+proof = dict(record_type='Independent_Source014_new_finite_coexistence_metadata_full_proof', schema_version=1,
+    **common, checks=CHECKS, independent_trusted_app_provenance=provenance,
+    reviewer_helper_Source=pin(Path(__file__)),
+    context_artifacts=[old_pin, old_adoption_pin, context13_pin, adoption13_pin],
+    scope_limitations=['This review does not adopt the proposal; Root alone may make a distinct adoption decision.',
+      'No Source005 diagnostic Source or later operation/result is reviewed or accepted here.',
+      'FAILED_UNRELEASED_CONSUMED004 and all unknown cleanup/custody remain unclosed; no native request can advance.',
+      'Shared five-agent ceiling, Root3/peer2 serialized author OR reviewer, strict original60 reserve and all original guards/caps/budgets remain unchanged.'])
+proof_pin = save('INDEPENDENT_SOURCE014_NEW_FINITE_COEXISTENCE_METADATA_FULL_PROOF_001.json', proof)
+capsule = dict(record_type='Independent_Source014_new_finite_coexistence_metadata_capsule', schema_version=1,
+    **common, full_proof=proof_pin, reviewer_helper_Source=pin(Path(__file__)),
+    independent_trusted_app_provenance=provenance,
+    summary='Whole candidate, metadata author/adopter and whole predecessor inverse pass independent exact static review; fresh finite Source-only diagnostic authoring/review scheduling remains subject to separate Root adoption. All operational holds remain false.')
+capsule_pin = save('INDEPENDENT_SOURCE014_NEW_FINITE_COEXISTENCE_METADATA_CAPSULE_001.json', capsule)
+require(strict(read(Path(capsule_pin['path'])))['full_proof'] == pin(Path(proof_pin['path'])), 'final proof/capsule binding')
+print(json.dumps({'reviewer': REVIEWER, 'verdict': verdict, 'full_proof': proof_pin, 'capsule': capsule_pin,
+    'checks_passed': passed, 'checks_failed': failed, 'remaining_actionable_findings': FINDINGS,
+    'reviewer_helper_Source': pin(Path(__file__)), 'completed_utc': current().isoformat()}, sort_keys=True))

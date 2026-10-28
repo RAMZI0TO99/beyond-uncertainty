@@ -1,0 +1,370 @@
+"""Fresh I12 synthetic-only once supervisor Source. Unrun pending separate admission.
+
+Own metadata/process control only. It loads exactly three new reviewed I12 modules and
+fixture in one -I -S -B child after an exclusive claim and child-entry witness.
+No original helper, family publication, native collector or Parser operation.
+"""
+import datetime as dt
+import hashlib
+import types
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import threading
+import time
+
+SOURCES = {'formats': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-002\\receipt_caller_integration_015\\i12\\receipt_contract_formats_003.py', 'bytes': 18279, 'sha256': 'd446e4018df9ca37afc234b16cf7ac264c01e28a3aaa55b8c753cf236641ef42'}, 'single': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-002\\receipt_caller_integration_015\\i12\\validate_generic_single_receipt_metadata_003.py', 'bytes': 45347, 'sha256': '0badfa9012cd1809aead5ecf9f6a44bb0872280df35915d6757f8365d31d8da2'}, 'peer': {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-002\\receipt_caller_integration_015\\i12\\validate_selected_peer_receipt_metadata_004.py', 'bytes': 44314, 'sha256': 'e21b14859bf6e128afb87452aff49f096ebc396d4885525bb59df6012cbf6a4c'}}
+CATALOGUE = {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-002\\receipt_caller_integration_015\\I12_EXACT_RECEIPT_FORMAT_SCHEMA_AND_FIXED_DATA_CATALOGUE_002.json', 'bytes': 63218, 'sha256': 'e1521b008e4cb5deac47fcd3586310c052b71635ade957c85ef59749221bc67d'}
+FIXTURE = {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-002\\receipt_caller_integration_015\\i12\\test_outside8_receipt_contract_memory_only_001.py', 'bytes': 1637857, 'sha256': '22dc48149b0c723feb50e8de884c7b5416e161bbc7f08b39e630d148d1944f32'}
+EXPECTED_CASE_COUNT = 880
+EXPECTED_CASE_NAMES_SHA256 = '7627620111d2809a561dad68bafe36a928cfdc83dc58d81aadfb486803b4904a'
+OWNED_PARENT_ROOT = Path(__file__).parent / 'owned_memory_runs'
+BUDGETS = dict(total_seconds=60, wait_seconds=50, cleanup_seconds=10, reap_seconds=5,
+               stdout_maximum_bytes=2097152, stderr_maximum_bytes=2097152)
+SCOPE_KEYS = ('schema_version', 'record_type', 'author', 'created_utc', 'interval_start', 'interval_end',
+              'operation', 'maximum_suite_invocations', 'source_scope', 'protocol_adoption', 'source_adoption',
+              'modules', 'catalogue', 'fixture', 'supervisor', 'runtime', 'outputs', 'budgets', 'target_execution',
+              'operational_authority', 'scientific_authority', 'actual_family_publication')
+OUTPUT_KEYS = ('claim', 'child_entry', 'child_result', 'stdout', 'stderr', 'supervisor_result')
+
+
+def need(ok, message):
+    if not ok:
+        raise ValueError(message)
+
+
+def wire(value):
+    return (json.dumps(value, sort_keys=True, indent=2, allow_nan=False) + '\n').encode('utf8')
+
+
+def utc():
+    return dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds')
+
+
+def pairs(items):
+    result = {}
+    for k, v in items:
+        need(k not in result, 'duplicate JSON name')
+        result[k] = v
+    return result
+
+
+def bad_number(value):
+    raise ValueError('non-integer JSON number')
+
+
+def decode(raw):
+    return json.loads(raw.decode('utf8'), object_pairs_hook=pairs, parse_float=bad_number, parse_constant=bad_number)
+
+
+def ordinary(path, file=True):
+    path = Path(path)
+    need(path.is_absolute() and '..' not in path.parts, 'absolute ordinary path')
+    for parent in reversed(path.parents):
+        info = parent.lstat()
+        need(parent.is_dir() and not parent.is_symlink() and not getattr(info, 'st_file_attributes', 0) & 1024, 'ordinary parent')
+    if file:
+        info = path.lstat()
+        need(path.is_file() and not path.is_symlink() and info.st_nlink == 1 and
+             not getattr(info, 'st_file_attributes', 0) & 1024, 'ordinary single-link file')
+    return path
+
+
+def read_pin(pin, cap=2097152):
+    need(type(pin) is dict and set(pin) == {'path', 'bytes', 'sha256'} and
+         type(pin['bytes']) is int and 0 < pin['bytes'] <= cap and type(pin['sha256']) is str and
+         re.fullmatch('[0-9a-f]{64}', pin['sha256']) is not None, 'exact bounded positive pin')
+    path = ordinary(pin['path'])
+    before = path.stat()
+    with path.open('rb') as handle:
+        first = handle.read(cap + 1)
+        handle.seek(0)
+        second = handle.read(cap + 1)
+        fd = os.fstat(handle.fileno())
+    after = path.stat()
+    names = ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns', 'st_mode', 'st_nlink', 'st_file_attributes', 'st_birthtime_ns')
+    vector = lambda value: tuple(getattr(value, name, None) for name in names)
+    need(vector(before) == vector(after) and all(getattr(fd, k, None) == getattr(after, k, None)
+         for k in ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_nlink', 'st_file_attributes', 'st_birthtime_ns')), 'owned input changed')
+    need(first == second and len(first) == pin['bytes'] and hashlib.sha256(first).hexdigest() == pin['sha256'], 'whole bytes pin')
+    return first
+
+
+def read_limited(path, cap=2097152):
+    path = ordinary(path)
+    with path.open('rb') as handle:
+        raw = handle.read(cap + 1)
+    need(0 < len(raw) <= cap, 'bounded metadata input')
+    return raw
+
+
+def fact(path, raw):
+    return dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+
+
+def occurs(value, pin):
+    if type(value) is dict:
+        if set(value) == {'path', 'bytes', 'sha256'} and all(type(value[k]) is type(v) and value[k] == v for k, v in pin.items()):
+            return True
+        return any(occurs(v, pin) for v in value.values())
+    return type(value) is list and any(occurs(v, pin) for v in value)
+
+
+def write_new(path, body):
+    need(type(body) is bytes and len(body) <= 2097152, 'bounded owned output')
+    path = ordinary(path, False)
+    need(not os.path.lexists(path), 'exclusive absent owned output')
+    with path.open('xb') as handle:
+        need(handle.write(body) == len(body), 'whole owned output')
+        handle.flush()
+        os.fsync(handle.fileno())
+    return fact(path, body)
+
+
+def scope(path, expected_hash):
+    path = ordinary(path)
+    raw = read_limited(path)
+    need(hashlib.sha256(raw).hexdigest() == expected_hash, 'exact Root once-scope hash')
+    value = decode(raw)
+    need(type(value) is dict and set(value) == set(SCOPE_KEYS) and type(value['schema_version']) is int and value['schema_version'] == 1 and
+         value['record_type'] == 'Root_I12_once_owned_synthetic_memory_scope' and value['author'] == '/root' and
+         value['operation'] == 'NEW_I12_SYNTHETIC_MEMORY_TEST_ONLY' and type(value['maximum_suite_invocations']) is int and
+         value['maximum_suite_invocations'] == 1 and value['budgets'] == BUDGETS and
+         all(value[k] is False for k in ('target_execution', 'operational_authority', 'scientific_authority', 'actual_family_publication')), 'exact synthetic-only scope')
+    parse_time = lambda x: dt.datetime.fromisoformat(x)
+    now = dt.datetime.now(dt.timezone.utc)
+    need(parse_time(value['created_utc']) <= now and parse_time(value['interval_start']) <= now < parse_time(value['interval_end']), 'fresh one-use scope window')
+    need(value['modules'] == SOURCES and value['catalogue'] == CATALOGUE and value['fixture'] == FIXTURE, 'exact frozen three new modules/catalogue/fixture')
+    need(Path(value['supervisor']['path']) == Path(__file__), 'exact supervisor path')
+    for key in ('catalogue', 'fixture', 'supervisor', 'runtime', 'source_scope', 'protocol_adoption', 'source_adoption'):
+        read_pin(value[key])
+    for source_pin in SOURCES.values():
+        read_pin(source_pin, cap=65536)
+    need(os.path.normcase(value['runtime']['path']) == os.path.normcase(sys.executable), 'pinned general-host runtime; no frozen interpreter fallback')
+    source_scope = decode(read_pin(value['source_scope']))
+    need(source_scope.get('author') == '/root' and source_scope.get('record_type') == 'Root_current_I12_remaining_receipt_and_caller_Source_scope' and
+         source_scope.get('target_execution') is False and source_scope.get('operational_authority') is False and
+         parse_time(source_scope['interval_start']) <= now < parse_time(source_scope['interval_end']) and
+         parse_time(value['interval_end']) <= parse_time(source_scope['interval_end']), 'current Source scheduling preserved')
+    adoption = decode(read_pin(value['source_adoption']))
+    need(adoption.get('author') == '/root' and type(adoption.get('verdict')) is str and adoption['verdict'].startswith('ACCEPT_') and
+         adoption.get('target_execution') is False and adoption.get('operational_authority') is False and
+         all(occurs(adoption, value[k]) for k in ('catalogue', 'fixture', 'supervisor')) and all(occurs(adoption, p) for p in SOURCES.values()), 'actual Root Source adoption covers exact three programs')
+    need(type(value['outputs']) is dict and set(value['outputs']) == set(OUTPUT_KEYS), 'exact six owned outputs')
+    outputs = [ordinary(v, False) for v in value['outputs'].values()]
+    need(len({str(p).casefold() for p in outputs}) == 6 and len({p.parent for p in outputs}) == 1 and
+         all(p.suffix in ('.json', '.txt') for p in outputs), 'one prepared owned output namespace')
+    need(all(p.parent.parent == OWNED_PARENT_ROOT for p in outputs), 'declared synthetic owned attempt directory only')
+    need(not any(str(p).casefold() == q['path'].casefold() for p in outputs for q in tuple(SOURCES.values()) + (value['catalogue'], value['fixture'], value['supervisor'])), 'inputs distinct from outputs')
+    return value, fact(path, raw)
+
+
+def load_new(name, pin):
+    raw = read_pin(pin)
+    module = types.ModuleType(name)
+    module.__file__ = pin['path']
+    # The separately admitted once child compiles/executes the exact verified
+    # buffer. No filesystem loader can substitute a later path read.
+    exec(compile(raw, pin['path'], 'exec'), module.__dict__)
+    return module
+
+
+def child(scope_path, expected_hash):
+    value, scope_pin = scope(scope_path, expected_hash)
+    need(sys.flags.isolated == 1 and sys.flags.no_site == 1 and sys.flags.dont_write_bytecode == 1, 'isolated -I -S -B child')
+    outputs = value['outputs']
+    claim_raw = read_limited(outputs['claim'])
+    claim = decode(claim_raw)
+    need(claim.get('record_type') == 'I12_once_scope_claim' and claim.get('scope') == scope_pin and
+         claim.get('supervisor') == value['supervisor'] and type(claim.get('suite_invocations_maximum')) is int and
+         claim['suite_invocations_maximum'] == 1 and type(claim.get('parent_pid')) is int and
+         claim['parent_pid'] == os.getppid(), 'actual owned parent claim/scope identity')
+    write_new(outputs['child_entry'], wire(dict(record_type='I12_owned_child_entry_before_target_import', created_utc=utc(), pid=os.getpid(), scope=scope_pin)))
+    formats = load_new('_i12_new_formats_001', SOURCES['formats'])
+    single = load_new('_i12_new_single_001', SOURCES['single'])
+    peer = load_new('_i12_new_peer_001', SOURCES['peer'])
+    catalogue_bytes = read_pin(CATALOGUE)
+    fixture = load_new('_i12_new_fixture_001', FIXTURE)
+    print(json.dumps(dict(event='SUITE_ENTRY', case_count=len(fixture.CASE_CATALOGUE))), flush=True)
+    result = fixture.run(formats=formats, single=single, peer=peer, catalogue_bytes=catalogue_bytes)
+    result.update(owned_pid=os.getpid(), scope=scope_pin, created_utc=utc())
+    write_new(outputs['child_result'], wire(result))
+    print(json.dumps(dict(event='SUITE_COMPLETE', passed=result['passed'], failed=result['failed'])), flush=True)
+    return 0
+
+
+def parent(scope_path, expected_hash):
+    start = time.monotonic()
+    value, scope_pin = scope(scope_path, expected_hash)
+    outputs = value['outputs']
+    need((dt.datetime.fromisoformat(value['interval_end']) - dt.datetime.now(dt.timezone.utc)).total_seconds() > 60, 'original60 reserve before claim/child launch')
+    need(not any(os.path.lexists(p) for p in outputs.values()), 'all fresh owned identities absent; no reuse')
+    claim = write_new(outputs['claim'], wire(dict(record_type='I12_once_scope_claim', created_utc=utc(), scope=scope_pin, supervisor=value['supervisor'], suite_invocations_maximum=1, parent_pid=os.getpid())))
+    try:
+        proc = subprocess.Popen([sys.executable, '-I', '-S', '-B', str(Path(__file__)), '--child', str(scope_path), expected_hash],
+                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+    except OSError as exc:
+        elapsed = time.monotonic() - start
+        refused = dict(schema_version=1, record_type='I12_owned_once_memory_supervisor_result', created_utc=utc(), scope=scope_pin,
+                       claim=claim, owned_pid=None, exit_code=None, reaped=False, child_launched=False,
+                       acceptance_at_record_preparation=False, refusal='CHILD_LAUNCH_REFUSAL', exception_type=type(exc).__name__,
+                       elapsed_milliseconds=int(elapsed*1000), budgets=BUDGETS, target_execution=False,
+                       actual_family_publication=False, operational_authority=False, scientific_authority=False,
+                       physical_host_or_PID_absence_proved=False)
+        result_pin = write_new(outputs['supervisor_result'], wire(refused))
+        final_elapsed = time.monotonic() - start
+        print(json.dumps(dict(accepted=False, refusal='CHILD_LAUNCH_REFUSAL', supervisor_result=result_pin,
+                              final_elapsed_milliseconds=int(final_elapsed*1000))), flush=True)
+        return 1
+    buffers = {'stdout': bytearray(), 'stderr': bytearray()}
+    counts = {'stdout': 0, 'stderr': 0}
+    overflow = threading.Event()
+    pump_failed = threading.Event()
+    stream_eof = {'stdout': False, 'stderr': False}
+    pump_errors = {'stdout': None, 'stderr': None}
+    def pump(name, pipe):
+        try:
+            while True:
+                chunk = pipe.read(65536)
+                if not chunk:
+                    stream_eof[name] = True
+                    break
+                counts[name] += len(chunk)
+                if counts[name] > 2097152:
+                    overflow.set()
+                remaining = 2097152 - len(buffers[name])
+                if remaining > 0:
+                    buffers[name].extend(chunk[:remaining])
+        except Exception as exc:
+            pump_errors[name] = type(exc).__name__
+            pump_failed.set()
+        finally:
+            try:
+                pipe.close()
+            except Exception as exc:
+                pump_errors[name] = type(exc).__name__
+                pump_failed.set()
+    threads = [threading.Thread(target=pump, args=(name, getattr(proc, name)), daemon=True) for name in ('stdout', 'stderr')]
+    for thread in threads:
+        thread.start()
+    reason = None
+    while proc.poll() is None:
+        if pump_failed.is_set():
+            reason = 'STREAM_CAPTURE_REFUSAL'; break
+        if overflow.is_set():
+            reason = 'OUTPUT_CAP_REFUSAL'; break
+        if time.monotonic() - start >= 50:
+            reason = 'WAIT50_TIMEOUT'; break
+        time.sleep(0.01)
+    terminated = killed = False
+    custody_error = None
+    if proc.poll() is None:
+        try:
+            proc.terminate(); terminated = True
+            try:
+                proc.wait(timeout=max(0, min(5, 60 - (time.monotonic() - start))))
+            except subprocess.TimeoutExpired:
+                proc.kill(); killed = True
+                try:
+                    proc.wait(timeout=max(0, min(5, 60 - (time.monotonic() - start))))
+                except subprocess.TimeoutExpired:
+                    reason = 'FINAL_REAP_TIMEOUT'
+        except OSError as exc:
+            custody_error = type(exc).__name__
+            reason = 'OWNED_CLEANUP_REFUSAL'
+    else:
+        try:
+            proc.wait(timeout=max(0, min(5, 60 - (time.monotonic() - start))))
+        except subprocess.TimeoutExpired:
+            reason = 'FINAL_REAP_TIMEOUT'
+    for thread in threads:
+        thread.join(timeout=max(0, min(1, 60 - (time.monotonic() - start))))
+    threads_finished = not any(t.is_alive() for t in threads)
+    drained = threads_finished and all(stream_eof.values()) and not any(pump_errors.values())
+    if not drained:
+        reason = reason or 'STREAM_DRAIN_REFUSAL'
+    stdout = write_new(outputs['stdout'], bytes(buffers['stdout']))
+    stderr = write_new(outputs['stderr'], bytes(buffers['stderr']))
+    result = None
+    if os.path.lexists(outputs['child_result']):
+        try:
+            path = ordinary(outputs['child_result']); body = read_limited(path)
+            decoded = decode(body)
+            need(type(decoded) is dict, 'child result object')
+            result = dict(pin=fact(path, body), value=decoded)
+        except (OSError, ValueError, UnicodeError) as exc:
+            reason = reason or 'CHILD_RESULT_REFUSAL'
+            child_result_error = type(exc).__name__
+        else:
+            child_result_error = None
+    else:
+        child_result_error = None
+    catalogue_valid = False
+    if result is not None:
+        child_value = result['value']
+        cases = child_value.get('cases')
+        if type(cases) is list and len(cases) == EXPECTED_CASE_COUNT and all(type(c) is dict and set(c) == {'name', 'passed'} and
+                type(c['name']) is str and c['passed'] is True for c in cases):
+            names = [c['name'] for c in cases]
+            catalogue_valid = (hashlib.sha256(json.dumps(names, separators=(',', ':'), ensure_ascii=True).encode()).hexdigest() == EXPECTED_CASE_NAMES_SHA256 and
+                               len(set(names)) == len(names) and type(child_value.get('passed')) is int and child_value['passed'] == EXPECTED_CASE_COUNT and
+                               type(child_value.get('failed')) is int and child_value['failed'] == 0 and child_value.get('metadata_only') is True and
+                               child_value.get('record_type') == 'I12_owned_synthetic_memory_case_results' and child_value.get('scope') == scope_pin and
+                               type(child_value.get('owned_pid')) is int and child_value['owned_pid'] == proc.pid and
+                               all(child_value.get(k) is False for k in ('actual_family_publication', 'target_execution', 'operational_authority', 'scientific_authority')))
+    events = None
+    if drained and not overflow.is_set():
+        try:
+            events = [decode(line) for line in bytes(buffers['stdout']).splitlines() if line]
+        except (ValueError, UnicodeError):
+            events = None
+    known_entry = None if events is None else any(type(e) is dict and e.get('event') == 'SUITE_ENTRY' for e in events)
+    known_pass_prefix = None if events is None else sum(type(e) is dict and e.get('event') == 'CASE_PASS' for e in events)
+    # This sample includes reap, stream drains, stdout/stderr writes and result
+    # parsing. The create-once witness reports this candidate honestly. Final
+    # acceptance is sampled again after its fsync and joined to parent exit0.
+    acceptance_elapsed_ns = int((time.monotonic() - start) * 1000000000)
+    if acceptance_elapsed_ns > 60000000000:
+        reason = 'TOTAL60_REFUSAL'
+    accepted = reason is None and proc.returncode == 0 and drained and not overflow.is_set() and catalogue_valid and acceptance_elapsed_ns <= 60000000000
+    witness = dict(schema_version=1, record_type='I12_owned_once_memory_supervisor_result', created_utc=utc(), scope=scope_pin, claim=claim,
+                   owned_pid=proc.pid, exit_code=proc.returncode, reaped=proc.returncode is not None, streams_drained=drained,
+                   terminated=terminated, killed=killed, refusal=reason, stdout=stdout, stderr=stderr, observed_stream_bytes=counts,
+                   stream_threads_finished=threads_finished, actual_stream_EOF=stream_eof, stream_pump_errors=pump_errors,
+                   elapsed_milliseconds=acceptance_elapsed_ns//1000000, acceptance_elapsed_nanoseconds=acceptance_elapsed_ns, budgets=BUDGETS, child_result=result,
+                   acceptance_at_record_preparation=accepted, final_acceptance_requires_saved_console_and_parent_exit0=True,
+                   child_launched=True, custody_error=custody_error, child_result_error=child_result_error,
+                   actual_family_publication=False, target_execution=False,
+                   operational_authority=False, scientific_authority=False, physical_host_or_PID_absence_proved=False,
+                   actual_case_catalogue_valid=catalogue_valid, expected_case_count=EXPECTED_CASE_COUNT,
+                   expected_case_names_sha256=EXPECTED_CASE_NAMES_SHA256,
+                   known_suite_entry_from_complete_stdout=known_entry, known_case_pass_prefix_from_complete_stdout=known_pass_prefix,
+                   child_result_absent=result is None, progress_unknown_without_complete_streams=events is None)
+    witness_pin = write_new(outputs['supervisor_result'], wire(witness))
+    # Reporting boundary: no rewrite of the saved candidate. Final console and
+    # actual parent exit must both be retained and joined with this exact pin.
+    final_elapsed_ns = int((time.monotonic() - start) * 1000000000)
+    final_accepted = accepted and final_elapsed_ns <= 60000000000
+    final_reason = 'TOTAL60_REFUSAL' if final_elapsed_ns > 60000000000 else reason
+    print(json.dumps(dict(accepted=final_accepted, refusal=final_reason, supervisor_result=witness_pin,
+                          owned_pid=proc.pid, exit_code=proc.returncode, final_elapsed_nanoseconds=final_elapsed_ns,
+                          acceptance_at_record_preparation=accepted, reaped=proc.returncode is not None,
+                          streams_drained=drained, actual_stream_EOF=stream_eof, stream_pump_errors=pump_errors,
+                          total_budget_nanoseconds=60000000000)), flush=True)
+    return 0 if final_accepted else 1
+
+
+def main():
+    args = sys.argv[1:]
+    is_child = bool(args and args[0] == '--child')
+    if is_child:
+        args = args[1:]
+    need(len(args) == 2 and re.fullmatch('[0-9a-f]{64}', args[1]) is not None, 'scope path and exact SHA256 required')
+    return child(*args) if is_child else parent(*args)
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

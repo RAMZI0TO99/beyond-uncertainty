@@ -20,6 +20,9 @@ HEX = re.compile(r"^[0-9a-f]{64}$")
 CHUNK = 1024 * 1024
 MAX_GROUP_FILES = 200000
 MAX_INDEX_BYTES = 128 * 1024 * 1024
+MAX_CANONICAL_METADATA_BYTES = 2 * 1024 * 1024
+MAX_OVERLAY_METADATA_BYTES = 64 * 1024
+CANONICAL_PREFIX_OVERLAY_PATHS = frozenset({"PROJECT_STATE.md"})
 TAR_BUFFER = 64 * 1024
 
 def need(condition, message):
@@ -73,10 +76,13 @@ def plain_path(path, directory=False):
         if position or directory:
             need(stat.S_ISDIR(info.st_mode), "non-directory path ancestor")
 
-def validate_pin(pin):
+def pin_relative_path(pin):
     need(isinstance(pin, dict) and {"path", "bytes", "sha256"} <= set(pin), "missing payload byte pin")
     need(type(pin["bytes"]) is int and pin["bytes"] >= 0 and isinstance(pin["sha256"], str) and HEX.fullmatch(pin["sha256"]), "invalid payload byte pin")
-    path = REPO / safe_relative(pin["path"])
+    return safe_relative(pin["path"])
+
+def validate_pin(pin):
+    path = REPO / pin_relative_path(pin)
     plain_path(path)
     need(path.is_file() and not path.is_symlink(), "missing/nonordinary payload: " + pin["path"])
     need(sha_file(path) == (pin["bytes"], pin["sha256"]), "payload SHA/size mismatch: " + pin["path"])
@@ -152,11 +158,76 @@ def inputs(manifest):
     need(type(manifest["raw_file_bytes"]) is int and sum(group[0]["raw_file_bytes"] for group in groups) == manifest["raw_file_bytes"], "invalid total raw file byte count")
     return groups
 
+def read_metadata(path, limit):
+    plain_path(path)
+    need(long_path(path).is_file(), "missing/nonordinary metadata: " + str(path))
+    with long_path(path).open("rb") as handle:
+        data = handle.read(limit + 1)
+    need(len(data) <= limit, "metadata exceeds size bound: " + str(path))
+    return decode(data)
+
+def canonical_overlays(canonical):
+    path = REPO / "continuation/canonical-source-overlays.json"
+    plain_path(path)
+    if not os.path.lexists(long_path(path)):
+        return {}
+    record = read_metadata(path, MAX_OVERLAY_METADATA_BYTES)
+    need(type(record) is dict and set(record) == {"schema_version", "record_type", "overlays"}, "invalid canonical overlay metadata")
+    need(type(record["schema_version"]) is int and record["schema_version"] == 1 and record["record_type"] == "canonical_source_document_prefix_overlays", "unsupported canonical overlay metadata")
+    need(type(record["overlays"]) is list, "canonical overlays must be a list")
+    overlays = {}
+    fields = {"path", "frozen_bytes", "frozen_sha256", "prefix_bytes", "current_bytes", "current_sha256"}
+    for row in record["overlays"]:
+        need(type(row) is dict and set(row) == fields, "invalid canonical document overlay")
+        name = row["path"]
+        safe_relative(name)
+        need(name in canonical, "overlay has unknown canonical path: " + name)
+        need(name not in overlays, "duplicate canonical document overlay: " + name)
+        need(name in CANONICAL_PREFIX_OVERLAY_PATHS and canonical[name].get("origin") == "exact_accepted_STEP080_primary_snapshot", "overlay is not an allowed frozen document: " + name)
+        need(all(type(row[key]) is int and row[key] > 0 for key in ("frozen_bytes", "prefix_bytes", "current_bytes")), "invalid canonical overlay byte counts")
+        need(all(type(row[key]) is str and HEX.fullmatch(row[key]) for key in ("frozen_sha256", "current_sha256")), "invalid canonical overlay hashes")
+        need((row["frozen_bytes"], row["frozen_sha256"]) == (canonical[name]["bytes"], canonical[name]["sha256"]), "overlay changes the frozen canonical pin: " + name)
+        need(row["current_bytes"] == row["prefix_bytes"] + row["frozen_bytes"], "overlay prefix/suffix byte counts disagree: " + name)
+        overlays[name] = row
+    return overlays
+
+def verify_canonical_overlay(frozen, overlay):
+    path = REPO / pin_relative_path(frozen)
+    plain_path(path)
+    need(long_path(path).is_file(), "missing/nonordinary overlay document: " + frozen["path"])
+    current_hash = hashlib.sha256()
+    suffix_hash = hashlib.sha256()
+    total = 0
+    suffix_bytes = 0
+    with long_path(path).open("rb") as handle:
+        for block in iter(lambda: handle.read(CHUNK), b""):
+            start = min(len(block), max(0, overlay["prefix_bytes"] - total))
+            total += len(block)
+            need(total <= overlay["current_bytes"], "overlay document exceeds pinned size: " + frozen["path"])
+            current_hash.update(block)
+            suffix_hash.update(block[start:])
+            suffix_bytes += len(block) - start
+    need((total, current_hash.hexdigest()) == (overlay["current_bytes"], overlay["current_sha256"]), "current overlay document SHA/size mismatch: " + frozen["path"])
+    need((suffix_bytes, suffix_hash.hexdigest()) == (frozen["bytes"], frozen["sha256"]), "frozen canonical document suffix differs: " + frozen["path"])
+
 def verify_canonical():
-    canonical = decode((REPO / "continuation/canonical-source.json").read_bytes())
-    for row in canonical["files"]:
-        validate_pin(row)
-    return len(canonical["files"])
+    record = read_metadata(REPO / "continuation/canonical-source.json", MAX_CANONICAL_METADATA_BYTES)
+    need(type(record) is dict and type(record.get("schema_version")) is int and record["schema_version"] == 1 and type(record.get("files")) is list, "invalid canonical source inventory")
+    canonical = {}
+    seen = set()
+    for row in record["files"]:
+        pin_relative_path(row)
+        name = row["path"]
+        need(name.casefold() not in seen, "duplicate/colliding canonical source path: " + name)
+        seen.add(name.casefold())
+        canonical[name] = row
+    overlays = canonical_overlays(canonical)
+    for name, row in canonical.items():
+        if name in overlays:
+            verify_canonical_overlay(row, overlays[name])
+        else:
+            validate_pin(row)
+    return len(canonical)
 
 def directory_layout(manifest, groups):
     if "directory_layout" not in manifest:

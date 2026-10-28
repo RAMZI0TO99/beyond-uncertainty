@@ -1,0 +1,37 @@
+"""Read/hash peer-reported custody metadata only; no peer-result or host-quiet acceptance."""
+import datetime as dt,hashlib,json,os
+from pathlib import Path
+Q=Path(__file__).parent
+P=Path(r'D:\Aenv\pro3\runs\coordination\cho51_canonical_boundary_20261025_v1')
+def read(p,sha):
+ a=p.stat(); assert p.is_file() and not p.is_symlink() and a.st_nlink==1 and a.st_size<=2097152
+ for q in (p,*p.parents): assert not getattr(q.lstat(),'st_file_attributes',0)&1024
+ b=p.read_bytes(); assert b==p.read_bytes() and len(b)==a.st_size and hashlib.sha256(b).hexdigest()==sha
+ return json.loads(b,parse_float=str),dict(path=str(p),bytes=len(b),sha256=sha)
+lease,lp=read(P/'lease-closeout_001.json','d93731034349a00cbd7b1e7c76c2467c1b940bf80237508d1c1b56be8500b6ec')
+fail,fp=read(P/'failure-closeout_001.json','1c2261d29432eb5a58bf3145a81d6899a4ef30a351fa895d3c70777ebc65e7fd')
+sup,sp=read(P/'failure-closeout-supervision_001.json','c46b54844e81b8b5d389e430baa35105fcb411a25f95e7671719316eaed2a6c7')
+grant,gp=read(Q/'PRO2_PRO3_COMPUTE_RELEASE_20261025_013.json','0ddd8003329f9d28d94c7b39e5c205e166f8d8704e35ad09f14a1c36b0a29e2f')
+assert lease['peer_release_sha256']==fail['peer_release_sha256']==gp['sha256']
+assert lease['jobs_consumed']==lease['maximum_jobs']==1
+for k in ('native_closed_empty','native_handles_closed','fresh_native_job_absent','external_owned_tree_reaped','external_stdout_eof','external_stderr_eof','launcher_session_reaped','full_compute_custody_released','used_sources_outputs_and_receipts_preserved'): assert lease[k] is True
+assert lease['validation_passed'] is lease['automatic_retry_permitted'] is lease['scientific_admission'] is False
+assert sup['timed_out'] is sup['candidate_imported'] is sup['validation_passed'] is sup['scientific_admission'] is False
+assert sup['exit_code']==0 and sup['owned_tree_reaped'] is sup['stdout_eof'] is sup['stderr_eof'] is True
+assert lease['external_elapsed_seconds']==sup['elapsed_seconds']=='53.0704405'
+assert fail['cleanup_verified'] is True and fail['successful_test_evidence'] is fail['validation_passed'] is False
+v=dict(schema_version=1,record_type='Root_retained_peer013_reported_full_custody_release_only',
+ author='/root',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),grant=13,grant_consumed_closed=True,
+ reported_full_compute_custody_released=True,peer_explicit_released_utc=lease['released_utc'],
+ peer_lease_closeout=lp,peer_failure_closeout=fp,peer_external_supervision=sp,compute_grant=gp,
+ peer_reported_native_exit_code=1,peer_reported_validation_passed=False,peer_reported_owned_tree_reaped=True,
+ peer_reported_external_exit_code=0,peer_reported_external_elapsed_seconds_decimal=sup['elapsed_seconds'],
+ peer_reported_full_release=True,Root_acceptance=dict(peer_result_accepted=False,whole_host_quiet_proved=False,
+ physical_handle_absence_proved=False,scientific_acceptance=False),
+ source_and_runtime_peer_result_qualification=False,target_execution=False,operational_authority=False,
+ scientific_authority=False,new_peer_grant_issued=False,old_grant_reuse_authorized=False)
+out=Q/'ROOT_RETAINED_PRO3_013_FAILED_ATTEMPT_AND_FULL_CUSTODY_RELEASE_REPORT_001.json'
+b=(json.dumps(v,sort_keys=True,indent=2,allow_nan=False)+'\n').encode(); assert len(b)<=2097152 and not os.path.lexists(out)
+with out.open('xb') as h: assert h.write(b)==len(b); h.flush();os.fsync(h.fileno())
+assert out.read_bytes()==b
+print(json.dumps(dict(report=dict(path=str(out),bytes=len(b),sha256=hashlib.sha256(b).hexdigest()),peer_result_accepted=False)))

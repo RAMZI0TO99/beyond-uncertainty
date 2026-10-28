@@ -1,0 +1,884 @@
+"""I13 M3/guard format and recorded-graph DATA checks. No IO or admission.
+
+Actual Source editor /root/project_architecture. Existing I2/caller algorithms
+are read only as pinned bytes; this module never imports, calls or rerenders them.
+"""
+import base64
+import datetime
+import hashlib
+import json
+import re
+
+ACTUAL_ENTRY_QUALIFIED = False
+ACTUAL_SOURCE_EDITOR = '/root/project_architecture'
+CATALOGUE_PIN = {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\m3_protocol_audit_001\\I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_007.json', 'bytes': 219028, 'sha256': 'd565de0ef802629303403570437e951247c0bc6b16d2a9c8276d56aa2aa3b9ea'}
+PROTOCOL_PIN = {'path': 'D:\\Aenv\\pro2\\WORK\\resume-20261025-003\\m3_peer_contracts_016\\m3_protocol_audit_001\\I13_PROPOSED_M3_GUARD_AND_SHARED_SELECTED_ROLE_PUBLISHER_PROTOCOL_007.json', 'bytes': 47768, 'sha256': 'af11217ab593da410452cac6761679674340a32f75d0c7ea09a71dc68d25b493'}
+LF_ANNEX_PIN = {'path': r'D:\Aenv\pro2\WORK\resume-20261025-003\m3_peer_contracts_016\canonical_peer_protocol_audit_001\I13_PROPOSED_EXACT_FIXED_INVENTORY_SINGLE_DESCRIPTIVE_LF_ANNEX_002.json', 'bytes': 9565, 'sha256': '998e98777e807140af2b67d07a2c92de03e1cab49a47dce084a7806a0ce6c3f5'}
+INVENTORY_PIN = {'path': r'D:\Aenv\pro2\WORK\resume-20261007-001\generation\step079_M3_unbound_source_preparation_001\STEP079_M3_CURRENT_SLOT_AND_ABI_INVENTORY_001.json', 'bytes': 154055, 'sha256': '65739d2493a33a270ccf15a7d24e4e90fdf2d82300d2f5b392795e5bf84cd9b9'}
+I2_SOURCE = {'path': r'D:\Aenv\pro2\WORK\resume-20261025-002\receipt_caller_integration_015\i2\build_M3_metadata_current_owner_deferred_006.py', 'bytes': 126615, 'sha256': '790ac83005d95fecb1e2837322dd8832b3b59671af85b27f509a35a5fee42c90'}
+I2_API = {'path': r'D:\Aenv\pro2\WORK\resume-20261025-002\receipt_caller_integration_015\i2\CURRENT_OWNER_M3_DEFERRED_METADATA_INERT_API_006.json', 'bytes': 26589, 'sha256': '1405122809583ec16058baed38a8d73bfca690c755cb27ade0571d7588fbb23f'}
+I11_API = {'path': r'D:\Aenv\pro2\WORK\resume-20261025-001\i2_receipt_contract_014\i11\CURRENT_OWNER_FINITE8_CANONICAL_RECEIPT_METADATA_INERT_API_007.json', 'bytes': 257593, 'sha256': 'eac8760d0ed56b1397c15666dfbed0983ea174081a3368bfc67a5b830ef0fa2f'}
+LF_PARTS = ('capture_six_assignment_ABI', 'actual_template_assignments', 'BINDINGS', 'whole_assignment')
+LF_SHA = 'ebe4303197b1ef3a973a3b04bccf0ad2e97a49bb9f43e25a08eb0858b82924b1'
+CAP = 2097152
+TICK = 10000000
+EPOCH = datetime.date(1970, 1, 1).toordinal()
+ACTOR_KEYS = frozenset(('author','source_author','Source_editor','source_editor','actual_Source_editor','actual_physical_Source_editor','physical_Source_editor','physical_receipt_author','physical_selected_byte_editor','metadata_Source_worker','retained_semantic_Source_author','preparation_Source_author','actual_implementation_Source_editor','historical_implementation_Source_editor','actual_content_actor','genuine_content_author_and_reviewer','original_peer_source_author_nominal','canonical_physical_actor','editor'))
+META_EDGES = frozenset(('facts','source','subject','different_review','Root_adoption','full_proof','current_owner_scope','current_owner_support','new_lease_support','Root_future_path_selection_support','selection','owner_scope','lease','canonical','separate_Root_decision','original_publication','current_owner_scope_Root_adoption','different_current_owner_scope_Source_review','API','author_receipt','stage_return','stage_support','generation_purpose_support','producer_purpose_support','producer_purpose','actual_Source_packet','late_reconciliation','reconciliation_review','reconciliation_Root_adoption','different_current_owner_scope_Source_review','reconciliation','publication_packet','publication','request','execution_witness','actual_canonical_delta_Source_review','canonical_delta_Root_adoption','prewrite_packet'))
+LEASE_EDGES = frozenset(('candidate_author_receipt','different_lease_Source_review','candidate_Root_adoption','Root_facts','tool_review','tool_Root_adoption'))
+CONSTRUCTOR_KINDS = ('facts21','receipt22','artifact6','stage_return14','m3_packet16','guard_purpose10','guard_author24','guard_packet14','selected_request25','publisher_purpose12','prewrite_packet15','selected_publication32','execution_witness16','selected_reconciliation25','canonical_packet14','finite8_raw_reference12','purpose_capsule15','purpose_full17','purpose_adoption11')
+
+
+class I13MetadataError(ValueError):
+    def __init__(self, code):
+        self.code = code
+        super().__init__(code)
+
+
+def _need(ok, code='E_SCHEMA'):
+    if not ok:
+        raise I13MetadataError(code)
+
+
+def _sha(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _same(a, b):
+    if type(a) is not type(b):
+        return False
+    if type(a) is dict:
+        return set(a) == set(b) and all(_same(a[k], b[k]) for k in a)
+    if type(a) is list:
+        return len(a) == len(b) and all(_same(x, y) for x, y in zip(a, b))
+    return a == b
+
+
+def _closed(value, keys, code='E_SCHEMA'):
+    _need(type(value) is dict and all(type(k) is str for k in value) and set(value) == set(keys), code)
+
+
+def _path(value):
+    _need(type(value) is str and len(value) <= 512 and re.fullmatch(r'[A-Z]:\\[^/]+', value) is not None, 'E_PATH')
+    reserved = {'CON','PRN','AUX','NUL','CLOCK$'} | {'COM'+str(i) for i in range(1,10)} | {'LPT'+str(i) for i in range(1,10)}
+    _need(all(part and part not in ('.','..') and part[-1] not in '. ' and not any(ord(c)<32 or 0xD800<=ord(c)<=0xDFFF or c in '/:"<>|?*' for c in part) and part.split('.')[0].upper() not in reserved for part in value[3:].split('\\')), 'E_PATH')
+    return value
+
+
+def _actor(value, root=True):
+    _need(type(value) is str and len(value) <= 512 and re.fullmatch(r'/root(?:/[A-Za-z0-9_]+)*', value) is not None and (root or value != '/root'), 'E_ACTOR')
+    return value
+
+
+def _time(value, digits=6):
+    _need(type(value) is str and re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{'+str(digits)+r'}\+00:00', value) is not None, 'E_TIME')
+    try:
+        date = datetime.datetime.strptime(value[:19], '%Y-%m-%dT%H:%M:%S')
+        seconds = (date.date().toordinal()-EPOCH)*86400+date.hour*3600+date.minute*60+date.second
+        return seconds*TICK+int(value[20:20+digits].ljust(7,'0'))
+    except (ValueError, OverflowError):
+        raise I13MetadataError('E_TIME') from None
+
+
+def _pin(value, cap=CAP):
+    _closed(value, ('path','bytes','sha256'), 'E_PIN')
+    _path(value['path'])
+    _need(type(cap) is int and 0 < cap <= CAP and type(value['bytes']) is int and 0 < value['bytes'] <= cap and type(value['sha256']) is str and re.fullmatch('[0-9a-f]{64}', value['sha256']) is not None, 'E_PIN')
+    return dict(value)
+
+
+def _opaque(pin, parts):
+    return _same(pin, I11_API) and bool(parts) and parts[0] == 'literal_case_catalogue'
+
+
+def _tree(value, counter, depth=0, pin=None, parts=()):
+    _need(depth <= 48, 'E_DEPTH')
+    counter[0] += 1
+    _need(counter[0] <= 50000, 'E_NODE_BUDGET')
+    if value is None or type(value) in (bool, int):
+        return
+    if type(value) is str:
+        _need(not any(0xD800 <= ord(c) <= 0xDFFF for c in value), 'E_CONTEXT_VALUE')
+        if any(ord(c) < 32 for c in value) and not _opaque(pin, parts):
+            _need(_same(pin, INVENTORY_PIN) and parts == LF_PARTS and len(value.encode('utf8')) == 367 and _sha(value.encode('utf8')) == LF_SHA and value.count('\n') == 10 and all(ord(c) >= 32 or c == '\n' for c in value), 'E_CONTEXT_VALUE')
+        return
+    if type(value) is list:
+        for i, child in enumerate(value):
+            _tree(child, counter, depth+1, pin, parts+(str(i),))
+        return
+    if type(value) is dict:
+        for key, child in value.items():
+            _need(type(key) is str, 'E_CONTEXT_VALUE')
+            _tree(key, counter, depth+1, pin, parts+('@key:'+key,))
+            _tree(child, counter, depth+1, pin, parts+(key,))
+        return
+    raise I13MetadataError('E_CONTEXT_VALUE')
+
+
+def _pairs(items):
+    out = {}
+    for key, value in items:
+        _need(key not in out, 'E_JSON_DUPLICATE')
+        out[key] = value
+    return out
+
+
+def _bad_number(token):
+    raise I13MetadataError('E_JSON_NUMBER')
+
+
+def _decode(raw, counter, pin=None):
+    _need(type(raw) is bytes and 0 < len(raw) <= CAP and not raw.startswith(b'\xef\xbb\xbf'), 'E_JSON')
+    try:
+        value = json.loads(raw.decode('utf8'), object_pairs_hook=_pairs, parse_float=_bad_number, parse_constant=_bad_number)
+    except (UnicodeError, ValueError, RecursionError, OverflowError) as error:
+        if type(error) is I13MetadataError:
+            raise
+        raise I13MetadataError('E_JSON') from None
+    _tree(value, counter, pin=pin)
+    return value
+
+
+def _wire(value):
+    try:
+        raw = (json.dumps(value, sort_keys=True, separators=(',',':'), ensure_ascii=False, allow_nan=False)+'\n').encode('utf8')
+    except (TypeError, ValueError, UnicodeError, RecursionError, OverflowError):
+        raise I13MetadataError('E_JSON') from None
+    _need(0 < len(raw) <= CAP, 'E_CAP')
+    return raw
+
+
+class _Store:
+    def __init__(self, records):
+        _need(type(records) is list and len(records) <= 256, 'E_RECORD_BUDGET')
+        self.count, self.entries, self.cache, self.total = [1], {}, {}, 0
+        seen = set()
+        for entry in records:
+            _closed(entry, ('pin','body'), 'E_SCHEMA')
+            pin = _pin(entry['pin'])
+            _tree(pin, self.count)
+            self.count[0] += 4
+            _need(self.count[0] <= 50000, 'E_NODE_BUDGET')
+            raw = entry['body']
+            _need(type(raw) is bytes and len(raw) == pin['bytes'] and 0 < len(raw) <= CAP and _sha(raw) == pin['sha256'], 'E_RECORD_HASH')
+            key = pin['path'].casefold()
+            _need(key not in seen, 'E_RECORD_ALIAS')
+            seen.add(key)
+            self.total += len(raw)
+            _need(self.total <= 33554432, 'E_RECORD_BUDGET')
+            self.entries[pin['path']] = (pin, raw)
+
+    def body(self, pin, cap=CAP):
+        pin = _pin(pin, cap)
+        _need(pin['path'] in self.entries and _same(self.entries[pin['path']][0], pin), 'E_RECORD_MISSING')
+        return self.entries[pin['path']][1]
+
+    def record(self, pin, cap=CAP):
+        raw = self.body(pin, cap)
+        key = pin['path']
+        if key not in self.cache:
+            self.cache[key] = _decode(raw, self.count, pin)
+        return self.cache[key]
+
+    def locate(self, raw):
+        _need(type(raw) is bytes and 0 < len(raw) <= CAP, 'E_JSON')
+        hits = [pin for pin, body in self.entries.values() if body == raw]
+        _need(len(hits) == 1, 'E_RECORD_ALIAS')
+        return hits[0]
+
+
+def _enum(catalogue, name):
+    if name in catalogue['enums']:
+        return catalogue['enums'][name]
+    if name == 'prior_kind_enum':
+        return catalogue[name]
+    if name == 'stage_role':
+        return catalogue['enums']['M3_selected_roles'] + _enum(catalogue,'finite8_role')
+    if name in ('selected_role','original_selected45_role'):
+        return list(catalogue['ROLE_SOURCE_CAPS']) + ['composer']
+    if name == 'finite8_role':
+        return catalogue['M3_complete_stage_roles']['templates'][1:] + [r for r in catalogue['original_required_dependencies']['phase_binding'] if r.endswith('_bound')]
+    return None
+
+
+def _list(value, maximum=2000, minimum=0):
+    _need(type(value) is list and minimum <= len(value) <= maximum, 'E_SCHEMA')
+    return value
+
+
+def _type(value, desc, cat, parent=None):
+    if type(desc) is dict:
+        if 'literal' in desc:
+            _need(_same(value, desc['literal']), 'E_SCHEMA_VALUE')
+        elif 'conditional_on_sibling' in desc:
+            _need(type(parent) is dict and type(parent.get(desc['conditional_on_sibling'])) is str, 'E_SCHEMA')
+            _type(value, desc['cases'].get(parent.get(desc['conditional_on_sibling']), desc['otherwise']), cat, parent)
+        elif desc.get('builtin_type') == 'dict':
+            _closed(value, desc['exact_keys'])
+            for key, field in desc['fields'].items():
+                _type(value[key], field, cat, value)
+        elif desc.get('builtin_type') == 'list':
+            _list(value, desc['exact_length'], desc['exact_length'])
+            for v, field in zip(value, desc['items_by_ordinal']):
+                _type(v, field, cat)
+        elif desc.get('builtin_type') == 'str':
+            _need(type(value) is str and len(value) <= desc.get('maximum_length', CAP), 'E_SCHEMA')
+        else:
+            raise I13MetadataError('E_SCHEMA')
+        return
+    _need(type(desc) is str, 'E_SCHEMA')
+    if desc in cat['schemas']:
+        _type(value, cat['schemas'][desc], cat, parent)
+        return
+    enum = _enum(cat, desc)
+    if enum is not None:
+        _need(type(value) is str and value in enum, 'E_SCHEMA_VALUE')
+    elif desc == 'nullable_selected_bound_role':
+        _need(value is None or type(value) is str and value in [r for r in _enum(cat,'finite8_role') if r.endswith('_bound')], 'E_SCHEMA')
+    elif desc in ('fact3','ordinary_pin') or desc.endswith('_fact3') and not desc.startswith('nullable'):
+        _pin(value)
+    elif desc.endswith('_or_null_only_composer'):
+        if type(parent) is dict and parent.get('role') == 'composer':
+            _need(value is None, 'E_SCHEMA')
+        else:
+            _type(value, desc[:-len('_or_null_only_composer')], cat, parent)
+    elif desc == 'nullable_native_absolute_path_only_composer':
+        _need(type(parent) is dict, 'E_SCHEMA')
+        if parent.get('role') == 'composer':
+            _need(value is None, 'E_SCHEMA')
+        else:
+            _path(value)
+    elif desc == 'builtin_bool_true_except_composer':
+        _need(type(parent) is dict and value is (parent.get('role') != 'composer'), 'E_SCHEMA')
+    elif desc.startswith('nullable_'):
+        if value is not None:
+            _type(value, desc[len('nullable_'):], cat, parent)
+    elif desc in ('native_absolute_path','native_path'):
+        _path(value)
+    elif desc == 'safe_relative_path':
+        _need(type(value) is str and len(value) <= 512 and re.fullmatch('[A-Za-z0-9_./-]+', value) is not None and not value.startswith('/') and all(x not in ('','.','..') for x in value.split('/')), 'E_PATH')
+    elif desc.startswith('actor_'):
+        _actor(value, not desc.startswith('actor_nonroot'))
+    elif desc == 'root_uuid':
+        _need(type(value) is str and re.fullmatch('[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', value) is not None, 'E_ROOT_THREAD')
+    elif desc in ('utc6','utc7'):
+        _time(value, 6 if desc == 'utc6' else 7)
+    elif desc in ('lower_ascii_hex64','lower_ascii_hex32'):
+        _need(type(value) is str and re.fullmatch('[0-9a-f]{'+('64' if desc.endswith('64') else '32')+'}', value) is not None, 'E_SCHEMA_VALUE')
+    elif desc == 'exact_role_cap':
+        _need(type(parent) is dict and type(parent.get('role')) is str and type(value) is int and value == (65536 if parent['role'] == 'composer' else cat['ROLE_SOURCE_CAPS'].get(parent['role'])), 'E_ROLE_CAP')
+    elif desc.startswith('positive_builtin_int') or desc.startswith('nonnegative_builtin_int') or desc == 'exact_role_or_metadata_cap':
+        _need(type(value) is int and value >= (0 if desc.startswith('nonnegative') else 1) and (desc != 'exact_role_or_metadata_cap' or value <= CAP), 'E_SCHEMA')
+    elif desc == 'base64_canonical_ascii':
+        _need(type(value) is str, 'E_SCHEMA')
+        try:
+            raw = base64.b64decode(value, validate=True)
+            _need(base64.b64encode(raw).decode('ascii') == value, 'E_SCHEMA_VALUE')
+        except (ValueError, UnicodeError):
+            raise I13MetadataError('E_SCHEMA_VALUE') from None
+    elif desc in ('raw9','selected_raw9_indexes_0_1_2_3_6_7_8'):
+        _list(value, 9 if desc == 'raw9' else 7, 9 if desc == 'raw9' else 7)
+        _need(all(type(x) is int and x >= 0 for x in value), 'E_OBSERVATION')
+    elif desc == 'complete_native_path_to_positive_builtin_int_map':
+        _need(type(value) is dict and len(value) <= 256, 'E_SCHEMA')
+        for path, born in value.items():
+            _path(path)
+            _need(type(born) is int and born > 0, 'E_TIME')
+    elif desc in ('exact_sorted_unique_fact3_list','ordered_fact3_list_exact_purpose_then_expected_inputs','complete_ordered_dependency9_list','complete_unique_prior_descriptor4_list','complete_ordered_stage_artifact6_list','complete_unique_observation12_list','complete_unique_M3_read_observation9_list','exact_expected_input_observation12_list','unique_prior_descriptor4_list','exact_sorted_unique_native_path_list','unique_nonempty_string_list','exact_ordered_role_list','singleton_request_role_list','exact45_selection_row9_list','exact_canonical_and_publication_fact3_list'):
+        item = ('artifact6' if 'artifact6' in desc else 'dependency9' if 'dependency9' in desc else 'prior_descriptor4' if 'descriptor4' in desc else 'M3_read_observation9' if 'observation9' in desc else 'observation12' if 'observation12' in desc else 'selection_row9' if 'selection_row9' in desc else 'native_absolute_path' if 'native_path' in desc else 'stage_role' if 'role_list' in desc else 'fact3' if 'fact3' in desc else None)
+        _list(value, 10000 if desc == 'unique_nonempty_string_list' else 2000, 45 if desc == 'exact45_selection_row9_list' else 0)
+        if desc == 'exact45_selection_row9_list':
+            _need(len(value) == 45, 'E_SCHEMA')
+        for child in value:
+            if item is None:
+                _need(type(child) is str and bool(child), 'E_SCHEMA')
+            else:
+                _type(child, item, cat)
+        if desc.startswith('exact_sorted_unique_'):
+            paths = [x['path'] if type(x) is dict else x for x in value]
+            _need(paths == sorted(paths) and len({x.casefold() for x in paths}) == len(paths), 'E_SCHEMA')
+    elif desc == 'ordered_list_of_closed2_arrays_builtin_true_and_valid_label_index':
+        _list(value, 50000)
+        for row in value:
+            _list(row, 2, 2)
+            _need(row[0] is True and type(row[1]) is int and row[1] >= 0, 'E_SCHEMA')
+    elif desc in ('recorded_role_proof_metadata_dict','finite_strict_metadata'):
+        _need(desc == 'finite_strict_metadata' or type(value) is dict, 'E_SCHEMA')
+    elif desc.startswith('nonempty_ascii_identifier'):
+        _need(type(value) is str and re.fullmatch('[A-Za-z0-9_.:-]{1,128}', value) is not None, 'E_SCHEMA')
+    elif desc in ('exact_request_id','exact_request_author_kind','exact_request_role'):
+        _need(type(value) is str and bool(value), 'E_SCHEMA')
+    elif desc.startswith('positive_builtin_int_equal'):
+        _need(type(value) is int and value > 0, 'E_SCHEMA')
+    elif desc.startswith('nonempty_unique_check3_list') or desc.startswith('bounded_unique_check3_list'):
+        _list(value, 10000, 1)
+        for check in value:
+            _type(check, 'check3', cat)
+    elif desc == 'unique_nonempty_string_max512':
+        _need(type(value) is str and 0 < len(value) <= 512, 'E_SCHEMA')
+    elif desc == 'exact_subject_review4_list':
+        _list(value, 2001, 1)
+        for row in value:
+            _type(row, 'subject_review4', cat)
+    elif desc == 'publication_purpose_or_actual_input':
+        _need(value in ('publication_purpose','actual_input') and type(value) is str, 'E_SCHEMA')
+    elif desc == 'publisher_purpose12_exact_literal_equality':
+        _type(value, 'publisher_purpose12', cat)
+    elif desc == 'exact_purpose_fact3':
+        _pin(value)
+    elif desc == 'canonical_packet14_or_finite8_raw_reference12_fact3_by_prior_kind':
+        _pin(value)
+    elif desc == 'guard_body_schema_enum':
+        _need(type(value) is str and value in ('profile_body57','static_body20'), 'E_SCHEMA')
+    elif desc == 'FORMAT_AND_RECORDED_GRAPH_ONLY_REQUIRES_DIFFERENT_REVIEW_AND_SEPARATE_ACTUAL_ADMISSION':
+        _need(value == desc and type(value) is str, 'E_SCHEMA_VALUE')
+    else:
+        raise I13MetadataError('E_SCHEMA')
+
+
+def _schema(value, name, cat):
+    _need(name in cat['schemas'], 'E_SCHEMA')
+    _type(value, cat['schemas'][name], cat)
+
+
+def _occurs(value, pin):
+    if type(value) is dict:
+        return set(value) == {'path','bytes','sha256'} and _same(value, pin) or any(_occurs(x, pin) for x in value.values())
+    return type(value) is list and any(_occurs(x, pin) for x in value)
+
+
+def _declared(value):
+    if type(value) is dict:
+        if set(value) == {'path','bytes','sha256'}:
+            return [_pin(value)]
+        return [pin for child in value.values() for pin in _declared(child)]
+    if type(value) is list:
+        return [pin for child in value for pin in _declared(child)]
+    return []
+
+
+class _Graph:
+    def __init__(self, packet, records, catalogue_bytes, root, editor, now):
+        self.s = _Store(records)
+        _tree({'root':root,'editor':editor,'now':now}, self.s.count)
+        _type(root, 'root_uuid', {'enums':{},'schemas':{},'ROLE_SOURCE_CAPS':{}})
+        _actor(editor, False)
+        self.now, self.root, self.editor = _time(now), root, editor
+        _need(type(catalogue_bytes) is bytes and len(catalogue_bytes) == CATALOGUE_PIN['bytes'] and _sha(catalogue_bytes) == CATALOGUE_PIN['sha256'], 'E_CATALOGUE_PIN')
+        _need(self.s.body(CATALOGUE_PIN) == catalogue_bytes, 'E_CATALOGUE_PIN')
+        self.c = self.s.record(CATALOGUE_PIN)
+        self.base = self.s.record(self.c['peer_base_catalogue'])
+        spent = self.base['spent_pin75']
+        _need(type(spent) is list and len(spent) == 75, 'E_SPENT_IDENTITY')
+        spent_hashes = {x['sha256'] for x in spent}
+        _need(all(p['sha256'] not in spent_hashes for p, b in self.s.entries.values()), 'E_SPENT_IDENTITY')
+        self.packet_pin = self.s.locate(packet)
+        self.p = self.s.record(self.packet_pin)
+        self.excluded = {'/root', ACTUAL_SOURCE_EDITOR, '/root/i2_resume_gap', editor}
+        self.primed = set()
+        self.rows = {}
+        self.collect(self.p,self.packet_pin)
+
+    def collect(self, value, pin=None, parts=()):
+        if _opaque(pin, parts):
+            return
+        if type(value) is dict:
+            for key, child in value.items():
+                if key in ACTOR_KEYS and child is not None:
+                    self.excluded.add(_actor(child).casefold())
+                elif key in ('actual_content_authors','actual_content_authors_additional'):
+                    _list(child, 256)
+                    for actor in child:
+                        self.excluded.add(_actor(actor).casefold())
+                self.collect(child, pin, parts+(key,))
+        elif type(value) is list:
+            for index, child in enumerate(value):
+                self.collect(child, pin, parts+(str(index),))
+
+    def prime(self, value, edge=None):
+        if type(value) is dict:
+            if set(value) == {'path','bytes','sha256'}:
+                if edge not in META_EDGES | LEASE_EDGES:
+                    return
+                self.s.body(value)
+                if value['path'].lower().endswith('.json') and value['path'] not in self.primed and not _same(value, CATALOGUE_PIN) and not _same(value, self.c['peer_base_catalogue']):
+                    self.primed.add(value['path'])
+                    raw = self.s.record(value)
+                    self.collect(raw, value)
+                    if edge != 'API':
+                        self.prime(raw)
+                return
+            for key, child in value.items():
+                self.prime(child, key)
+        elif type(value) is list:
+            for child in value:
+                self.prime(child, edge)
+
+    def proof(self, pin, subjects):
+        value = self.s.record(pin)
+        _need(type(value) is dict, 'E_PROOF')
+        full_pin = _pin(value.get('full_proof'))
+        full = self.s.record(full_pin)
+        for record in (value, full):
+            _need(type(record) is dict and type(record.get('schema_version')) is int and record['schema_version'] > 0 and type(record.get('record_type')) is str and bool(record['record_type']) and all(record.get(k) is False for k in ('target_execution','operational_authority','native_Parser_executed')), 'E_PROOF')
+            named = _list(record.get('subjects'),2001,1)
+            for subject in named:
+                _pin(subject)
+            _need(all(any(_same(subject,x) for x in named) for subject in subjects), 'E_PROOF')
+        who = _actor(value.get('reviewer'), False)
+        key = who.casefold()
+        _need(all(key != actor and (actor == '/root' or not key.startswith(actor+'/')) for actor in self.excluded), 'E_REVIEWER')
+        checks = full.get('checks')
+        _list(checks, 10000, 1)
+        names = []
+        for row in checks:
+            _schema(row, 'check3', self.c)
+            names.append(row['name'])
+        _need(len(set(names)) == len(names), 'E_PROOF')
+        verdict = value.get('verdict')
+        _need(type(verdict) is str and verdict.startswith('PASS_') and full.get('verdict') == verdict and full.get('reviewer') == who, 'E_PROOF')
+        for record in (value, full):
+            _need(type(record.get('checks_failed')) is int and record['checks_failed'] == 0 and type(record.get('checks_passed')) is int and record['checks_passed'] == len(checks) and all(_occurs(record, p) for p in subjects), 'E_PROOF')
+        _need(_time(full.get('created_utc')) <= _time(value.get('created_utc')) <= self.now, 'E_CHRONOLOGY')
+        for subject in subjects:
+            self.s.body(subject)
+        return value, full, full_pin
+
+    def adoption(self, pin, subjects, review_pin, proof, owner=None, selection=None):
+        value = self.s.record(pin)
+        _need(type(value) is dict and value.get('author') == '/root' and type(value.get('verdict')) is str and value['verdict'].startswith('ACCEPT_') and all(value.get(k) is False for k in ('target_execution','operational_authority','native_Parser_executed')), 'E_ADOPTION')
+        required = subjects+[review_pin, proof[2]]+([owner] if owner else [])+([selection] if selection else [])
+        _need(type(value.get('schema_version')) is int and value['schema_version'] > 0 and type(value.get('record_type')) is str and bool(value['record_type']) and _same(value.get('different_review'),review_pin) and _same(value.get('full_proof'),proof[2]), 'E_ADOPTION')
+        named = _list(value.get('subjects'),2003,1)
+        for subject in named:
+            _pin(subject)
+        _need(all(any(_same(p,x) for x in named) and _occurs(value,p) for p in required), 'E_ADOPTION')
+        _need(_time(proof[0].get('created_utc')) <= _time(value.get('created_utc')) <= self.now, 'E_CHRONOLOGY')
+        return value
+
+    def support(self, support, subjects, owner=None, selection=None):
+        _schema(support, 'support3', self.c)
+        proof = self.proof(support['different_review'], subjects)
+        return self.adoption(support['Root_adoption'], subjects, support['different_review'], proof, owner, selection)
+
+    def code(self, support, fixed=None):
+        _schema(support, 'code5', self.c)
+        self.s.body(support['Source'])
+        api = self.s.record(support['API'])
+        _need(type(api) is dict and type(api.get('schema_version')) is int and type(api.get('record_type')) is str and api.get('author') == support['editor'] and _same(api.get('Source', api.get('module', api.get('publisher_Source'))), support['Source']) and api.get('operational_authority') is False and api.get('target_execution') is False and all(api[k] is False for k in ('scientific_authority','actual_guard_producer_issued','physical_origin_authenticated','human_origin_authenticated','authentic_loader_qualified') if k in api), 'E_CODE_SUPPORT')
+        if fixed is not None:
+            _need(_same(support['Source'], fixed[0]) and _same(support['API'], fixed[1]) and support['editor'] == fixed[2], 'E_CODE_SUPPORT')
+        proof = self.proof(support['different_review'], [support['Source'], support['API']])
+        return self.adoption(support['Root_adoption'], [support['Source'],support['API']], support['different_review'], proof)
+
+    def common(self, owner, lease, selection):
+        for support, shape in ((owner,'owner3'),(lease,'lease5'),(selection,'selection3')):
+            _schema(support, shape, self.c)
+        own = self.s.record(owner['current_owner_scope'])
+        _need(type(own) is dict and type(own.get('schema_version')) is int and own['schema_version'] == 2 and type(own.get('record_type')) is str and bool(own['record_type']) and own.get('author') == '/root' and own.get('Root_thread') == self.root and all(own.get(k) is False for k in ('target_execution','operational_authority','scientific_authority')), 'E_OWNER')
+        stamp = lambda v:_time(v,7 if type(v) is str and re.fullmatch(r'.*\.[0-9]{7}\+00:00',v) else 6)
+        _need(stamp(own.get('interval_start')) <= stamp(own.get('created_utc')) <= self.now and stamp(own.get('interval_end'))-self.now > 60*TICK, 'E_OWNER')
+        for key in ('owner_instruction_record','owner_policy_record'):
+            self.s.body(_pin(own.get(key)))
+        owner_proof = self.proof(owner['different_current_owner_scope_Source_review'], [owner['current_owner_scope']])
+        self.adoption(owner['current_owner_scope_Root_adoption'], [owner['current_owner_scope']], owner['different_current_owner_scope_Source_review'], owner_proof)
+        record = self.s.record(lease['canonical'], 65536)
+        _schema(record, 'lease12', self.c)
+        start, end = _time(record['created_utc'],7), _time(record['lease_end_utc'],7)
+        _need(end-start == 43200*TICK and start <= self.now and end-self.now >= 1200*TICK, 'E_LEASE')
+        decision = self.s.record(lease['separate_Root_decision'])
+        _schema(decision, 'lease_decision20', self.c)
+        _need(decision['Root_thread'] == self.root and _same(decision['current_owner_scope'],owner['current_owner_scope']) and decision['future_canonical_path'] == lease['canonical']['path'] and _time(decision['created_utc']) <= start, 'E_LEASE')
+        _need(record['owner_master_sha256'] == decision['owner_master']['sha256'] and record['owner_review_sha256'] == decision['owner_review']['sha256'], 'E_LEASE')
+        _lease_link(self,lease,record,decision,owner['current_owner_scope'])
+        lp = self.proof(lease['different_review'], [lease['canonical'],lease['original_publication']])
+        self.adoption(lease['Root_adoption'], [lease['canonical'],lease['original_publication']], lease['different_review'], lp)
+        selected = self.s.record(selection['selection'])
+        _schema(selected, 'selection13', self.c)
+        _need(_same(selected['current_owner_scope'], owner['current_owner_scope']) and _same(selected['new_canonical_lease'],lease['canonical']) and _same(selected['current_selection'],self.base['current_historical_selection_pin']), 'E_SELECTION')
+        rows = selected['rows']
+        _list(rows,45,45)
+        found = {}
+        for row in rows:
+            _closed(row, self.c['schemas']['selection_row9']['exact_keys'])
+            role = row['role']
+            _need(type(role) is str and role not in found, 'E_SELECTION')
+            _path(row['canonical_path'])
+            if role == 'composer':
+                old = self.s.record(selected['current_selection'])
+                carry = [x for x in old['rows'] if type(x) is dict and x.get('role') == 'composer']
+                _need(len(carry) == 1 and _same(row,carry[0]) and row['draft_path'] is None and row['preparation_Source_author'] is None and row['retained_semantic_Source_author'] is None and row['selected_ordinal'] is None and row['must_change_Source_bytes'] is False and row['source_cap'] == 65536 and row['canonical_path'] == row['predecessor']['path'], 'E_SELECTION')
+            else:
+                _need(role in self.c['ROLE_SOURCE_CAPS'] and type(row['source_cap']) is int and row['source_cap'] == self.c['ROLE_SOURCE_CAPS'][role] and row['must_change_Source_bytes'] is True and type(row['selected_ordinal']) is int and row['selected_ordinal'] > 0, 'E_SELECTION')
+                _path(row['draft_path'])
+                _actor(row['preparation_Source_author'],False)
+                _actor(row['retained_semantic_Source_author'])
+            _pin(row['predecessor'],row['source_cap'])
+            found[role] = row
+        _need(set(found) == set(self.c['ROLE_SOURCE_CAPS']) | {'composer'} and len({r['canonical_path'].casefold() for r in rows}) == 45 and len({r['draft_path'].casefold() for r in rows if r['role'] != 'composer'}) == 44, 'E_SELECTION')
+        proof = self.proof(selection['different_review'],[selection['selection']])
+        self.adoption(selection['Root_adoption'],[selection['selection']],selection['different_review'],proof,owner['current_owner_scope'],selection['selection'])
+        self.rows = found
+        return own, record, selected
+
+    def result(self, validator, kind, role, stage, roles, owner, lease, selection, producer, receipt=None, draft=None, predecessor=None):
+        fields = self.c['schemas']['result54']['fields']
+        result = {key: (rule['literal'] if type(rule) is dict and 'literal' in rule else None) for key, rule in fields.items()}
+        result.update(validator=validator, author_kind=kind, role=role, packet=self.packet_pin, author_packet=self.packet_pin,
+            author_receipt=receipt, stage=stage, validated_stage_roles=roles, draft=draft, predecessor=predecessor,
+            current_owner_scope=owner, canonical_lease=lease, selection=selection,
+            producer_Source=producer['Source'], producer_API=producer['API'], validated_now_utc=self.now_text,
+            record_count=len(self.s.entries), total_record_bytes=self.s.total, charged_metadata_nodes=0)
+        _tree(result,self.s.count)
+        result['charged_metadata_nodes'] = self.s.count[0]
+        _need(set(result) == set(fields) and len(result) == 54, 'E_SCHEMA')
+        return _wire(result)
+
+
+def _resource(value, now):
+    _closed(value, ('observed_utc','available_RAM_bytes','free_disk_bytes'), 'E_RESOURCE')
+    observed = _time(value['observed_utc'])
+    _need(0 <= now-observed <= 60*TICK and type(value['available_RAM_bytes']) is int and value['available_RAM_bytes'] >= 1073741824 and type(value['free_disk_bytes']) is int and value['free_disk_bytes'] >= 10737418240, 'E_RESOURCE')
+
+
+def _lease_link(g, support, lease, decision, owner):
+    path = support['canonical']['path']
+    _need(re.fullmatch(r'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\EXECUTION_LEASE_GG6_M3_[0-9]{3}\.json',path) is not None and type(decision['selected_ordinal']) is int and decision['selected_ordinal'] > 10 and path.endswith('_%03d.json'%decision['selected_ordinal']), 'E_LEASE')
+    publication = g.s.record(support['original_publication'])
+    _need(type(publication) is dict and type(publication.get('schema_version')) is int and publication['schema_version'] == 2 and publication.get('record_type') == 'Root_owner_v2_prospective_lease_original_publication' and publication.get('author') == publication.get('physical_Source_editor') == '/root' and publication.get('metadata_tool_Source_author') == '/root/phase_frontier', 'E_LEASE')
+    for key, wanted in (('current_owner_scope',owner),('canonical',support['canonical']),('issuance_decision',support['separate_Root_decision']),('predecessor_lease',decision['predecessor_lease']),('continuing_owner',decision['owner_master']),('owner_review',decision['owner_review'])):
+        _need(_same(publication.get(key),wanted), 'E_LEASE')
+    _need(all(publication.get(k) is False for k in ('operational_authority','lease_is_owner_deadline','target_execution','source_family_selected','actual_entry006','original_fixture_or_case_grant','old_leases_extended','host_quiet','actor_Job_or_science_authority')) and all(publication.get(k) is True for k in ('original_closed12_schema_preserved','complete_candidate_bytes_exact','original_owner_and_timestamp_contracts_preserved')) and type(publication.get('selected_duration_seconds')) is int and publication['selected_duration_seconds'] == 43200 and type(publication.get('publication_reserve_seconds')) is int and publication['publication_reserve_seconds'] == 60, 'E_LEASE')
+    candidate = _pin(publication.get('candidate'),65536)
+    _need(candidate['path'] != path and g.s.body(candidate,65536) == g.s.body(support['canonical'],65536), 'E_LEASE')
+    receipt_pin = _pin(publication.get('candidate_author_receipt'))
+    receipt = g.s.record(receipt_pin)
+    _need(type(receipt) is dict and type(receipt.get('schema_version')) is int and receipt['schema_version'] == 2 and receipt.get('record_type') == 'Root_owner_v2_prospective_lease_candidate_author_receipt' and receipt.get('author') == receipt.get('physical_Source_editor') == '/root' and receipt.get('metadata_tool_Source_author') == '/root/phase_frontier', 'E_LEASE')
+    for key, wanted in (('candidate',candidate),('issuance_decision',support['separate_Root_decision']),('current_owner_scope',owner),('predecessor_lease',decision['predecessor_lease']),('owner_master',decision['owner_master']),('owner_review',decision['owner_review']),('native_timestamp_entry',decision['native_timestamp_entry'])):
+        _need(_same(receipt.get(key),wanted), 'E_LEASE')
+    _need(receipt.get('native_created_utc') == lease['created_utc'] and receipt.get('native_end_utc') == lease['lease_end_utc'] and receipt.get('future_canonical_path') == path and all(receipt.get(k) is False for k in ('operational_authority','lease_is_owner_deadline','target_execution','source_family_selected','old_leases_extended','original_functions_or_fixtures_called','canonical_publication')) and receipt.get('different_candidate_Source_review_pending') is True, 'E_LEASE')
+    review_pin = _pin(publication.get('different_lease_Source_review'))
+    proof = g.proof(review_pin,[candidate,receipt_pin])
+    adoption = g.adoption(_pin(publication.get('candidate_Root_adoption')),[candidate],review_pin,proof)
+    _need(_time(receipt.get('created_utc')) <= _time(proof[0].get('created_utc')) <= _time(adoption.get('created_utc')) <= _time(publication.get('created_utc')) <= g.now, 'E_CHRONOLOGY')
+
+
+def _observations(g, observations):
+    _list(observations,256,1)
+    seen = set()
+    for item in observations:
+        _schema(item,'M3_read_observation9',g.c)
+        pin = {k:item[k] for k in ('path','bytes','sha256')}
+        caps = [r['source_cap'] for r in g.rows.values() if pin['path'] in (r['canonical_path'],r['draft_path'],r['predecessor']['path'])]
+        _need(not caps or item['cap'] <= min(caps), 'E_ROLE_CAP')
+        g.s.body(pin,item['cap'])
+        _need(item['path'] not in seen and item['path9'][2] == pin['bytes'] and item['descriptor9'][2] == pin['bytes'] and [item['descriptor9'][i] for i in (0,1,2,3,6,7,8)] == [item['path9'][i] for i in (0,1,2,3,6,7,8)], 'E_OBSERVATION')
+        _need(item['path9'][6] == item['descriptor9'][6] == 1 and item['path9'][5]&0o170000 == item['descriptor9'][5]&0o170000 == 0o100000 and not item['path9'][7]&1024 and not item['descriptor9'][7]&1024 and _time(item['observed_utc']) <= g.now, 'E_OBSERVATION')
+        seen.add(item['path'])
+
+
+def _required(g, stage, role):
+    raw = g.c['original_required_dependencies'][stage]
+    if stage == 'phase_bound':
+        return {role[:-6]+'_template','capture_bound','metadata_binding','metadata_bound_review'}
+    return set(raw)
+
+
+def _prior(g, descriptor):
+    _schema(descriptor,'prior_descriptor4',g.c)
+    role, dep = descriptor['role'], descriptor['dependency']
+    _need(dep['role'] == role and role in g.rows and dep['canonical']['path'] == g.rows[role]['canonical_path'], 'E_DEPENDENCY_JOIN')
+    g.s.body(dep['canonical'],g.rows[role]['source_cap'])
+    for key, pin in dep.items():
+        if key != 'role':
+            g.s.body(pin)
+    packet = g.s.record(descriptor['publication_packet'])
+    if descriptor['author_kind'] == 'finite8_raw_reference_v2':
+        _schema(packet,'finite8_raw_reference12',g.c)
+        request = g.s.record(packet['request'])
+        publication = g.s.record(packet['publication'])
+        reconciliation = g.s.record(packet['reconciliation'])
+        schemas = g.c['finite8_raw_reference_schemas']
+        for value, name in ((request,'batch_request21_v2'),(publication,'batch_publication43_v2'),(reconciliation,'reconciliation26_v2')):
+            _closed(value,schemas[name]['keys'])
+            _need(type(value['schema_version']) is int and value['schema_version'] == 2 and value['record_type'] == schemas[name]['record_type'], 'E_UNSUPPORTED_PUBLICATION_ABI')
+        _list(request['rows'],8,1)
+        _list(publication['published'],8,1)
+        for row in request['rows']:
+            _closed(row,schemas['batch_request_row10_v2']['keys'])
+            _need(type(row['role']) is str, 'E_SCHEMA')
+        for row in publication['published']:
+            _closed(row,schemas['batch_published_row_v2']['keys'])
+            _need(type(row['role']) is str, 'E_SCHEMA')
+        _need(packet['role'] == role and _same(packet['canonical'],dep['canonical']) and _same(packet['author_receipt'],dep['author_receipt']) and _same(packet['publication'],dep['original_publication']) and _same(packet['reconciliation'],dep['late_reconciliation']) and _same(publication['actual_Root_request'],packet['request']) and request['request_id'] == publication['request_id'], 'E_REQUEST_OWNERSHIP')
+        rows = [r for r in publication['published'] if type(r) is dict and r.get('role') == role]
+        reqs = [r for r in request['rows'] if type(r) is dict and r.get('role') == role]
+        _need(len(rows) == len(reqs) == 1 and _same(rows[0]['canonical'],dep['canonical']) and _same(rows[0]['author_receipt'],dep['author_receipt']) and _same(reqs[0]['draft'],rows[0]['draft']) and reqs[0]['canonical_path'] == dep['canonical']['path'] and _same(reconciliation['initial_actual_Root_request'],packet['request']) and _same(reconciliation['initial_actual_canonical_publication_receipt'],packet['publication']) and _same(reconciliation['initial_actual_execution_witness'],packet['execution_witness']), 'E_DEPENDENCY_JOIN')
+        g.s.body(packet['execution_witness'])
+        g.s.body(packet['exact_Source_review'])
+        g.s.body(packet['Root_Source_adoption'])
+    else:
+        _schema(packet,'canonical_packet14',g.c)
+        _within('canonical_packet14',packet,g.c)
+        _need(packet['role'] == role and packet['author_kind'] == descriptor['author_kind'] and _same(packet['canonical'],dep['canonical']) and _same(packet['publication'],dep['original_publication']) and _same(packet['reconciliation'],dep['late_reconciliation']), 'E_DEPENDENCY_JOIN')
+        prewrite = g.s.record(packet['prewrite_packet'])
+        _schema(prewrite,'prewrite_packet15',g.c)
+        request = g.s.record(prewrite['request'])
+        publication = g.s.record(packet['publication'])
+        reconciliation = g.s.record(packet['reconciliation'])
+        _schema(request,'selected_request25',g.c)
+        _schema(publication,'selected_publication32',g.c)
+        _schema(reconciliation,'selected_reconciliation25',g.c)
+        for value, kind in ((request,'selected_request25'),(publication,'selected_publication32'),(reconciliation,'selected_reconciliation25')):
+            _within(kind,value,g.c)
+        _need(request['role'] == publication['role'] == reconciliation['role'] == role and request['author_kind'] == publication['author_kind'] == reconciliation['author_kind'] == descriptor['author_kind'] and _same(publication['actual_Root_request'],prewrite['request']) and _same(reconciliation['initial_actual_Root_request'],prewrite['request']) and _same(reconciliation['initial_actual_canonical_publication_receipt'],packet['publication']) and _same(reconciliation['initial_actual_execution_witness'],packet['execution_witness']) and _same(request['author_receipt'],dep['author_receipt']) and _same(publication['canonical'],dep['canonical']) and _same(reconciliation['canonical_Source'],dep['canonical']), 'E_REQUEST_OWNERSHIP')
+    # Deliberately no recursive publisher/old I11 call or authority promotion.
+
+
+def _codec(value):
+    _closed(value,('encoding','check_labels','checks','actual_serialized_check_count','checks_failed','ordered_check_stream_sha256','snapshot_phase'))
+    _need(value['encoding'] == 'lossless_boolean_label_index_v1' and value['snapshot_phase'] == 'before per-artifact receipt serialization; later writer gates execute separately' and type(value['checks_failed']) is int and value['checks_failed'] == 0, 'E_STAGE_RECEIPT')
+    labels = _list(value['check_labels'],50000)
+    _need(all(type(x) is str and x for x in labels) and len(set(labels)) == len(labels), 'E_STAGE_RECEIPT')
+    rows = _list(value['checks'],50000)
+    snapshot = []
+    for row in rows:
+        _list(row,2,2)
+        _need(row[0] is True and type(row[1]) is int and 0 <= row[1] < len(labels), 'E_STAGE_RECEIPT')
+        snapshot.append([True,labels[row[1]]])
+    # Original I2 wire uses sorted indented JSON, not compact result JSON.
+    original = (json.dumps(snapshot,sort_keys=True,ensure_ascii=False,allow_nan=False,indent=2)+'\n').encode('utf8')
+    _need(type(value['actual_serialized_check_count']) is int and value['actual_serialized_check_count'] == len(rows) and value['ordered_check_stream_sha256'] == _sha(original), 'E_STAGE_RECEIPT')
+
+
+def _body_joins(g, role, body, previous, facts, dependencies, artifacts, lease):
+    changes = {'metadata_manifest': {'created_utc','payloads','selected_source_paths','source_peer_expected_path','selected_guard_profile','selected_guard_profile_sha256'},
+        'plan': {'bindings','role_selections','lease_selection'},
+        'metadata_binding': {'template_sha256','actual_script_sha256','bindings','role_selections'},
+        'phase_binding': {'actual_script_sha256','bound_review_sha256','sources'}}
+    _need(set(body) == set(previous) and all(_same(body[k],previous[k]) for k in body if k not in changes[role]), 'E_DEPENDENCY_JOIN')
+    if role == 'metadata_manifest':
+        _time(body['created_utc'])
+        templates = g.c['M3_complete_stage_roles']['templates']
+        positions = (0,2,3,4,5)
+        _need(body['payload_count'] == 12 and body['active_source_count'] == 6 and len(body['payloads']) == 12, 'E_DEPENDENCY_JOIN')
+        for index, row in enumerate(body['payloads']):
+            _closed(row,('path','sha256','bytes','two_read_match'))
+            if index in positions:
+                pin = dependencies[templates[positions.index(index)]]
+                _need(row['path'] == pin['path'].rsplit('\\',1)[1] and type(row['bytes']) is int and row['bytes'] == pin['bytes'] and row['sha256'] == pin['sha256'] and row['two_read_match'] is True, 'E_DEPENDENCY_JOIN')
+            else:
+                _need(_same(row,previous['payloads'][index]), 'E_DEPENDENCY_JOIN')
+                full = g.rows['metadata_manifest']['canonical_path'].rsplit('\\',1)[0]+'\\'+row['path']
+                g.s.body(dict(path=full,bytes=row['bytes'],sha256=row['sha256']),65536)
+        profile = dependencies['profile']
+        _need(body['selected_source_paths'] == [x['path'] for x in body['payloads'][:6]] and body['selected_guard_profile'] == profile['path'].rsplit('\\',1)[1] and body['selected_guard_profile_sha256'] == profile['sha256'], 'E_DEPENDENCY_JOIN')
+        peer = g.rows['metadata_peer']['canonical_path']
+        _need(body['source_peer_expected_path'] == peer, 'E_DEPENDENCY_JOIN')
+    elif role in ('plan','metadata_binding'):
+        hashes = {key:support['source']['sha256'] for key,support in facts['binding_supports'].items()}
+        _need(_same(body['bindings'],hashes) and _same(body['role_selections'],facts['role_selections']), 'E_DEPENDENCY_JOIN')
+        for key, support in facts['binding_supports'].items():
+            g.s.body(support['source'])
+            proof = g.proof(support['different_review'],[support['source']])
+            g.adoption(support['Root_adoption'],[support['source']],support['different_review'],proof)
+        renewed = {'guard_profile_sha256':'profile','guard_harness_static_review_sha256':'static','preparer_static_review_sha256':'metadata_peer'}
+        for key, support in facts['binding_supports'].items():
+            _need(_same(support['source'],dependencies[renewed[key]]) if key in renewed else support['source']['sha256'] == previous['bindings'][key], 'E_DEPENDENCY_JOIN')
+        if role == 'plan':
+            _need(_same(body['lease_selection'],dict(path=lease['path'],sha256=lease['sha256'],lease_end_utc=g.s.record(lease)['lease_end_utc'])), 'E_DEPENDENCY_JOIN')
+        else:
+            _need(body['template_sha256'] == dependencies['capture_template']['sha256'] and body['actual_script_sha256'] == artifacts['capture_bound']['draft']['sha256'], 'E_DEPENDENCY_JOIN')
+    else:
+        _need(body['actual_script_sha256'] == dependencies['capture_bound']['sha256'] and body['bound_review_sha256'] == dependencies['metadata_bound_review']['sha256'], 'E_DEPENDENCY_JOIN')
+        bounds = [r for r in g.c['M3_complete_stage_roles']['templates'][1:]]
+        _list(body['sources'],4,4)
+        for row, template in zip(body['sources'],bounds):
+            bound = template[:-9]+'_bound'
+            _closed(row,('path','sha256','template_sha256','exact_two_literal_reversal'))
+            _need(row['path'] == dependencies[bound]['path'] and row['sha256'] == dependencies[bound]['sha256'] and row['template_sha256'] == dependencies[template]['sha256'] and row['exact_two_literal_reversal'] is True, 'E_DEPENDENCY_JOIN')
+
+
+def _m3(packet, records, catalogue_bytes, expected_root_thread, source_editor, now_utc):
+    g = _Graph(packet,records,catalogue_bytes,expected_root_thread,source_editor,now_utc)
+    g.now_text = now_utc
+    p = g.p
+    _schema(p,'m3_packet16',g.c)
+    _need(p['Root_thread'] == g.root, 'E_ROOT_THREAD')
+    g.prime(p)
+    owner, lease, selection = p['current_owner_support'],p['new_lease_support'],p['Root_future_path_selection_support']
+    g.common(owner,lease,selection)
+    g.code(p['producer_support'],(I2_SOURCE,I2_API,ACTUAL_SOURCE_EDITOR))
+    stage, role = p['stage'],p['role']
+    expected_roles = [role] if stage == 'phase_bound' else g.c['M3_complete_stage_roles'][stage]
+    _need(stage != 'phase_bound' or role in [r for r in _enum(g.c,'finite8_role') if r.endswith('_bound')], 'E_STAGE_GROUP')
+    _need(stage == 'phase_bound' or role is None, 'E_STAGE_GROUP')
+    artifacts = p['artifacts']
+    _need([a['role'] for a in artifacts] == expected_roles, 'E_STAGE_GROUP')
+    returned = g.s.record(p['stage_return'])
+    _schema(returned,'stage_return14',g.c)
+    _need(returned['stage'] == stage and _same(returned['artifacts'],artifacts) and _same(returned['current_owner_scope'],owner['current_owner_scope']) and _same(returned['Root_selection'],selection['selection']) and _same(returned['lease'],lease['canonical']), 'E_STAGE_GROUP')
+    facts_pin = p['stage_support']['facts']
+    facts = g.s.record(facts_pin)
+    _schema(facts,'facts21',g.c)
+    _need(facts['stage'] == stage and _same(facts['role'],role) and facts['Root_thread'] == g.root and _same(facts['current_owner_scope'],owner['current_owner_scope']) and _same(facts['lease_support'],lease) and _same(facts['selection_support'],selection) and _same(facts['tool_support'],{k:p['producer_support'][k] for k in ('Source','API','different_review','Root_adoption')}) and _same(facts['predecessor_inventory'],INVENTORY_PIN), 'E_STAGE_FACTS')
+    inventory = g.s.record(INVENTORY_PIN)
+    _need(type(inventory.get('roles')) is list and len(inventory['roles']) == 17 and inventory.get('future_Source_bytes_generated') is False, 'E_STAGE_FACTS')
+    inventory_rows = {row['role']:row for row in inventory['roles']}
+    _need(len(inventory_rows) == 17 and all(a['role'] in inventory_rows and _same(a['predecessor'],inventory_rows[a['role']]['available_basis']) for a in artifacts), 'E_STAGE_FACTS')
+    descriptors = p['prior_dependencies']
+    _need(len({d['role'] for d in descriptors}) == len(descriptors) and {d['role'] for d in descriptors} == _required(g,stage,role) and _same(facts['dependencies'],[d['dependency'] for d in descriptors]), 'E_DEPENDENCY_JOIN')
+    for d in descriptors:
+        _prior(g,d)
+    dependency_pins = {d['role']:d['dependency']['canonical'] for d in descriptors}
+    artifact_map = {a['role']:a for a in artifacts}
+    purpose_support = p['generation_purpose_support']
+    purpose = g.s.record(purpose_support['subject'])
+    _schema(purpose,'stage_purpose6',g.c)
+    output_paths = []
+    for a in artifacts:
+        selected = g.rows[a['role']]
+        _need(a['draft']['path'] == selected['draft_path'] and a['proposed_canonical_path'] == selected['canonical_path'] and _same(a['predecessor'],selected['predecessor']), 'E_STAGE_GROUP')
+        draft = g.s.body(a['draft'],selected['source_cap'])
+        g.s.body(a['predecessor'],selected['source_cap'])
+        _need(a['draft']['sha256'] != a['predecessor']['sha256'], 'E_STAGE_RECEIPT')
+        receipt = g.s.record(a['author_receipt'])
+        _schema(receipt,'receipt22',g.c)
+        _need(receipt['role'] == a['role'] and _same(receipt['draft'],a['draft']) and _same(receipt['predecessor'],a['predecessor']) and _same(receipt['diff'],a['diff']) and _same(receipt['actual_Source_packet'],facts_pin) and _same(receipt['current_owner_scope'],owner['current_owner_scope']) and _same(receipt['Root_future_path_selection'],selection['selection']) and _same(receipt['new_canonical_lease'],lease['canonical']) and receipt['retained_semantic_Source_author'] == selected['retained_semantic_Source_author'], 'E_STAGE_RECEIPT')
+        g.s.body(a['diff'])
+        here = I2_SOURCE['path'].rsplit('\\',1)[0]
+        _need(a['author_receipt']['path'] == here+'\\stage_receipts\\ROOT_CURRENT_OWNER_'+a['role'].upper()+'_ACTUAL_M3_SOURCE_DRAFT_AUTHOR_RECEIPT_001.json' and a['diff']['path'] == here+'\\source_diffs\\'+a['draft']['path'].rsplit('\\',1)[1]+'.diff', 'E_STAGE_PURPOSE')
+        output_paths += [a['draft']['path'],a['author_receipt']['path'],a['diff']['path']]
+        provenance = receipt['steps']['metadata_Source_provenance']
+        _need(_same(provenance['Source'],I2_SOURCE) and _same(provenance['API'],I2_API) and provenance['actual_implementation_Source_editor'] == ACTUAL_SOURCE_EDITOR and _same(provenance['stage_purpose'],purpose), 'E_STAGE_RECEIPT')
+        _resource(provenance['resource_observation'],g.now)
+        _codec(receipt['steps']['actual_check_codec'])
+        _observations(g,receipt['finite_actual_Source_observations'])
+        observed = [{key:o[key] for key in ('path','bytes','sha256')} for o in receipt['finite_actual_Source_observations']]
+        _need(all(any(_same(pin,o) for o in observed) for pin in purpose['inputs']), 'E_OBSERVATION')
+        _need(_time(facts['created_utc']) <= _time(receipt['created_utc']) <= g.now, 'E_CHRONOLOGY')
+        if a['role'] in ('metadata_manifest','plan','metadata_binding','phase_binding'):
+            body = g.s.record(a['draft'],selected['source_cap'])
+            schema = {'metadata_manifest':'manifest_body23','plan':'plan_body7','metadata_binding':'metadata_binding_body11','phase_binding':'phase_binding_body7'}[a['role']]
+            _schema(body,schema,g.c)
+            _body_joins(g,a['role'],body,g.s.record(a['predecessor']),facts,dependency_pins,artifact_map,lease['canonical'])
+    _need(len({x.casefold() for x in output_paths}) == len(output_paths) and purpose['stage'] == stage and _same(purpose['role'],role) and _same(purpose['facts'],facts_pin) and purpose['output_paths'] == sorted(output_paths), 'E_STAGE_PURPOSE')
+    _need(not {pin['path'].casefold() for pin in purpose['inputs']} & {path.casefold() for path in output_paths}, 'E_STAGE_PURPOSE')
+    for pin in purpose['inputs']:
+        g.s.body(pin)
+    declared = _declared(facts)+_declared(owner)+[facts_pin,I2_SOURCE,I2_API]+[a['predecessor'] for a in artifacts]
+    _need(all(any(_same(pin,actual) for actual in purpose['inputs']) for pin in declared), 'E_STAGE_PURPOSE')
+    own_aux = [purpose_support['subject'],purpose_support['different_review'],purpose_support['Root_adoption']]
+    pr = g.proof(purpose_support['different_review'],[facts_pin]+purpose['inputs'])
+    own_aux.append(pr[2])
+    _need(not {x['path'] for x in own_aux} & {x['path'] for x in purpose['inputs']}, 'E_STAGE_PURPOSE')
+    ad = g.adoption(purpose_support['Root_adoption'],[facts_pin]+purpose['inputs'],purpose_support['different_review'],pr,owner['current_owner_scope'],selection['selection'])
+    _need(all(_same(v.get('exact_M3_Source_stage_purpose'),purpose) for v in (pr[0],pr[1],ad)), 'E_STAGE_PURPOSE')
+    sp = g.proof(p['stage_support']['different_review'],[facts_pin]+purpose['inputs'])
+    sa = g.adoption(p['stage_support']['Root_adoption'],[facts_pin]+purpose['inputs'],p['stage_support']['different_review'],sp,owner['current_owner_scope'],selection['selection'])
+    _need(all(_same(v.get('exact_M3_Source_stage_purpose'),purpose) for v in (sp[0],sp[1],sa)), 'E_STAGE_PURPOSE')
+    return g.result('M3_complete_stage_output','M3_stage_receipt22_v2',role,stage,expected_roles,owner['current_owner_scope'],lease['canonical'],selection['selection'],p['producer_support'])
+
+
+def validate_M3_complete_stage_output_metadata(*, packet, records, catalogue_bytes, expected_root_thread, source_editor, now_utc):
+    return _m3(packet,records,catalogue_bytes,expected_root_thread,source_editor,now_utc)
+
+
+def validate_guard_profile_static_descriptor_metadata(*, packet, records, catalogue_bytes, expected_root_thread, source_editor, now_utc):
+    g = _Graph(packet,records,catalogue_bytes,expected_root_thread,source_editor,now_utc)
+    g.now_text = now_utc
+    p = g.p
+    _schema(p,'guard_packet14',g.c)
+    _need(p['Root_thread'] == g.root, 'E_ROOT_THREAD')
+    g.prime(p)
+    owner,lease,selection = p['current_owner_support'],p['new_lease_support'],p['Root_future_path_selection_support']
+    g.common(owner,lease,selection)
+    g.code(p['producer_support'])
+    role = p['role']
+    selected = g.rows[role]
+    _need(p['draft']['path'] == selected['draft_path'] and _same(p['predecessor'],selected['predecessor']), 'E_DEPENDENCY_JOIN')
+    raw = g.s.body(p['draft'],selected['source_cap'])
+    before = g.s.body(p['predecessor'],selected['source_cap'])
+    _need(p['draft']['sha256'] != p['predecessor']['sha256'], 'E_DEPENDENCY_JOIN')
+    body = g.s.record(p['draft'],selected['source_cap'])
+    _schema(body,'profile_body57' if role == 'profile' else 'static_body20',g.c)
+    receipt = g.s.record(p['author_receipt'])
+    _schema(receipt,'guard_author24',g.c)
+    for key in ('draft','predecessor','producer_support','inputs'):
+        _need(_same(receipt[key],p[key]), 'E_DEPENDENCY_JOIN')
+    _need(receipt['role'] == role and receipt['Root_thread'] == g.root and receipt['body_schema'] == ('profile_body57' if role == 'profile' else 'static_body20') and _same(receipt['current_owner_scope'],owner['current_owner_scope']) and _same(receipt['new_canonical_lease'],lease['canonical']) and _same(receipt['Root_future_path_selection'],selection['selection']) and receipt['retained_semantic_Source_author'] == selected['retained_semantic_Source_author'], 'E_DEPENDENCY_JOIN')
+    try:
+        original = base64.b64decode(receipt['whole_predecessor_bytes'],validate=True)
+    except (ValueError, UnicodeError):
+        raise I13MetadataError('E_DEPENDENCY_JOIN') from None
+    _need(original == before and base64.b64encode(original).decode('ascii') == receipt['whole_predecessor_bytes'], 'E_DEPENDENCY_JOIN')
+    g.s.body(receipt['diff'])
+    purpose_support = p['producer_purpose_support']
+    purpose = g.s.record(purpose_support['subject'])
+    _schema(purpose,'guard_purpose10',g.c)
+    _need(purpose['Root_thread'] == g.root and purpose['role'] == role and _same(purpose['current_owner_scope'],owner['current_owner_scope']) and _same(purpose['inputs'],p['inputs']) and _same(receipt['producer_purpose'],purpose_support['subject']) and purpose['output_paths'] == sorted([p['draft']['path'],receipt['diff']['path'],p['author_receipt']['path']]), 'E_STAGE_PURPOSE')
+    _need(not {x['path'].casefold() for x in p['inputs']} & {x.casefold() for x in purpose['output_paths']}, 'E_STAGE_PURPOSE')
+    for pin in p['inputs']:
+        g.s.body(pin)
+    proof = g.proof(purpose_support['different_review'],[purpose_support['subject']]+p['inputs'])
+    g.adoption(purpose_support['Root_adoption'],[purpose_support['subject']]+p['inputs'],purpose_support['different_review'],proof,owner['current_owner_scope'],selection['selection'])
+    _need(_time(purpose['created_utc']) <= _time(receipt['created_utc']) <= g.now, 'E_CHRONOLOGY')
+    if role == 'static':
+        _need(body['verdict'] == 'PASS_STATIC_PREPARATION_ONLY' and body['reviewer'] == '/root', 'E_SCHEMA_VALUE')
+        profiles = [x for x in p['inputs'] if x['path'] == g.rows['profile']['canonical_path']]
+        _need(len(profiles) == 1 and body['profile_sha256'] == profiles[0]['sha256'], 'E_DEPENDENCY_JOIN')
+        hashes = {pin['sha256'] for pin in p['inputs']}
+        _need(all(value in hashes for key,value in body.items() if key.endswith('_sha256')), 'E_DEPENDENCY_JOIN')
+    return g.result('guard_profile_static_descriptor','guard_profile_static_v2',role,None,[role],owner['current_owner_scope'],lease['canonical'],selection['selection'],p['producer_support'],p['author_receipt'],p['draft'],p['predecessor'])
+
+
+def encode_I13_contract_record(*, kind, value, catalogue_bytes):
+    _need(type(kind) is str and kind in CONSTRUCTOR_KINDS, 'E_SCHEMA')
+    _need(type(catalogue_bytes) is bytes and len(catalogue_bytes) == CATALOGUE_PIN['bytes'] and _sha(catalogue_bytes) == CATALOGUE_PIN['sha256'], 'E_CATALOGUE_PIN')
+    counter = [0]
+    cat = _decode(catalogue_bytes,counter,CATALOGUE_PIN)
+    _tree(value,counter)
+    _schema(value,kind,cat)
+    _within(kind,value,cat)
+    return _wire(value)
+
+
+def _within(kind, value, cat):
+    if kind in ('selected_request25','selected_publication32','selected_reconciliation25','canonical_packet14'):
+        domains = {'M3_stage_receipt22_v2':'M3_selected_roles','selected_peer_receipt27_v2':'peer_selected_roles','guard_profile_static_v2':'guard_role'}
+        _need(value['role'] in cat['enums'][domains[value['author_kind']]], 'E_SCHEMA_VALUE')
+    if kind in ('m3_packet16','facts21','stage_return14'):
+        stage = value['stage']
+        role = value.get('role')
+        if stage == 'phase_bound':
+            if kind == 'stage_return14':
+                _need(len(value['artifacts']) == 1 and value['artifacts'][0]['role'] in [r for r in _enum(cat,'finite8_role') if r.endswith('_bound')], 'E_STAGE_GROUP')
+            else:
+                _need(type(role) is str and role in [r for r in _enum(cat,'finite8_role') if r.endswith('_bound')], 'E_STAGE_GROUP')
+        else:
+            _need(role is None, 'E_STAGE_GROUP')
+            if 'artifacts' in value:
+                _need([a['role'] for a in value['artifacts']] == cat['M3_complete_stage_roles'][stage], 'E_STAGE_GROUP')
+    if kind == 'guard_author24':
+        _need(value['body_schema'] == ('profile_body57' if value['role'] == 'profile' else 'static_body20'), 'E_SCHEMA_VALUE')
+    if kind == 'receipt22':
+        _codec(value['steps']['actual_check_codec'])
+        purpose = value['steps']['metadata_Source_provenance']['stage_purpose']
+        allowed = [r for r in _enum(cat,'finite8_role') if r.endswith('_bound')] if purpose['stage'] == 'phase_bound' else cat['M3_complete_stage_roles'][purpose['stage']]
+        _need(value['role'] in allowed and (purpose['role'] == value['role'] if purpose['stage'] == 'phase_bound' else purpose['role'] is None), 'E_STAGE_GROUP')
+    if kind == 'selected_publication32':
+        _need(value['canonical']['sha256'] == value['draft']['sha256'] and value['canonical']['bytes'] == value['draft']['bytes'] and value['predecessor']['sha256'] != value['draft']['sha256'], 'E_SCHEMA_VALUE')
+    if kind == 'selected_reconciliation25':
+        _need(value['canonical_Source']['sha256'] == value['exact_draft_Source']['sha256'] and value['canonical_Source']['bytes'] == value['exact_draft_Source']['bytes'], 'E_SCHEMA_VALUE')
+
+
+def generate_M3_current_owner(*, context):
+    if not ACTUAL_ENTRY_QUALIFIED:
+        raise I13MetadataError('E_ACTUAL_ENTRY_HELD')
+    raise I13MetadataError('E_ACTUAL_ENTRY_UNWIRED')
+
+
+def issue_guard_profile_static(*, context):
+    if not ACTUAL_ENTRY_QUALIFIED:
+        raise I13MetadataError('E_ACTUAL_ENTRY_HELD')
+    raise I13MetadataError('E_ACTUAL_ENTRY_UNWIRED')

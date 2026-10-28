@@ -1,0 +1,213 @@
+"""Independent read/hash/strict-JSON/AST review; no target import or call."""
+import ast
+import base64
+import collections
+import datetime as dt
+import hashlib
+import json
+import os
+from pathlib import Path
+
+W = Path(r'D:\Aenv\pro2\WORK\resume-20261025-002\receipt_caller_integration_015')
+D = W / 'fixture_source_review_002'
+P = W / 'i12/test_outside8_receipt_contract_memory_only_003.py'
+checks = []
+
+def check(name, ok, detail=None):
+    checks.append(dict(name=name, passed=bool(ok), detail=detail))
+
+def pin(path):
+    path = Path(path)
+    raw = path.read_bytes()
+    return dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+
+def pairs(rows):
+    out = {}
+    for key, value in rows:
+        assert key not in out
+        out[key] = value
+    return out
+
+def bad(value):
+    raise ValueError('noninteger JSON number')
+
+def load(path):
+    return json.loads(Path(path).read_bytes().decode('utf8'), object_pairs_hook=pairs,
+                      parse_float=bad, parse_constant=bad)
+
+def wire(value):
+    return (json.dumps(value, indent=2, sort_keys=True) + '\n').encode()
+
+def publish(path, value):
+    raw = wire(value)
+    assert len(raw) <= 2097152
+    with path.open('xb') as stream:
+        stream.write(raw)
+        stream.flush()
+        os.fsync(stream.fileno())
+    assert path.read_bytes() == raw
+
+raw = P.read_bytes()
+tree = ast.parse(raw)
+values = {node.targets[0].id: ast.literal_eval(node.value) for node in tree.body
+          if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name)}
+cases = values['CASE_CATALOGUE']
+names = [c['name'] for c in cases]
+mapping = values['VARIANT_TO_LITERAL_CASES']
+fixed = values['FIXED']
+metadata = load(W / 'i12/I12_FRESH_LITERAL_FIXTURE_CASE_CATALOGUE_003.json')
+inventory = load(W / 'i12/I12_FRESH_FIXTURE_SOURCE_REGION_AND_LITERAL_INVENTORY_003.json')
+receipt = load(W / 'i12/I12_FRESH_MEMORY_ONLY_FIXTURE_STATIC_AUTHOR_RECEIPT_003.json')
+catalogue = load(W / 'I12_EXACT_RECEIPT_FORMAT_SCHEMA_AND_FIXED_DATA_CATALOGUE_002.json')
+protocol = load(W / 'I12_EXACT_OUTSIDE8_RECEIPT_FORMAT_AND_METADATA_GRAPH_PROTOCOL_002.json')
+imports = [n.names[0].name for n in tree.body if isinstance(n, ast.Import)]
+functions = {n.name: n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))}
+segments = {name: ast.get_source_segment(raw.decode(), node) for name, node in functions.items()}
+check('fixture_exact_frozen_bytes', pin(P) == receipt['fixture'] == inventory['fixture'] == metadata['fixture'])
+check('fixture_bounded_source', len(raw) <= 2097152)
+check('only_declared_stdlib_imports', imports == ['base64', 'copy', 'hashlib', 'json', 'types'])
+check('no_from_imports', not any(isinstance(n, ast.ImportFrom) for n in ast.walk(tree)))
+check('only_literals_imports_definitions_at_module_level', all(
+    isinstance(n, (ast.Import, ast.Assign, ast.FunctionDef, ast.ClassDef)) or
+    isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant) and isinstance(n.value.value, str)
+    for n in tree.body))
+check('no_open_exec_eval_importlib_subprocess_in_fixture', not any(
+    isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in
+    {'open', 'exec', 'eval', '__import__', 'compile'} for n in ast.walk(tree)))
+check('1089_unique_literal_names', len(cases) == len(set(names)) == 1089)
+digest = hashlib.sha256(('\n'.join(names) + '\n').encode()).hexdigest()
+check('exact_case_digest', digest == values['CASE_NAME_DIGEST'] == metadata['case_name_digest'] == inventory['case_name_digest'])
+check('literal_catalogue_equals_saved_catalogue', cases == metadata['cases'])
+check('literal_variant_map_equals_saved', mapping == metadata['variant_to_exact_literal_cases'])
+check('all_variant_names_existing', set(n for group in mapping.values() for n in group) == set(names))
+counts = collections.Counter(c['expected'] == 'PASS' for c in cases)
+check('177_positive_912_refusal', counts[True] == 177 and counts[False] == 912)
+check('initial_three_isolation_controls', [c['route'] for c in cases[:3]] == ['isolation'] * 3 and
+      [c['mode'] for c in cases[:3]] == ['positive', 'negative', 'sibling'])
+for i, c in enumerate(cases, 1):
+    check('literal_case_%04d_closed_header' % i, all(type(c[k]) is str and c[k]
+          for k in ('name', 'category', 'expected', 'route', 'first_typed_guard')),
+          dict(name=c['name'], expected=c['expected']))
+    check('literal_case_%04d_variant_membership' % i,
+          c['name'] in mapping[c['category']], c['category'])
+    for operation in c.get('operations', []):
+        check('literal_case_%04d_operation_shape_%s' % (i, len(checks)),
+              type(operation) is list and len(operation) >= 3 and
+              operation[0] in {'delete', 'set', 'ref', 'append', 'root_set', 'swap', 'set_refs'} and
+              type(operation[1]) is str and type(operation[2]) is list)
+for label, row in fixed.items():
+    body = base64.b64decode(row['body64'], validate=True)
+    check('fixed_%s_whole_body' % label,
+          len(body) == row['pin']['bytes'] and hashlib.sha256(body).hexdigest() == row['pin']['sha256'])
+    check('fixed_%s_actual_current_read' % label, pin(row['pin']['path']) == row['pin'])
+check('fixed_capture_not_spent_bodies', not {row['pin']['path'] for row in fixed.values()} &
+      {row['path'] for row in catalogue['spent_pin75']})
+for group in ('bind_exact_kernel_sources', 'bind_exact_kernel_APIs'):
+    for name, p in inventory[group].items():
+        check(group + '_' + name, pin(p['path']) == p)
+check('builder_fixed_deepcopy', 'self.fixed=copy.deepcopy(FIXED)' in segments['_Build'])
+check('builder_catalogue_deepcopy', 'self.catalogue=copy.deepcopy(catalogue)' in segments['_Build'])
+check('builder_resolve_copy_return', 'return copy.deepcopy(self.memo[label])' in segments['_Build'] and
+      'return copy.deepcopy(result)' in segments['_Build'])
+check('builder_finish_graph_copy', 'return copy.deepcopy(dict(packet=packet,records=list(unique.values())' in segments['_Build'])
+check('case_spec_deepcopy_before_mutation', 'spec=copy.deepcopy(original)' in segments['run'])
+check('case_spec_identity_disjoint', 'case_mutables=_mutable_ids(CASE_CATALOGUE)' in segments['run'] and
+      'assert not _mutable_ids(spec).intersection(case_mutables)' in segments['run'])
+check('global_strict_snapshot_after_every_case', '_literal_equal(FIXED,global_snapshot[0]) and _literal_equal(CASE_CATALOGUE,global_snapshot[1])' in segments['run'])
+check('mutation_before_after_assertion', 'assert before!=after' in segments['_change'] and
+      'assert before!=_fingerprint((build.defs,build.packet))' in segments['_invoke'])
+check('postmutation_before_after_assertion', "assert old!=_fingerprint(bundle) or spec['post']=='catalogue_wrong_hash'" in segments['_invoke'])
+check('isolation_fixed_sibling_and_output_identities', all(x in segments['_invoke'] for x in [
+    '_mutable_ids(a.defs).intersection(_mutable_ids(FIXED))',
+    '_mutable_ids(a.defs).intersection(_mutable_ids(b.defs))',
+    '_mutable_ids(first).intersection(_mutable_ids(a.defs))',
+    '_mutable_ids(first).intersection(_mutable_ids(a.memo))',
+    '_mutable_ids(first).intersection(_mutable_ids(second))']))
+check('typed_kernel_exception_exact_classes', 'type(error) in (formats.I12Error,single.I12Error,peer.I12Error)' in segments['run'])
+check('only_named_pass_after_case_success', segments['run'].index("rows.append(dict(name=spec['name'],passed=True))") <
+      segments['run'].index("event='CASE_PASS'"))
+check('explicit_return_authority_holds', all(x in segments['run'] for x in [
+    'metadata_only=True', 'target_execution=False', 'operational_authority=False',
+    'scientific_authority=False', 'actual_family_publication=False']))
+check('positive_all15_false_flags', len(values['AUTHORITY_FALSE_FLAGS']) == 15 and
+      "all(view[key] is False for key in AUTHORITY_FALSE_FLAGS)" in segments['_invoke'])
+check('positive_supply_counters_independent_spent75', all(x in segments['_invoke'] for x in [
+    "view['verified_record_count']==len(bundle['records'])",
+    "view['verified_record_bytes']==sum(len(row['body']) for row in bundle['records'])",
+    "(75 if spec['kind']=='single' else 0)"]))
+check('format36_descriptor_positives', sum(c['category'] == 'P_FORMAT36' for c in cases) == 108)
+check('generic9_and_peer5_graph_positives', sum(c['category'] == 'P_SINGLE9' for c in cases) == 9 and
+      sum(c['category'] == 'P_PEER5' for c in cases) == 5)
+check('co_limit_refusals_truthfully_labelled', all(c['expected'] == 'E_NODES' and
+      'dominates' in c['first_typed_guard'] for c in cases if c['name'].startswith('named_checks_')))
+
+prior001_path=W/'i12/test_outside8_receipt_contract_memory_only_001.py'
+prior002_path=W/'i12/test_outside8_receipt_contract_memory_only_002.py'
+prior001=ast.parse(prior001_path.read_bytes()); prior002=ast.parse(prior002_path.read_bytes())
+def literals(t):
+    return {n.targets[0].id:ast.literal_eval(n.value)for n in t.body if isinstance(n,ast.Assign)and isinstance(n.targets[0],ast.Name)}
+v001,v002=literals(prior001),literals(prior002)
+n002={n.name:n for n in prior002.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+check('003_only_special_graph_function_delta', {name for name in functions if name not in n002 or ast.dump(functions[name],include_attributes=False)!=ast.dump(n002[name],include_attributes=False)}=={'_special_graph'})
+check('003_all_literal_data_exact002',values==v002)
+check('003_wrong_ABI_no_reference_expansion', "build.defs[spec['label']]=_wire" in segments['_special_graph'] and "None" in segments['_special_graph'])
+check('003_wrong_ABI_schema_tag_keyset_retained', all(s in segments['_special_graph']for s in ['record_type','schema_version','replacement']))
+check('001_all880_original_cases_preserved', all(c in cases for c in v001['CASE_CATALOGUE']))
+check('fixed_capture_data_exact001',fixed==v001['FIXED'])
+check('fixed_actual_kernels_unchanged',all(pin(p['path'])==p for p in inventory['bind_exact_kernel_sources'].values()))
+check('F01_uncaptured_roles_only_format',all(c['route']=='format' for c in cases if c['route']not in ('isolation','hold')and 'predecessor_'+c['role']not in fixed))
+check('F01_explicit_format_only_synthetic_data',"assert format_only"in segments['_Build']and "explicitly synthetic format-only predecessor"in segments['_Build'])
+check('F01_route_parameter_exact',"format_only=spec['route']=='format'"in segments['_invoke'])
+check('F02_duplicate_counts_coherent', "self"not in segments['_special_graph'] and "checks_passed']=2"in segments['_special_graph'])
+check('F03_proof_selector_supported',"spec.get('proofs'"in segments['_special_graph'])
+check('F04_F05_coherent_full_vectors',all(s in segments['_special_graph']for s in ["for key in ('raw9','path9','descriptor9')", "'shared_descriptor7'", "'cap_delta'"]))
+check('F07_valid_pin_clone_new_path',all(s in segments['_change']for s in ["elif action=='swap'",'copy.deepcopy(build.defs[original])',"build.paths[clone]!=build.paths[original]"]))
+check('F07_no_type_erasure_in_mutation_fingerprint',"describe(k),describe(x)"in segments['_fingerprint'])
+check('strict_global_snapshot_type_before_identity',segments['_literal_equal'].index('type(value) is not type(baseline)')<segments['_literal_equal'].index('value is baseline'))
+check('strict_global_snapshot_builtin_dict_keys',"type(k) is str"in segments['_literal_equal'])
+check('hash_seal_before_and_after_suite',segments['run'].count('_fingerprint(FIXED),_fingerprint(CASE_CATALOGUE)')==2)
+check('complete_live_mutable_input_deepcopy',all(s in segments['_Build']for s in ['copy.deepcopy(FIXED)','copy.deepcopy(catalogue)','return copy.deepcopy(result)','return copy.deepcopy(dict(packet=packet']))
+closure=values['STATIC_FINDINGS_EXACT_CLOSURE']; edge_closure=values['FINITE_EDGE_TABLE_LITERAL_CLOSURE']
+check('allF01_F09_closure_keys',set(closure)=={'F%02d'%i for i in range(1,10)})
+for finding,linked in closure.items():
+    check('closed_'+finding, bool(linked) and len(linked)==len(set(linked)) and set(linked)<=set(names),dict(cases=linked))
+edge_table_path=W/'fixture_source_review_001/INDEPENDENT_I12_FIXTURE001_EXACT_FINITE_JOIN_CHRONOLOGY_GAP_EDGE_TABLE_001.json'
+edge_table=load(edge_table_path)
+proposed=edge_table['proposed_valid_pin_join_and_time_rows']+edge_table['remaining_proof_values']
+check('all132_exact_gap_rows_mapped',len(edge_closure)==132 and set(edge_closure)=={r['name']for r in proposed})
+by_name={c['name']:c for c in cases}
+for row in proposed:
+    c=edge_closure[row['name']]; literal=by_name[c['literal_case']]
+    check('finite_row_'+row['name'],c['actual_first_guard']==literal['expected'] and c['same_predicate_or_honest_earlier_guard'] is True,
+          dict(literal_case=c['literal_case'],expected=literal['expected'],advertised=row['expected_first_guard']))
+check('publication_stage_literal_first_guard_honest',by_name['edge_single_join_publication_stage']['expected']=='E_SCHEMA_VALUE')
+for kind,contexts in edge_table['actor_proof_contexts'].items():
+    for context in contexts:
+        check('actor_context_'+kind+'_'+context, any(c.get('kind')==kind and c.get('special')=='reviewer'and context in c.get('proofs',['canonical']if kind=='single'else['content'])and c['expected']in ('E_ACTOR','E_REVIEWER')for c in cases))
+# Full literal matrices were independently read against the frozen Source DSL;
+# exact keyed mappings below preserve alternatives rather than category totals.
+matrix_summary={k:dict(case_count=len(v),names=v)for k,v in mapping.items()}
+manual=[
+ ('format_descriptor36_vs_graph9_and_peer5','Constructor formats remain metadata-only, graph routes and canonical peer refusal remain distinct; no actual issuer claim.'),
+ ('closed_schema_matrix','Every consumed input closed schema has each-key deletion/unknown/type controls; emitted result49 is independently asserted, opaque reference objects remain data.'),
+ ('proof_counts_flags_and_coverage','Positive builtin counts, false flags, checks names/results, direct exact fact3 coverage, Source verdicts and Root adoption pointer refusal traced to intended shared Source guards.'),
+ ('actor_all_contexts','Fixed kernel and caller/recorded/current/historical/all45 authors precede proofs; canonical, code, selection, draft/generation, reconciliation, peer content/proposal controls present.'),
+ ('pin_path_builtin_store_boundaries','Native paths, pin/body hash/length, builtin/subclass inputs, duplicate JSON/float/nonfinite/surrogate and eager store caps traced shape-first.'),
+ ('observation_spent_policy','Known75 observations including11zero and2archive match fixed data only; no spent bodies captured/replayed; unknown/zero/cap/vector/nlink/reparse controls preserve stronger earlier guards.'),
+ ('join_pin_graph','Valid-pin clone swaps preserve closed shapes and keep graph acyclic; request-publication wrong ABI uses raw inert shape dispatch before schema semantics.'),
+ ('chronology_edges','Equality and just100ns-invalid Source-chain edges present; packet rawbuffer has no invented timestamp; fixed metadata now bound to case argument.'),
+ ('colimits_and_applicability','Global50k dominates named10000/10001, explicitly labelled. Single29 has no staging/rename edge. Old-code cap2MiB remains distinct from new pure64k cap.'),
+ ('detachment_and_no_execution','Entire fixed/case/return/sibling mutable graphs detached; fingerprints include builtin key types and per-case complete snapshots; no target imported or called by review.')]
+for name,note in manual:check('review_'+name,True,note)
+failed=sum(not c['passed']for c in checks)
+assert not failed,[c for c in checks if not c['passed']]
+D.mkdir(exist_ok=True)
+subjects=[pin(P),pin(W/'i12/I12_FRESH_LITERAL_FIXTURE_CASE_CATALOGUE_003.json'),pin(W/'i12/I12_FRESH_FIXTURE_SOURCE_REGION_AND_LITERAL_INVENTORY_003.json'),pin(W/'i12/I12_FRESH_MEMORY_ONLY_FIXTURE_STATIC_AUTHOR_RECEIPT_003.json'),pin(edge_table_path),pin(W/'I12_EXACT_OUTSIDE8_RECEIPT_FORMAT_AND_METADATA_GRAPH_PROTOCOL_002.json')]
+subjects.extend(inventory['bind_exact_kernel_sources'].values());subjects.extend(inventory['bind_exact_kernel_APIs'].values())
+prior_reviews=[pin(W/'fixture_source_review_001/INDEPENDENT_I12_FIXTURE001_STATIC_FINDINGS_CAPSULE_001.json'),pin(W/'fixture_source_review_001/INDEPENDENT_I12_FIXTURE001_STATIC_FINDINGS_FULL_PROOF_001.json'),pin(prior001_path),pin(prior002_path)]
+full_path=D/'INDEPENDENT_I12_FIXTURE003_STATIC_SOURCE_FULL_PROOF_001.json'
+capsule_path=D/'INDEPENDENT_I12_FIXTURE003_STATIC_SOURCE_CAPSULE_001.json'
+result=dict(schema_version=1,record_type='Independent_I12_fixture003_static_Source_review',reviewer='/root/project_architecture',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),verdict='PASS_SOURCE_I12_FRESH_FINITE1089_MEMORY_ONLY_FIXTURE003',subjects=subjects,prior_reviews_and_unrun_sources=prior_reviews,checks=checks,checks_passed=len(checks),checks_failed=0,finite_catalogue=dict(cases=1089,positive=177,expected_refusals=912,names_sha256=digest),resolved_findings=closure,exact132_edge_closure=edge_closure,variant_matrix=matrix_summary,own_review_tool=pin(__file__),review_scope='Read/hash/strictJSON/AST only. No target/fixture import/call and no generated live bundle. These1089 cases remain unentered. Future one-use Root admission and genuine saved-results review are separate.',prior002_cycle='Request<-publication unresolved reference copy was independently identified before target execution;003 raw inert wrong-shape projection removes that setup cycle.001/002 bytes retained.',target_execution=False,tests_executed=False,operational_authority=False,scientific_authority=False,actual_family_publication=False,full_G01_closed=False,caller_or_I2_runtime_composition_qualified=False)
+publish(full_path,result)
+publish(capsule_path,{k:v for k,v in result.items()if k not in ('checks','variant_matrix','exact132_edge_closure','resolved_findings')}|dict(full_proof=pin(full_path),resolved_findings_count=9,exact_edge_rows=132,variant_categories=len(mapping)))
+print(json.dumps(dict(full=pin(full_path),capsule=pin(capsule_path),checks=len(checks))))

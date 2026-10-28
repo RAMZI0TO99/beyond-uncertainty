@@ -1,0 +1,115 @@
+"""Static fixture007 input-ownership repair author; no target import/call/test.
+Preserves actual attempt001 and all emitted predecessors.
+"""
+import ast
+import base64
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+
+HERE=Path(__file__).parent;OUT=HERE/'i11';CAP=2097152
+def pin(path):
+    raw=path.read_bytes();return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+def create(path,raw):
+    assert 0<len(raw)<=CAP,(path,len(raw))
+    with path.open('xb') as handle:handle.write(raw)
+    return pin(path)
+def assignment(text,name):
+    node=next(n for n in ast.parse(text).body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id==name for t in n.targets))
+    return node,ast.literal_eval(node.value)
+def replace_assignment(text,name,value):
+    node,_=assignment(text,name);lines=text.splitlines(keepends=True)
+    return ''.join(lines[:node.lineno-1])+name+' = '+repr(value)+'\n'+''.join(lines[node.end_lineno:])
+def replace(text,old,new):
+    assert text.count(old)==1,(old[:80],text.count(old));return text.replace(old,new,1)
+
+source=OUT/'validate_finite8_canonical_receipt_metadata_003.py'
+old_fixture=OUT/'test_finite8_canonical_receipt_metadata_memory_only_006.py'
+old_api=OUT/'CURRENT_OWNER_FINITE8_CANONICAL_RECEIPT_METADATA_INERT_API_006.json'
+fixture=old_fixture.read_text(encoding='utf8')
+fixture=replace(fixture,"            self.store[row['pin']['path']] = (row['pin'], body)","            owned_pin = copy.deepcopy(row['pin'])\n            self.store[owned_pin['path']] = (owned_pin, body)")
+fixture=replace(fixture,"    b = _Build(); l = C['literals']", "    b = _Build(); l = copy.deepcopy(C['literals'])")
+fixture=replace(fixture,"    return dict(dependency=dependency,expected=expected,records=[dict(pin=p,body=body) for p,body in b.store.values()],expected_root_thread=THREAD,source_editor=EDITOR,now_utc=NOW,\n                _json_paths=sorted(b.json_paths),_marks=b.marks)","    # Every returned mutable container belongs to this fresh input graph.\n    # Immutable builtin bytes/strings may be shared safely; no global dict/list\n    # or earlier bundle container may remain reachable.\n    return copy.deepcopy(dict(dependency=dependency,expected=expected,records=[dict(pin=p,body=body) for p,body in b.store.values()],expected_root_thread=THREAD,source_editor=EDITOR,now_utc=NOW,\n                _json_paths=sorted(b.json_paths),_marks=b.marks))")
+fixture=replace(fixture,"        name,kind,args,error=spec", "        name,kind,args,error=copy.deepcopy(spec)")
+_,cases=assignment(fixture,'CASE_CATALOGUE')
+_,mapping=assignment(fixture,'PROTOCOL_VARIANT_CASE_MAPPING')
+_,reach=assignment(fixture,'SOURCE_ONLY_REACHABILITY')
+new_cases=[('owned_input_graph_positive_global_and_sibling_isolation','input_isolation',['all_containers'],None),
+           ('owned_input_graph_negative_pin_global_and_sibling_isolation','input_isolation',['negative_pin'],'E_PIN'),
+           ('owned_input_graph_fresh_positive_after_negative','selector',[0],None)]
+assert not ({c[0] for c in new_cases}&{c[0] for c in cases})
+cases=new_cases+cases
+mapping['P07']['case_names'] += [c[0] for c in new_cases]
+mapping['N05']['case_names'].append(new_cases[1][0])
+reach.update(owned_input_graph='Fixed pin dicts and literal subtree are copied during construction; complete returned graph and every case spec are deep-copied. Positive/negative controls snapshot C/FIXED/catalogue/ROLES, assert no mutable container identity overlap with globals or sibling bundles, corrupt only one owned graph, and assert globals/sibling unchanged. Immutable bytes/strings are data and need not have distinct identities.',
+             attempt001_saved_limit='Actual attempt001 emitted271 CASE_PASS events. Shared FIXED[0].pin mutation already affected cases270/271; case272 closed_fact3_missing_sha256 failed during setup before its validator call;389later cases unentered. Recorded events are not271 isolated intended-predicate qualifications. No kernel defect demonstrated; no old fixture replay.')
+extra=r'''
+        elif kind=='input_isolation':
+            def input_isolation_case(action=args[0]):
+                globals_before=copy.deepcopy((C,FIXED,CASE_CATALOGUE,ROLES))
+                first=make_bundle();sibling=make_bundle();sibling_before=copy.deepcopy(sibling)
+                def containers(value, found=None):
+                    found={} if found is None else found
+                    if type(value) in (dict,list,tuple):
+                        if id(value) in found:return found
+                        found[id(value)]=value
+                        for child in value.values() if type(value) is dict else value:containers(child,found)
+                    return found
+                globals_containers=containers((C,FIXED,CASE_CATALOGUE,ROLES))
+                first_containers=containers(first);sibling_containers=containers(sibling)
+                # Tuple case rows are immutable; only mutable dict/list identity
+                # must be owned. The traversal visits immutable tuple children.
+                mutable=lambda found:{key for key,value in found.items() if type(value) in (dict,list)}
+                assert mutable(first_containers).isdisjoint(mutable(globals_containers))
+                assert mutable(sibling_containers).isdisjoint(mutable(globals_containers))
+                assert mutable(first_containers).isdisjoint(mutable(sibling_containers))
+                if action=='all_containers':
+                    for value in first_containers.values():
+                        if type(value) in (dict,list):value.clear()
+                    assert (C,FIXED,CASE_CATALOGUE,ROLES)==globals_before
+                    assert sibling==sibling_before
+                    return invoke(component,sibling)
+                assert action=='negative_pin'
+                assert set(first['records'][0]['pin'])=={'path','bytes','sha256'}
+                del first['records'][0]['pin']['bytes']
+                assert set(first['records'][0]['pin'])=={'path','sha256'}
+                try:return invoke(component,first)
+                finally:
+                    assert (C,FIXED,CASE_CATALOGUE,ROLES)==globals_before
+                    assert sibling==sibling_before and set(sibling['records'][0]['pin'])=={'path','bytes','sha256'}
+                    fresh=make_bundle()
+                    assert fresh==sibling_before
+            check(name,input_isolation_case,error)
+'''
+fixture=replace(fixture,"        elif kind=='arg':",extra+"\n        elif kind=='arg':")
+for key,value in [('CASE_CATALOGUE',cases),('PROTOCOL_VARIANT_CASE_MAPPING',mapping),('SOURCE_ONLY_REACHABILITY',reach)]:fixture=replace_assignment(fixture,key,value)
+raw=fixture.encode();tree=ast.parse(raw);compile(raw,'<fixture007 data compile>','exec')
+_,literal=assignment(fixture,'CASE_CATALOGUE');assert literal==cases
+assert len({c[0] for c in cases})==len(cases)
+assert b"owned_pin = copy.deepcopy(row['pin'])" in raw and b"l = copy.deepcopy(C['literals'])" in raw
+assert b"return copy.deepcopy(dict(dependency=" in raw and b"name,kind,args,error=copy.deepcopy(spec)" in raw
+sp=pin(source);assert sp['sha256']=='51f71572b21d76063300a33eeaddc578d19892721ff59cb027faeee335a44f3f'
+fp=create(OUT/'test_finite8_canonical_receipt_metadata_memory_only_007.py',raw)
+api=json.loads(old_api.read_bytes());api.update(Source=sp,fixture_Source=fp,created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),literal_case_catalogue=cases,literal_case_count=len(cases),
+    protocol_variant_case_mapping=mapping,Source_only_guard_reachability=reach,fixture006_preserved=pin(old_fixture),API006_preserved=pin(old_api),correction_author_tool=pin(Path(__file__)),
+    fixture007_correction='Repair complete fresh input graph ownership after actual attempt001 saved global FIXED pin-alias refusal. Fixed pins, literal subtree, return graph and each case spec are copied. Add positive/negative global/sibling identity and snapshot controls. Source003 unchanged; no target import/call/test during authoring.',
+    attempt001_is_saved_refusal=True,attempt001_CASE_PASS_events=271,attempt001_independent_qualification_count_not_established=True)
+ap=create(OUT/'CURRENT_OWNER_FINITE8_CANONICAL_RECEIPT_METADATA_INERT_API_007.json',(json.dumps(api,sort_keys=True,indent=2)+'\n').encode())
+regions=[]
+for path,body in ((source,source.read_bytes()),(Path(fp['path']),raw)):
+    lines=body.splitlines(keepends=True)
+    for n in ast.parse(body).body:
+        if isinstance(n,(ast.FunctionDef,ast.ClassDef)):
+            part=b''.join(lines[n.lineno-1:n.end_lineno]);regions.append(dict(path=str(path),name=n.name,first_line=n.lineno,last_line=n.end_lineno,bytes=len(part),sha256=hashlib.sha256(part).hexdigest()))
+inv=dict(schema_version=1,record_type='I11_fixture007_complete_predecessor_inverse_and_exact_regions',author='/root/i2_resume_gap',Source=sp,fixture=fp,API=ap,
+    complete_predecessors=[dict(pin=pin(p),complete_bytes_base64=base64.b64encode(p.read_bytes()).decode()) for p in (old_fixture,old_api)],regions=regions,case_catalogue=cases,literal_case_count=len(cases),new_cases=new_cases,
+    exact_variant_mapping=mapping,Source_only_guard_reachability=reach,final_variant_gap_table=api['final_variant_gap_table'],final_variant_gap_table_coverage=api['final_variant_gap_table_coverage'],
+    author_tool=pin(Path(__file__)),tests_executed=False,target_execution=False,validator003_preserved=sp,old_targets_changed=False,attempt001_preserved=True)
+ip=create(OUT/'I11_EXACT_SOURCE_REGION_AND_NO_OLD_TARGET_CHANGE_INVENTORY_007.json',(json.dumps(inv,sort_keys=True,indent=2)+'\n').encode())
+receipt=dict(schema_version=1,record_type='I11_fixture007_static_full_input_ownership_repair_author_receipt',author='/root/i2_resume_gap',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),
+    Source=sp,fixture=fp,API=ap,inventory=ip,author_tool=pin(Path(__file__)),predecessors=[pin(old_fixture),pin(old_api)],literal_case_count=len(cases),
+    AST_literal_catalogue_verified=True,all_created_artifacts_below_2MiB=True,target_imports=0,target_calls=0,tests_executed=False,target_execution=False,
+    old_target_changes=False,attempt001_preserved=True,operational_authority=False,scientific_authority=False,full_G01_closed=False)
+rp=create(OUT/'I11_FINITE8_CANONICAL_RECEIPT_METADATA_SOURCE_AUTHOR_RECEIPT_007.json',(json.dumps(receipt,sort_keys=True,indent=2)+'\n').encode())
+print(json.dumps(dict(Source=sp,fixture=fp,API=ap,inventory=ip,receipt=rp,literal_cases=len(cases),tests_executed=False),sort_keys=True))

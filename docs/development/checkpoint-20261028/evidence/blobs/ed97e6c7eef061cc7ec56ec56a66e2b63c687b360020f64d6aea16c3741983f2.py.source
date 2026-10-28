@@ -1,0 +1,91 @@
+"""Independent Source/metadata review; no helper or other subject is invoked."""
+import ast,base64,datetime,hashlib,json
+from pathlib import Path
+R=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003');P=R/'m3_peer_contracts_016';PUB=R/'managed_publication_001';O=R/'packaging_selection003_supplemental_archive007_Source_review_001'
+subjects=[];checks=[];seen=set()
+def ck(n,v,e):
+    assert n not in {c['name']for c in checks};checks.append(dict(name=n,passed=bool(v),evidence=e))
+def pairs(a):
+    d={}
+    for k,v in a:
+        if k in d:raise ValueError('duplicate')
+        d[k]=v
+    return d
+def bad(x):raise ValueError('number '+x)
+def dec(raw):return json.loads(raw.decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def sha(b):return hashlib.sha256(b).hexdigest()
+def read(p,n=None,h=None,JSON=False):
+    b=p.read_bytes();f=dict(path=str(p),bytes=len(b),sha256=sha(b));assert p.is_absolute()and p.is_file()and len(b)<=2097152
+    if n is not None:assert len(b)==n and sha(b)==h
+    if str(p)not in seen:subjects.append(f);seen.add(str(p))
+    return dec(b)if JSON else b
+def rp(f,JSON=False):return read(Path(f['path']),f['bytes'],f['sha256'],JSON)
+def functions(b):return {n.name:ast.dump(n,include_attributes=False)for n in ast.parse(b.decode('utf8')).body if isinstance(n,ast.FunctionDef)}
+def text(b):return b.decode('utf8')
+selection=read(R/'prepare_I13_exact_owned_run_bundle_selection_003.py',13107,'88d967c67893d25bd9762ea013a765889ef35e068b134fae14f53cd0d70df0e4')
+creator=read(R/'prepare_I13_supplemental_metadata_helper_source_bundles_001.py',11255,'8d92bb9e160739c53d16d4e34f61ed7444e5d109257147786a1ff55454fe9b73')
+archive=read(R/'prepare_I13_managed_candidate_007.py',33551,'c59a164e66816124a141955465affeccf3bada48e4f819a556ef406ff2ec21a6')
+receipt=read(R/'ROOT_I13_RUN_SELECTION_BUILDER003_SAME_BUFFER_SOURCE_AUTHOR_RECEIPT_001.json',17764,'d8217681caf43cb56b569a255ac26105b08feb3bd528c48ea6973fedeecb3018',True)
+rec2=read(R/'ROOT_I13_SUPPLEMENTAL_BUNDLER_ARCHIVE007_SOURCE_AUTHOR_RECEIPT_001.json',53916,'47a236116aae0cd29d6ff9fe1850577ed571458d259c8810132384d65af466c4',True)
+plan=read(R/'I13_EXACT_SUPPLEMENTAL_METADATA_HELPER_SOURCE_BUNDLE_PACKAGING_PLAN_001.json',15636,'9b56b975b2babdcb8e7006c294efc2f8851ee81f42ae04a73e5c42b6eae7d248',True)
+original160=rp(plan['original160_helper_selection'],True)
+scope=rp(plan['Source_scope'],True)
+before_selection=base64.b64decode(receipt['complete_predecessor_bytes_base64'],validate=True)
+ck('selection_complete_predecessor_inverse',before_selection==rp(receipt['predecessor'])and base64.b64encode(before_selection).decode('ascii')==receipt['complete_predecessor_bytes_base64'],receipt['predecessor'])
+old=[]
+for pred,encoded in zip(rec2['predecessors'],rec2['complete_predecessor_bytes_base64']):
+    b=base64.b64decode(encoded,validate=True);ck('whole_inverse_'+Path(pred['path']).stem,b==rp(pred)and base64.b64encode(b).decode('ascii')==encoded,pred);old.append(b)
+sf,cf,af=map(functions,(selection,creator,archive));bs=functions(before_selection);bc=functions(old[0]);ba=functions(old[1])
+ck('selection_only_select_function_AST_changed',set(sf)==set(bs)and {k for k in sf if sf[k]!=bs[k]}=={'select'},list(sf))
+ck('creator_common_helpers_AST_exact_approved_bundler002',set(cf)==set(bc)and all(cf[k]==bc[k]for k in cf if k not in('eligible','create')),[k for k in cf if k not in('eligible','create')])
+ck('archive_original_helpers_AST_exact_except_prepare_publish',set(af)==set(ba)|{'supplemental_evidence','supplemental_eligible'}and all(af[k]==ba[k]for k in ba if k not in('prepare','publish')),[k for k in ba if k not in('prepare','publish')])
+s,c,a=map(text,(selection,creator,archive))
+for name,b in [('selection003',selection),('creator001',creator),('archive007',archive)]:
+    tree=ast.parse(text(b));imports=[]
+    for n in ast.walk(tree):
+        if isinstance(n,ast.Import):imports.extend(x.name.split('.')[0]for x in n.names)
+        elif isinstance(n,ast.ImportFrom):imports.append(n.module.split('.')[0])
+    ck(name+'_stdlib_only_no_target_import',set(imports)<={'base64','datetime','hashlib','json','os','pathlib','re','sys','stat'},imports)
+    ck(name+'_no_eval_exec_or_process_launch',not any(isinstance(n,ast.Call)and isinstance(n.func,ast.Name)and n.func.id in('eval','exec','compile','__import__')for n in ast.walk(tree))and 'subprocess'not in text(b),name)
+    ck(name+'_stable_double_read_nonreparse_body',all(t in text(b)for t in('st_nlink','st_mtime_ns','st_ctime_ns','st_file_attributes','lstat()','seek(0)')),name)
+    ck(name+'_exclusive_fsynced_readback_outputs',all(t in text(b)for t in("open('xb')",'os.fsync','flush()')),name)
+    ck(name+'_strict_Source60_reserve_and_original_caps',all(t in text(b)for t in('>60','512','67108864','2097152')),name)
+ck('selection_validated_same_buffers_retained',all(t in s for t in('retained={}','validated={str(p).casefold():b','retained[key]=validated[key]','pin(allowed[key],retained[key])','body(p)==retained[key]')),['selection003',136,159,163])
+ck('selection_claim_scope_result_prelaunch_witness_joins',all(t in s for t in("claim['scope']==sp","result['scope']==sp","result['claim']==claim_pin","sc['prelaunch']","w['supervisor_result']==result_pin")),['selection003',119,134])
+ck('selection_owned_cleanup_EOF_required_not_case_acceptance',all(t in s for t in("result['reaped']is True","result['streams_drained']is True","result['custody_error']is None","set(eof)=={'stdout','stderr'}","all(v is None for v in errors.values())",'root_result_qualification_inferred=False')),['selection003',127,154])
+ck('selection_missing_only_absent_child_result_preserved',"key=='child_result'and result['child_result_absent']is True"in s and "absent_outputs_remain_absent=missing"in s,['selection003',144,162])
+ck('selection_exact_consumed_output_namespace_and_orphan_rejection',all(t in s for t in("sc['outputs']==expected","no orphans","each exact original once")),['selection003',123,158])
+ck('selection_output_plan_only_no_bundle_creation',"I13_EXACT_OWNED_RUN_METADATA_BUNDLE_PLAN_"in s and 'bundles_created=False'in s,['selection003',164,165])
+ck('creator_separate_Source_plan_Root_adoptions_samebuffers',all(t in c for t in('source_adoption_raw=body(source_adoption)','adoption(decode(source_adoption_raw),own)','plan_raw=body(plan_path)','adoption(decode(plan_adoption_raw),plan_pin)','body(source_adoption)==source_adoption_raw and body(plan_adoption)==plan_adoption_raw')),['creator001',110,147])
+ck('creator_fixed_plan_namespace_and_eligible_domain',"plan_path.name=='I13_EXACT_SUPPLEMENTAL_METADATA_HELPER_SOURCE_BUNDLE_PACKAGING_PLAN_001.json'"in c and 'not path.is_relative_to(SUBJECTS)'in c and 'not path.is_relative_to(PUB)'in c and "path.suffix=='.py'"in c,['creator001',104,121])
+ck('creator_full_member_exact_base64_not_Source_execution',all(t in c for t in('original=exact(subject)','base64.b64encode(original)','base64.b64decode(text,validate=True)==original','canonical_base64=text')),['creator001',120,123])
+ck('creator_unsplit256members_2MiB_with512_64MiB_totals',all(t in c for t in('len(tentative)>256','one complete member cannot fit original cap','complete bounded unsplit member','len(outputs)+1<=512','sum(len(raw)for _,raw in outputs)<=67108864')),['creator001',128,137])
+ck('creator_originals_before_write_and_saved_inverse',all(t in c for t in("exact(member['original'])==base64.b64decode(member['canonical_base64'],validate=True)","decoded==exact(member['original'])","[m['original']for m in mapping]==members")),['creator001',140,145])
+ck('creator_actual_reconstruction_review_still_separate','actual_bundle_reconstruction_requires_different_saved_review_and_Root_adoption=True'in c and 'review_pending=True'in c,['creator001',146,147])
+ck('archive_supplement_exact_Source_plan_reconstruction_adoptions',all(t in a for t in('def supplemental_evidence(review_adoption):','SUPPLEMENTAL_BUNDLE_AUTHOR_SOURCE','adopted(decode(exact(index[\'bundle_author_Source_Root_adoption\']))','adopted(decode(exact(index[\'packaging_plan_Root_adoption\']))','adopted(decode(review_raw),index_pin)')),['archive007',314,339])
+ck('archive_closed2_canonical_inverse_exact_original',all(t in a for t in("set(member)=={'original','canonical_base64'}","decoded==exact(original)","base64.b64encode(decoded).decode('ascii')==member['canonical_base64']","mapping==index['members']")),['archive007',314,339])
+ck('archive_three_domains_disjoint_and_all_originals_revalidated',"all_members=evidence['members']+run_evidence_value['members']+supplemental['members']"in a and "len({p['original']['path'].casefold()for p in all_members})==len(all_members)"in a and "all and only exact reviewed helper/run members bundled"in a,['archive007',128,145])
+ck('archive_publish_revalidates_supplement_context',"supplemental=supplemental_evidence(Path(value['supplemental_metadata_helper_bundles']['bundle_reconstruction_Root_adoption']['path']))"in a and "supplemental==value['supplemental_metadata_helper_bundles']"in a,['archive007',169,172])
+ck('archive_bundle_indexes_all_direct_and_originals_not_duplicated',"supplemental['bundle_index']['path']in source_paths"in a and "supplemental['bundle_index']['path']in source_set"in a and "str(source)not in omitted"in a and 'bundled_supplemental_helper_members=supplemental_bundled'in a,['archive007',145,195])
+ck('archive_unchanged_baseline_and_future_publish_separation','preservation=baseline()'in a and 'def publish('in a and 'candidate_Root_adoption=adoption_pin'in a and 'no_step081_or_operational_lease=True'in a,['archive007',128,205])
+members=plan['members'];paths=[m['path']for m in members];oldpaths={m['path'].casefold()for m in original160['members']}
+ck('supplemental_plan_exact61_sorted_disjoint_old160',len(members)==plan['member_count']==61 and len(original160['members'])==160 and paths==sorted(paths,key=str.casefold)and len({p.casefold()for p in paths})==61 and not(oldpaths&{p.casefold()for p in paths}),[plan['original160_helper_selection'],dict(supplemental_count=61,original_count=160)])
+total=0
+for number,m in enumerate(members,1):
+    p=Path(m['path']);b=rp(m);total+=len(b)
+    ck('supplemental_member_'+str(number)+'_whole_exact_nontarget',p.is_relative_to(R)and not p.is_relative_to(P)and not p.is_relative_to(PUB)and p.suffix=='.py'and p.resolve()==p,m)
+ck('supplemental_exact546038bytes_allcaps_held',total==plan['member_bytes']==546038 and plan['maximum_metadata_file_bytes']==2097152 and plan['maximum_actual_copy_rows']==512 and plan['maximum_actual_copy_payload_bytes']==67108864,[dict(member_bytes=total)])
+ck('supplemental_originals_opaque_no_semantic_acceptance',True,'61 complete files were read/hash-checked as opaque Source bytes only; no member AST/import/function/test execution or historical failed-Source semantic approval. All originals stay physical and unchanged.')
+ck('plan_all_review_stages_separate_no_actual_output',all(plan[k]is False for k in('actual_bundles_created','original_files_modified','source_helpers_invoked','target_execution','tests_executed','actual_family_publication','operational_authority','scientific_authority'))and plan['exact_selection_different_review_and_Root_adoption_required']is True and plan['helper_Source_actual_reconstruction_candidate_creation_require_separate_different_reviews_and_Root_adoptions']is True,plan['selection'])
+ck('Root_Source_author_separate_reviewer',receipt['author']==rec2['author']==plan['author']=='/root','reviewer /root/i13_final_review')
+ck('review_no_subject_invocation_or_outputs_created',True,'Only reviewer-owned script/full-proof/capsule authored. No selection, bundle creator, archive prepare/publish, target/fixture/helper or other subject function invoked. Actual selection/bundle reconstruction/candidate/creation remain separate reviews and Root adoptions.')
+ck('unique_closed3_checks',all(set(c)=={'name','passed','evidence'}and type(c['passed'])is bool for c in checks)and len({c['name']for c in checks})==len(checks),'closed3 builtinbool unique names')
+assert all(c['passed']for c in checks),[c['name']for c in checks if not c['passed']]
+now=datetime.datetime.now(datetime.timezone.utc).isoformat();limit='Source-only review of exact Root selection003, supplemental61 plan/creator001 and archive007 successor. Whole before inverses and unchanged helper AST complements verified. Selection member pins retain validated buffers with final rereads; supplemental complete opaque bytes remain disjoint from original160; all exact adoption/reconstruction joins, exclusive stable whole-byte writes and original2MiB/512/64MiB/strict>60 reserve remain. No functions invoked and no plan selection output, bundle, managed candidate or publication created by this review. Actual produced selection, reconstructed bundles, candidate and managed creation each require separate genuine reviews/Root adoptions. No member semantic execution approval, whole936 qualification, physical-host/PID/handle absence, actual family/Native8/Parser/runtime/science or operational authority follows.'
+common=dict(schema_version=1,reviewer='/root/i13_final_review',created_utc=now,verdict='PASS_I13_SELECTION003_SUPPLEMENTAL61_CREATOR001_ARCHIVE007_SOURCE_ONLY',subjects=subjects,checks_passed=len(checks),checks_failed=0,claim_limit=limit,target_execution=False,tests_executed=False,native_Parser_executed=False,operational_authority=False,scientific_authority=False,actual_family_publication=False)
+full=dict(common,record_type='Independent_I13_selection003_supplemental61_archive007_Source_full_proof',checks=checks,reviewed_function_AST_deltas=dict(selection_changed=['select'],creator_changed=['eligible','create'],archive_changed=['prepare','publish'],archive_added=['supplemental_evidence','supplemental_eligible']),historical_member_Source_AST_not_interpreted=True,reviewer_metadata_correction='First own reader assertion accidentally negated the correct str(source)not in omitted guard and refused before any proof write. Corrected only reviewer assertion polarity to require that original guard. No subject Source changes or invocations.')
+def write(p,d):
+    with p.open('xb')as f:f.write((json.dumps(d,ensure_ascii=False,sort_keys=True,indent=2,allow_nan=False)+'\n').encode('utf8'))
+f=O/'INDEPENDENT_I13_SELECTION003_SUPPLEMENTAL_ARCHIVE007_SOURCE_FULL_PROOF_001.json';write(f,full);b=f.read_bytes();ff=dict(path=str(f),bytes=len(b),sha256=sha(b));cap=O/'INDEPENDENT_I13_SELECTION003_SUPPLEMENTAL_ARCHIVE007_SOURCE_CAPSULE_001.json';write(cap,dict(common,record_type='Independent_I13_selection003_supplemental61_archive007_Source_capsule',full_proof=ff))
+for p in(f,cap):
+    b=p.read_bytes();print(json.dumps(dict(path=str(p),bytes=len(b),sha256=sha(b),checks_passed=len(checks),checks_failed=0)))

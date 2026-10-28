@@ -1,0 +1,255 @@
+"""Independent metadata-only creation/Source review; never runs reviewed Sources."""
+import ast
+import datetime as dt
+import hashlib
+import json
+import os
+import stat
+from pathlib import Path
+
+OUT = Path(__file__).parent
+R = OUT.parent
+S = R.parent / 'pro3_bootstrap002_source_review_001'
+P = Path('D:/Aenv/pro3/runs/coordination/cho51_p3_contracts_20261027_v1')
+WHO = '/root/i13_final_review'
+checks = []
+buffers = {}
+json_shapes = {}
+
+def need(ok, msg):
+    if not ok:
+        raise ValueError(msg)
+
+def ck(name, ok, evidence=None):
+    need(type(ok) is bool, 'Boolean result required')
+    checks.append(dict(name=name, passed=ok, evidence=evidence))
+
+def raw(p):
+    p = Path(p)
+    for q in (p, *p.parents):
+        st = q.lstat()
+        need(not q.is_symlink() and not getattr(st, 'st_file_attributes', 0) & 1024, 'direct nonreparse metadata lineage')
+    a = p.stat()
+    need(stat.S_ISREG(a.st_mode) and a.st_nlink == 1 and 0 <= a.st_size <= 2097152, 'ordinary bounded singlelink metadata')
+    with p.open('rb') as h:
+        b = os.fstat(h.fileno())
+        data = h.read(2097153)
+        c = os.fstat(h.fileno())
+    d = p.stat()
+    key = lambda x: (x.st_dev, x.st_ino, x.st_mode, x.st_nlink, x.st_size, x.st_mtime_ns)
+    need(key(a) == key(b) == key(c) == key(d) and len(data) == a.st_size, 'samebuffer stable retained metadata')
+    return data
+
+def fact(p, data):
+    return dict(path=str(p), bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+
+def get(p, size=None, sha=None):
+    p = Path(p)
+    data = raw(p)
+    fp = fact(p, data)
+    need(size is None or fp['bytes'] == size, 'announced size ' + str(p))
+    need(sha is None or fp['sha256'] == sha, 'announced hash ' + str(p))
+    buffers[str(p)] = data
+    return data, fp
+
+def pairs(items):
+    d = {}
+    for k, v in items:
+        need(k not in d, 'duplicate exact JSON key')
+        d[k] = v
+    return d
+
+def bad(x):
+    raise ValueError('noninteger/nonfinite JSON number')
+
+def shape(v):
+    pending = [(v, 0)]
+    count = depth = 0
+    while pending:
+        x, n = pending.pop()
+        count += 1
+        depth = max(depth, n)
+        need(count <= 50000 and n <= 48, 'fullkey metadata node/depth limit')
+        need(x is None or type(x) in (dict, list, str, int, bool), 'builtin JSON only')
+        if type(x) is str:
+            need(not any(0xD800 <= ord(c) <= 0xDFFF for c in x), 'surrogate refusal')
+        elif type(x) is list:
+            pending.extend((e, n + 1) for e in x)
+        elif type(x) is dict:
+            for k, value in x.items():
+                need(type(k) is str, 'string key')
+                pending.extend(((k, n + 1), (value, n + 1)))
+    return dict(nodes_including_keys=count, maximum_depth_including_keys=depth)
+
+def doc(p, size=None, sha=None):
+    data, fp = get(p, size, sha)
+    value = json.loads(data.decode('utf-8'), object_pairs_hook=pairs, parse_float=bad, parse_constant=bad)
+    json_shapes[str(p)] = shape(value)
+    return value, fp
+
+def pinned_doc(fp):
+    return doc(fp['path'], fp['bytes'], fp['sha256'])
+
+scope, sp = doc(S / 'ROOT_PRO3_NEW_FINITE_SOURCE_ONLY_COEXISTENCE_SCOPE_011_001.json', 9049, 'c52dbbfc4a5202bc5476e6b41071d72a1163b339e8bcaad29acf2a6dae70a540')
+adopt, ap = doc(S / 'ROOT_PRO3_SOURCE_ONLY_COEXISTENCE011_DIFFERENT_REVIEW_ADOPTION_001.json', 4571, '6994cedd8c25318563d4aa398d6681c00e61e91f61bccd8d5ca67c75b554e378')
+
+def fresh():
+    now = dt.datetime.now(dt.timezone.utc)
+    need(dt.datetime.fromisoformat(scope['interval_start']) <= now and (dt.datetime.fromisoformat(scope['interval_end']) - now).total_seconds() > 60, 'actual effective Source011 strict60 reserve')
+    return now.isoformat()
+
+observed = fresh()
+ck('actual current Source011 is separately adopted and effective', adopt['Source_only_coexistence_adopted'] is True and adopt['Source_only_scope'] == sp, dict(scope=sp, adoption=ap, checked_utc=observed))
+ck('Source011 remains metadata-only and never a runtime admission', scope['operational_authority'] is False and adopt['operational_authority'] is False)
+ck('unchanged Source011 shared3plus2equals5 and strict60 reserve', (scope['Pro2_max_including_Root'], scope['Pro3_max_including_Root_and_reviewer'], scope['shared_max_including_both_roots_and_overlap'], scope['publication_reserve_seconds']) == (3, 2, 5, 60))
+
+candidate, cp = doc(R / 'ROOT_PRO3_BOOTSTRAP_REQUEST004_ONCE_PEER_DECISION_CANDIDATE_001.json', 17106, '5ee0b1d09580fd3a7d7cd2ae86e350e987e0f3e5aacf2628b4c83132e5bde09a')
+wb, wp = get(R / 'prepare_or_adopt_bootstrap004_once_peer_decision_001.py', 20406, '5b06aff4bb9fe08b0f78fab22b2a48433699cf0e72024b378899ee2147c9b189')
+ab, asp = get(R / 'review_exact_request004_metadata_001.py', 16746, '5ab2f827b40ab93ae017084994f8b0e7926e7e6f8062b12c516abbea8f568cd3')
+audit, acp = doc(R / 'ROOT_PRO3_BOOTSTRAP004_EXACT_REQUEST_METADATA_CAPSULE_001.json', 6047, '96b8fe72e8def739496cd88fa7b1d9e592d344319f0768cafa06b4fef9007d38')
+af, afp = doc(R / 'ROOT_PRO3_BOOTSTRAP004_EXACT_REQUEST_METADATA_FULL_PROOF_001.json', 17120, '534658831678e09f2a3b0fdaf055b1ba0b83db7b4ed205105265890c9af4e694')
+arts = [cp, wp, asp, acp, afp]
+wt = wb.decode('utf-8')
+at = ab.decode('utf-8')
+wa = ast.parse(wt)
+aa = ast.parse(at)
+ck('five mandatory Root-owned critical artifacts exact whole samebuffer pins', len(arts) == 5 and all(Path(x['path']).is_relative_to(R) for x in arts), arts)
+ck('Root audit proof capsule are exact complements', audit['full_proof'] == afp and {k:v for k,v in audit.items() if k != 'full_proof'} == {k:v for k,v in af.items() if k != 'checks'})
+ck('Root audit has76 unique explicit positive checks and no findings', audit['checks_passed'] == af['checks_passed'] == 76 and audit['checks_failed'] == af['checks_failed'] == 0 and len(af['checks']) == len({x['name'] for x in af['checks']}) == 76 and all(x['passed'] is True for x in af['checks']) and audit['remaining_actionable_findings'] == af['remaining_actionable_findings'] == [])
+ck('Root audit authenticates its own exact metadata Source and actual scope', audit['own_metadata_audit_Source'] == asp and audit['scope'] == af['scope'] == sp and audit['scope_adoption'] == af['scope_adoption'] == ap)
+
+peer = audit['reviewed_peer_packet']
+ck('exact eight preclarification peer inputs plus ninth later clarification', len(peer) == 8 and candidate['reviewed_peer_packet'][:8] == peer and len(candidate['reviewed_peer_packet']) == 9)
+for i, fp in enumerate(peer):
+    data, actual = get(fp['path'], fp['bytes'], fp['sha256'])
+    ck('frozen peer whole pin retained ' + str(i + 1), actual == fp, fp)
+request, rp = pinned_doc(audit['request'])
+rr, rrp = pinned_doc(audit['peer_request_review'])
+psr, psrp = pinned_doc(peer[3])
+amd, amp = pinned_doc(peer[4])
+obs, obp = pinned_doc(peer[7])
+clar, clp = doc(P / 'owner-peer-admission-clarification_001.json', 2303, 'baa89f793503b162ab6c780562226a817ab620a2365abcbb33ec2e27ad731519')
+ck('candidate ninth packet fact is the later exact human clarification', candidate['reviewed_peer_packet'][8] == clp)
+ck('independent peer request data audit joins exact request and Source review', rr['independent_review'] is True and rr['source_only'] is True and rr['passed'] is True and rr['remaining_actionable_findings'] == [] and rr['request_path'] == rp['path'] and rr['request_sha256'] == rp['sha256'] and rr['request_bytes'] == rp['bytes'] and rr['source_review_sha256'] == psrp['sha256'])
+ck('peer own Source review is corroboration not replacement for different reviews', psr['source_only'] is True and psr['independent_review'] is True and psr['passed'] is True and psr['remaining_actionable_findings'] == [] and psr['files'] == {x['path']:x['sha256'] for x in peer[:3]}, 'Our58 and architecture67 whole reviews are independently authenticated below; no self-report runtime acceptance.')
+ck('request actual schema and004 operation identity', request['schema'] == 'cho51_p3_bootstrap_observation_request_v1' and candidate['schema'] == 'pro2_pro3_bootstrap_observation_decision_v1' and request['scope'] == candidate['scope'] == 'cho51_p3_contracts_20261027_v1_bootstrap_observation_004')
+ck('request Source011 exact paths and digests', request['source_scope_path'] == sp['path'] and request['source_scope_sha256'] == sp['sha256'] and request['source_adoption_path'] == ap['path'] and request['source_adoption_sha256'] == ap['sha256'] and request['source_scope_name'] == 'Source011')
+ck('candidate joins exact request and Source011 adoption', candidate['request_path'] == rp['path'] and candidate['request_sha256'] == rp['sha256'] and candidate['Source_only_scope'] == sp and candidate['Source_only_scope_adoption'] == ap)
+ck('Source coordination observation is pinned dated provenance only', request['source_coordination_observation_path'] == obp['path'] and request['source_coordination_observation_sha256'] == obp['sha256'], 'No live resource/pause/custody query performed here.')
+
+caps = dict(maximum_seconds=90, publication_reserve_seconds=60, helper_work_seconds=45, helper_effect_seconds=50, outer_start_before_seconds=15, outer_work_stop_seconds=65, outer_cleanup_end_seconds=80, outer_effect_end_seconds=85, maximum_controller_mode_invocations=4, maximum_helper_invocations=1, maximum_files=2500, maximum_code_bytes=1073741824, maximum_enumerated_entries=10000, maximum_directory_depth=16, maximum_manifest_bytes=1048576, maximum_stdout_bytes=1048576, maximum_stderr_bytes=1048576, process_table_maximum_rows=64, startup_ram_gib=4, active_ram_gib=4, disk_gib=20, outer_child_processes=1, helper_child_processes=0, python_invocations=0, jobs=0)
+for k, expected in caps.items():
+    ck('unchanged exact builtin integer request and candidate cap ' + k, type(request[k]) is type(candidate[k]) is int and request[k] == candidate[k] == expected)
+zeros = ['source_updates','restore_count','support_updates','gradient_updates','target_inference_calls','query_count','model_constructions','measured_cells']
+ck('all eight closed numerical counters remain strict integer zero', set(request['expected_numerical_budget']) == set(zeros) and request['expected_numerical_budget'] == candidate['expected_numerical_budget'] and all(type(request['expected_numerical_budget'][k]) is int and request['expected_numerical_budget'][k] == 0 for k in zeros))
+ck('no retries native helper compilation or science admitted', all(request[k] is candidate[k] is False for k in ['automatic_retry_permitted','native_helper_compilation_admitted','scientific_admission']))
+ck('two startup samples mandatory and one actual helper only', request['two_startup_samples_required'] is candidate['two_startup_samples_required'] is True and type(candidate['helper_invocations_granted']) is int and candidate['helper_invocations_granted'] == 1 and type(candidate['controller_mode_invocations_granted']) is int and candidate['controller_mode_invocations_granted'] == 4)
+ck('bounded owned cleanup copies exact request restriction without reducing work floors', candidate['bounded_cleanup_after_pause_admitted'] is True and candidate['bounded_cleanup_scope'] == request['bounded_cleanup_scope'] and 'only the retained Start-owned helper' in candidate['bounded_cleanup_scope'] and 'does not lower work floors' in candidate['bounded_cleanup_scope'])
+ck('all four actual tool modes remain sequential and separately completed', [x['mode'] for x in request['invocation']['ordered_modes']] == ['Begin','Invoke','Complete','Release'] and 'sequential actual tool completions' in request['invocation']['external_sequencing'])
+ck('actual future admission digest is a placeholder not a forged precomputed cycle', request['invocation']['common_arguments'][-1] == '<actual SHA of fresh Root bootstrap-admission_004.json>' and request['root_admission_required'] is True and request['peer_decision_received'] is request['bootstrap_executed'] is False)
+ck('ten fresh output identities remain exact request data not existence observations', len(request['create_once_outputs']) == len(set(request['create_once_outputs'])) == 10 and request['create_once_outputs'][-1] == 'preparation-bootstrap-pins_004.json' and request['output_root'] == str(P))
+ck('five pause path identities and six observational extension identities preserved', len(set(request['pause_paths'])) == 5 and request['read_extensions'] == ['.dll','.exe','.json','.ps1','.psm1','.psd1'])
+ck('full postRelease real caller90 and observed closure remain acceptance obligations', 'strictly<90s' in request['acceptance'] and 'post-Release' in request['acceptance'] and 'all4 actual exits0' in request['acceptance'] and 'bothEOF' in request['acceptance'])
+ck('no internal timer or typed Source success substitutes actual external returns', 'No internal timestamp is actual tool return' in request['invocation']['external_sequencing'] and 'post-Release upper bound strictly<90' in ' '.join(candidate['prerequisites_before_any_Pro3_dispatch']))
+
+for idx, review_spec in enumerate(candidate['genuine_whole_Source_reviews']):
+    rc, rcp = pinned_doc(review_spec['capsule'])
+    rf, rfp = pinned_doc(review_spec['full_proof'])
+    arts.extend([rcp, rfp])
+    expected_count = [58,67][idx]
+    expected_who = [WHO,'/root/project_architecture'][idx]
+    ck('genuine whole Source proof identity and exact positive count ' + str(idx + 1), rc['reviewer'] == rf['reviewer'] == expected_who and rc['verdict'] == rf['verdict'] and rc['verdict'].startswith('PASS_') and rc['checks_passed'] == rf['checks_passed'] == expected_count and rc['checks_failed'] == rf['checks_failed'] == 0 and len(rf['checks']) == len({x['name'] for x in rf['checks']}) == expected_count and all(x['passed'] is True for x in rf['checks']) and rc['remaining_actionable_findings'] == rf['remaining_actionable_findings'] == [])
+    ck('whole Source evidence scope subjects and no runtime claim ' + str(idx + 1), rc['scope'] == rf['scope'] == sp and rc['scope_adoption'] == rf['scope_adoption'] == ap and rc['reviewed_artifacts'] == rf['reviewed_artifacts'] and all(peer[n] in rc['reviewed_artifacts'] for n in ([1,2,3] if idx == 0 else [0,2,3])) and rc['source_only'] is rf['source_only'] is True and rc['subject_execution_performed'] is rf['subject_execution_performed'] is False)
+ck('125 whole Source checks and76 request checks correctly distinguished', candidate['Source_checks_passed'] == 58 + 67 == 125 and candidate['Source_checks_failed'] == 0 and candidate['exact_request_checks_passed'] == 76 and candidate['exact_request_checks_failed'] == 0 and candidate['Root_exact_request_audit'] == acp and candidate['Root_exact_request_full_proof'] == afp and candidate['Root_exact_request_audit_Source'] == asp)
+
+question = 'Pro2 reports a human execution hold that prevents granting P3 validation admission. May Pro2 consider separate admissions for this reviewed P3-only bootstrap, native preparation, nonnumerical tests and closeout, while capture, training, numerical and scientific execution remain held and all guards stay unchanged?'
+answer = 'do both of you as you see fit. i gave you all the permtions you need.'
+human = candidate['fresh_direct_human_clarification']
+trusted_app_evidence = dict(tool='mcp__codex_app__read_thread', thread_id='01a171ac-fe4f-71c0-b078-f9c56c579f08', actual_turn_id='01a17dc7-f932-7810-8aef-b2e075b68843', question_item_type='agentMessage', question_call_id='call_f1c0e9db75f94bf29671d7918821cdca', reply_item_type='userMessage', user_message_id='01a17e41-346f-79c3-96d5-d115845fd45d', question=question, answer_exact=answer, independently_read_in_this_review=True, exact_message_timestamp_not_exposed=True, evidence_boundary='Actual app response was filtered by exact item IDs; no messages sent and no peer report substituted for user authority.')
+ck('actual trusted human message and question independently corroborated', human['thread_id'] == trusted_app_evidence['thread_id'] and human['turn_id'] == trusted_app_evidence['actual_turn_id'] and human['user_message_id'] == trusted_app_evidence['user_message_id'] and human['question_call_id'] == trusted_app_evidence['question_call_id'] and human['question'] == clar['question'] == question and human['answer_exact'] == clar['answer_exact'] == answer, trusted_app_evidence)
+ck('fresh human report matches request and preserves all guards and broad holds', clar['frozen_request004_sha256'] == rp['sha256'] and clar['pro3_engineering_admission_consideration_authorized'] is True and clar['pro2_capture_retention_execution_authorized'] is clar['training_or_numerical_execution_authorized'] is clar['scientific_admission'] is False and clar['all_guards_unchanged'] is True and human['peer_retained_record'] == clp)
+ck('no invented precise actual message timestamp', human['exact_message_timestamp_not_provided_by_app_read'] is True)
+ck('earlier Pro2 instruction not misrepresented as explicit Pro3 ban', 'does not expressly name or revoke Pro3 human validation' in candidate['prior_human_hold']['distinction'] and candidate['prior_human_hold']['exact_text'] == audit['standing_human_instruction'])
+ck('dated audit conservative permission interpretation remains preserved not promoted to authority proof', audit['granted_cleanup_after_pause'] is False and audit['operational_decision_issued'] is False and 'dated76-check metadata audit' in candidate['prior_human_hold']['distinction'], dict(source_lines=[182,185], limitation='Root audit check76 is a dated interpretation of requested true, not an independent fresh-human-authority proof. The current candidate explicitly supplies later actual human clarification; old audit bytes are retained.'))
+ck('candidate prose promises no operation before different review and actual adoption', candidate['record_is_candidate'] is True and candidate['accepted'] is candidate['released'] is True and 'candidate grants nothing until genuine different metadata review and actual Root adoption' in candidate['decision_basis'] and 'candidate is never an operative decision' in candidate['prerequisites_before_any_Pro3_dispatch'][0])
+ck('separate actual Pro3 admission remains mandatory after actual final peer disposition', 'Fresh separate exact Pro3 Root accepted admission' in candidate['prerequisites_before_any_Pro3_dispatch'][1] and 'not the human reply alone' in human['interpretation'])
+ck('conditional releasedTrue means peer disposition never physical custody release', 'NOT physical custody release' in candidate['permission_semantics'] and candidate['physical_custody_release_claimed'] is False)
+ck('all resource floors and shared agents remain unchanged', candidate['original_Root_resource_floors_unchanged'] == scope['inherited_Root_budgets'] and candidate['inherited_allocation'] == dict(Pro2=3,Pro3=2,shared_including_both_roots_reviewers_children_overlap=5,no_extra_overlap_slots=True))
+ck('actual live pause and resource observations still required separately', 'all five pause paths with fail-closed Present' in candidate['prerequisites_before_any_Pro3_dispatch'][3] and candidate['resource_availability_measured_by_Pro2'] is candidate['live_pause_paths_observed_by_Pro2'] is False)
+ck('uncertain Start can never default to closed or released', 'Unknown Start/custody may never release' in candidate['prerequisites_before_any_Pro3_dispatch'][5] and 'Unknown never released' in request['start_uncertainty_contract'])
+ck('D01 remains deferred before full observational or nativeprep acceptance not a Source blocker', candidate['D01_deferred_not_a_current_Source_blocker'] is True and 'D01 complete actual manifest/helper-attempt schema' in candidate['prerequisites_before_any_Pro3_dispatch'][6] and candidate['observational_manifest_accepted'] is False)
+
+def literal_assignment(tree, name):
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
+            return ast.literal_eval(node.value)
+    raise ValueError('missing literal assignment ' + name)
+
+fields = literal_assignment(wa, 'fields')
+ck('every writer-declared carried request field exactly matches candidate', all(type(candidate[k]) is type(request[k]) and candidate[k] == request[k] for k in fields), fields)
+deny_node = next(n for n in wa.body if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'deny' for t in n.targets))
+deny = {k.arg:ast.literal_eval(k.value) for k in deny_node.value.keywords}
+ck('all explicit denied gates have exact builtin types and original values', all(type(candidate[k]) is type(v) and candidate[k] == v for k,v in deny.items()), deny)
+ck('no old scope extension retries extra slot or compute reservation', candidate['previous_Source_periods_or_grants_extended'] is False and candidate['additional_slots_granted'] == 0 and candidate['Root_current_compute_reservation_issued'] is candidate['Root_current_pause_request_issued'] is False)
+for i, oldfp in enumerate(audit['preserved_actual_refusals'], 1):
+    old, actual = pinned_doc(oldfp)
+    ck('old refused operation identity preserved without reuse ' + str(i), old['released'] is old['accepted'] is False and request['actual_rejected00' + str(i) + '_peer_decision_sha256'] == actual['sha256'] and request['preserved_rejected00' + str(i) + '_request_sha256'] == old['request_sha256'], actual)
+
+for label, tree in [('writer',wa),('Root_audit',aa)]:
+    imports = {alias.name for n in ast.walk(tree) if isinstance(n, ast.Import) for alias in n.names} | {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}
+    ck(label + ' imports only bounded stdlib metadata dependencies', imports <= {'datetime','hashlib','json','os','stat','sys','pathlib'}, sorted(imports))
+    badcalls = [n.func.id for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in {'eval','exec','compile','__import__'}]
+    ck(label + ' has no dynamic execution compilation import callback or process module', not badcalls and not imports.intersection({'subprocess','ctypes','multiprocessing','importlib','runpy','socket'}))
+    functions = {n.name:n for n in tree.body if isinstance(n, ast.FunctionDef)}
+    rawtext = ast.get_source_segment(wt if label == 'writer' else at, functions['raw'])
+    doctext = ast.get_source_segment(wt if label == 'writer' else at, functions['doc'])
+    savetext = ast.get_source_segment(wt if label == 'writer' else at, functions['save'])
+    ck(label + ' samebuffer strictJSON nonreparse singlelink bounded read guards', all(x in rawtext for x in ['is_symlink','st_file_attributes','st_nlink == 1','2097152','os.fstat','st_mtime_ns']) and 'object_pairs_hook=pairs' in doctext and 'parse_float=bad' in doctext and 'parse_constant=bad' in doctext)
+    ck(label + ' exclusive bounded fsync actual full readback write and live Source gate', all(x in savetext for x in ["open('xb')",'fsync','raw(target) == data','2097152','fresh(']))
+ck('whole writer prepare and adopt branches explicitly restricted and independently gated', "mode in ('prepare', 'adopt')" in wt and "cp.is_relative_to(R / 'decision004_creation_different_review_001')" in wt and "c['reviewer'] == f['reviewer'] == '/root/i13_final_review'" in wt, dict(lines=[134,169], inspected_whole=True))
+ck('adopter authenticates capsule full proof counts and nonempty unique positive checks', all(x in wt for x in ["cpin['sha256'] == sys.argv[3]","doc(c['full_proof']['path'], c['full_proof'])","len(xs) > 0","all(x['passed'] is True for x in xs)","c['scope'] == f['scope'] == sp"]))
+ck('adopter authenticates all five mandatory independent Root metadata subjects', all(x in wt for x in ["by.get(selfpin['path']) == selfpin","by.get(vp['path']) == vp","by.get(audit_pin['path']) == audit_pin","by.get(afp['path']) == afp","by.get(audit['own_metadata_audit_Source']['path']) == audit['own_metadata_audit_Source']"]))
+ck('adopter requires exact candidate human Source review and request joins', all(x in wt for x in ["c['candidate'] == f['candidate'] == vp","v['fresh_direct_human_clarification'] == human","v['genuine_whole_Source_reviews'] == source_reviews","v['reviewed_peer_packet'] == peer + [clarp]","v['record_is_candidate'] is True"]))
+ck('adopter writes only one immutable actual peer decision and never dispatches', "save('ROOT_PRO3_BOOTSTRAP_REQUEST004_EXPLICIT_ONCE_PEER_DECISION_001.json', v)" in wt and 'Pro3_Root_admission_issued_by_this_record=False' in wt and 'no_subject_dispatched=True' in wt)
+ck('adopter rechecks full90plusstrict60 request feasibility and effective Source each output', "total_seconds() > 150" in wt and "now >= dt.datetime.fromisoformat(request['created_utc'])" in wt and 'fresh(True)' in ast.get_source_segment(wt, next(n for n in wa.body if isinstance(n, ast.FunctionDef) and n.name == 'save')), dict(lines=[79,97], fixed_request_end=request['window_end_utc'], fixed_Source_end=scope['interval_end'], justification='Request end17:45 is earlier than fixed Source011 end18:30, so request remaining>150 also gives Source remaining>150. Own metadata write can still fail and confer no actual peer decision; no empirical operation-fit claim.'))
+ck('writer final actual observation date follows actual request and before dispatch', "record_is_candidate=False, observed_utc=fresh(True)" in wt and candidate['request_created_utc'] == request['created_utc'])
+ck('Root read-only casefold console refusal preserved as metadata history only', candidate['metadata_console_read_refusal_retained']['tool_chunk'] == '223227' and 'no subject operation or write' in candidate['metadata_console_read_refusal_retained']['reason'])
+ck('writer selfpin exactly authenticates actual frozen candidate author', candidate['metadata_author_adopter_Source'] == wp)
+ck('entire candidate Source and audit Source reviewed without subject execution', True, dict(candidate_whole_bytes=cp['bytes'], writer_lines=len(wt.splitlines()), audit_lines=len(at.splitlines()), analysis='Full manual text read of both Root metadata Sources plus independent Python AST read-only inspection; peer PowerShell remains text/hash only. No Root or peer subject Source was invoked.'))
+
+now = dt.datetime.fromisoformat(fresh())
+ck('current decision window still feasible without extending old intervals', dt.datetime.fromisoformat(request['window_start_utc']) <= now and (dt.datetime.fromisoformat(request['window_end_utc']) - now).total_seconds() > 150 and dt.datetime.fromisoformat(request['window_end_utc']) < dt.datetime.fromisoformat(scope['interval_end']))
+ck('retained metadata all strict bounded JSON fullkey shapes', all(x['nodes_including_keys'] <= 50000 and x['maximum_depth_including_keys'] <= 48 for x in json_shapes.values()), json_shapes)
+for path, old in list(buffers.items()):
+    need(raw(path) == old, 'review subject changed before sealing')
+ck('all reviewed and basis raw buffers reread exact before seal', True, dict(file_count=len(buffers)))
+need(len(checks) > 0 and len(checks) == len({c['name'] for c in checks}), 'unique nonempty review checks')
+failed = [x for x in checks if x['passed'] is not True]
+supervisor_text = buffers[peer[1]['path']].decode('utf-8')
+finding = dict(id='D004_CANDIDATE_OPERATIVE_COMPATIBILITY', severity='blocking_metadata_creation_safety', finding='Candidate001 is mechanically compatible with operative peer-decision gates before review and Root adoption.', candidate_source=dict(path=cp['path'], schema=candidate['schema'], released=candidate['released'], accepted=candidate['accepted'], bounded_cleanup_after_pause_admitted=candidate['bounded_cleanup_after_pause_admitted'], record_is_candidate=candidate['record_is_candidate']), writer_source=dict(path=wp['path'], lines=[139,143], adopt_lines=[160,168]), consumer_Source=dict(fact3=peer[1], lines=[251,265]), evidence='Supervisor accepts a normalized admission-specified path under actual Pro2 coordination, then checks operative schema/released and common Source/window/zero/cleanup fields. It does not consume record_is_candidate or Root_peer_decision_adopted. The candidate currently provides those operative values; prose and an extra ignored flag do not enforce its creation boundary.', consequence='A separate accepted Pro3 admission and all other live guards remain necessary. This is prospective compatibility, not an observed admission, execution, leak or bypass.', required_correction='Preserve001 bytes. Give successor candidate a distinct nonoperative schema and false actual top-level accepted/released/cleanup/granted values, retaining proposed values only under an explicitly prospective object. Only the reviewed adopt branch should construct the operative schema and true one-operation fields after authenticating the genuine review. Recheck corrected writer/candidate as new identities; no peer Source change is required.')
+mechanically_compatible = candidate['schema'] == 'pro2_pro3_bootstrap_observation_decision_v1' and candidate['released'] is True and candidate['bounded_cleanup_after_pause_admitted'] is True and 'record_is_candidate' not in supervisor_text and 'Root_peer_decision_adopted' not in supervisor_text
+ck('prospective candidate mechanically refuses operative consumer peer gates', not mechanically_compatible, finding)
+failed = [x for x in checks if x['passed'] is not True]
+need(len(failed) == 1 and failed[0]['name'] == 'prospective candidate mechanically refuses operative consumer peer gates', 'one exact consolidated creation refusal')
+
+need(len(arts) == len({x['path'].casefold() for x in arts}) and all(Path(x['path']).is_relative_to(R) for x in arts), 'unique Root-owned artifact roster')
+
+def save(name, value):
+    shape(value)
+    data = (json.dumps(value, sort_keys=True, indent=2, ensure_ascii=False, allow_nan=False) + '\n').encode('utf-8')
+    need(len(data) <= 2097152, 'bounded proof')
+    fresh()
+    target = OUT / name
+    with target.open('xb') as h:
+        need(h.write(data) == len(data), 'whole proof write')
+        h.flush()
+        os.fsync(h.fileno())
+    need(raw(target) == data, 'own proof actual readback')
+    return fact(target, data)
+
+result = dict(record_type='genuine_independent_Root_bootstrap004_conditional_peer_decision_creation_and_metadata_Source_review', reviewer=WHO, verdict='REFUSE_ROOT_BOOTSTRAP004_CANDIDATE_OPERATIVE_COMPATIBILITY_METADATA_SOURCE_ONLY', observed_utc=fresh(), checks_passed=len(checks)-len(failed), checks_failed=len(failed), checks=checks, remaining_actionable_findings=[finding], scope=sp, scope_adoption=ap, reviewed_artifacts=arts, candidate=cp, basis_peer_packet=peer+[clp], basis_preserved_refusals=audit['preserved_actual_refusals'], trusted_human_evidence=trusted_app_evidence, source_only=True, subject_execution_performed=False, subject_PS_parsed_loaded_compiled_or_executed=False, native_runtime_resource_pause_or_process_queries_performed=False, operative_Root_peer_decision_issued_by_reviewer=False, Pro3_admission_or_dispatch_performed_by_reviewer=False, peer_result_accepted=False, observational_manifest_accepted=False, scientific_admission=False, Root_capture_training_numerical_science_gates_held=True, review_boundary='Refuses creation safety of the frozen candidate while retaining all positive Source/data checks. Candidate is never operative. Root must separately adopt it in the still-feasible window, then Pro3 must make a fresh unused exact admission and satisfy actual live guards/caller90/identity/custody/EOF. All nativeprep/tests/Jobs/closeout and Pro2 capture remain ungranted. Static Source review is not a measured runtime or full observational acceptance; D01 stays deferred.', own_review_Source=fact(Path(__file__),raw(Path(__file__))))
+fp = save('INDEPENDENT_ROOT_BOOTSTRAP004_CANDIDATE_CREATION_REFUSAL_FULL_PROOF_001.json', result)
+capsule = {k:v for k,v in result.items() if k != 'checks'}
+capsule['full_proof'] = fp
+cap = save('INDEPENDENT_ROOT_BOOTSTRAP004_CANDIDATE_CREATION_REFUSAL_CAPSULE_001.json', capsule)
+print(json.dumps(dict(capsule=cap,full_proof=fp,checks_passed=len(checks)-len(failed),checks_failed=len(failed),remaining_actionable_findings=[finding],operative_decision_or_admission_or_dispatch_performed=False)))

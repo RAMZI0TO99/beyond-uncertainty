@@ -1,0 +1,147 @@
+"""Dormant owned metadata child; activation requires new reviewed Source."""
+import base64
+import hashlib
+import json
+import os
+import re
+import stat
+import sys
+import types
+from pathlib import Path
+
+FIXED = @@CHILD_FIXED@@
+CAP = 2097152
+
+
+class HeldRetentionChildError(ValueError):
+    pass
+
+
+def _activation_required():
+    raise HeldRetentionChildError('E_RETENTION_AUTHORITY')
+
+
+def main():
+    raise HeldRetentionChildError('E_RETENTION_AUTHORITY')
+
+
+def _need(ok, code='E_RETENTION_SOURCE_BINDING'):
+    if not ok:
+        raise HeldRetentionChildError(code)
+
+
+def _wire(value):
+    return (json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False,
+                       allow_nan=False)+'\n').encode('utf8')
+
+
+def _nodes(value,depth=1):
+    _need(depth<=48,'E_RETENTION_JSON')
+    if type(value) is dict:
+        _need(all(type(k) is str for k in value),'E_RETENTION_JSON')
+        n=1+len(value)
+        for k,v in value.items():
+            k.encode('utf8','strict');n+=_nodes(v,depth+1)
+            _need(n<=50000,'E_RETENTION_JSON')
+        return n
+    if type(value) is list:
+        n=1
+        for v in value:
+            n+=_nodes(v,depth+1);_need(n<=50000,'E_RETENTION_JSON')
+        return n
+    _need(type(value) in (str,int,bool,type(None)),'E_RETENTION_JSON')
+    if type(value) is str:value.encode('utf8','strict')
+    return 1
+
+
+def _decode(raw):
+    _need(type(raw) is bytes and 0<len(raw)<=CAP,'E_RETENTION_JSON')
+    def pairs(rows):
+        d={}
+        for k,v in rows:_need(k not in d,'E_RETENTION_JSON');d[k]=v
+        return d
+    def bad(v):raise HeldRetentionChildError('E_RETENTION_JSON')
+    value=json.loads(raw.decode('utf8','strict'),object_pairs_hook=pairs,
+                     parse_float=bad,parse_constant=bad)
+    _nodes(value);_need(_wire(value)==raw,'E_RETENTION_JSON')
+    return value
+
+
+def _bytes(text,pin):
+    _need(type(text) is str and len(text)==4*((pin['bytes']+2)//3),'E_RETENTION_BASE64')
+    raw=base64.b64decode(text.encode('ascii','strict'),validate=True)
+    _need(base64.b64encode(raw).decode('ascii')==text and len(raw)==pin['bytes'] and
+          hashlib.sha256(raw).hexdigest()==pin['sha256'],'E_RETENTION_DIGEST')
+    return raw
+
+
+def _read_input(path,sha):
+    _activation_required()
+    _need(type(path) is str and type(sha) is str and re.fullmatch('[0-9a-f]{64}',sha))
+    p=Path(path);root=Path(r'D:\Aenv\pro2\WORK\resume-20261027-002\owned_raw_retention_runs')
+    _need(p.is_absolute() and p.is_relative_to(root) and '..' not in p.parts)
+    for q in (p,*p.parents):
+        s=q.lstat();_need(not q.is_symlink() and not getattr(s,'st_file_attributes',0)&1024)
+    before=p.stat();_need(stat.S_ISREG(before.st_mode) and before.st_nlink==1 and before.st_size<=CAP)
+    with p.open('rb') as h:
+        fd0=os.fstat(h.fileno());raw=h.read(CAP+1);fd1=os.fstat(h.fileno())
+    after=p.stat();key=lambda s:(s.st_dev,s.st_ino,s.st_mode,s.st_nlink,s.st_size,s.st_mtime_ns)
+    _need(key(before)==key(fd0)==key(fd1)==key(after) and len(raw)==before.st_size and
+          hashlib.sha256(raw).hexdigest()==sha)
+    return raw
+
+
+def _execute_packed(raw):
+    _activation_required()
+    value=_decode(raw)
+    keys={'schema_version','fixture','fixture_pin','Source_inputs','sources','catalogue',
+          'selection','capture_id','partition_id'}
+    _need(type(value) is dict and set(value)==keys and type(value['schema_version']) is int and
+          value['schema_version']==1 and value['fixture_pin']==FIXED['exporter_Source'] and
+          value['Source_inputs']==FIXED['Source_inputs'])
+    source_bytes=_bytes(value['fixture'],FIXED['exporter_Source'])
+    selection=_bytes(value['selection'],FIXED['selection_plan'])
+    catalogue=_bytes(value['catalogue'],FIXED['Source_inputs']['catalogue'])
+    names={k for k in FIXED['Source_inputs'] if k.endswith('_Source') or k.endswith('_API')}
+    _need(type(value['sources']) is dict and set(value['sources'])==names)
+    carriers={}
+    for name in ('m3','publisher','peer'):
+        carrier=types.ModuleType('_i13_retention_data_'+name)
+        for suffix,prefix in (('Source','__source'),('API','__API')):
+            pin=FIXED['Source_inputs'][name+'_'+suffix]
+            carrier.__dict__[prefix+'_pin__']=dict(pin)
+            carrier.__dict__[prefix+'_bytes__']=_bytes(value['sources'][name+'_'+suffix],pin)
+        carriers[name]=carrier
+    fixture=types.ModuleType('_i13_raw_retention_fixture')
+    fixture.__file__=FIXED['exporter_Source']['path']
+    # The sole compiled subject is the new complete data-only fixture. Old M3,
+    # peer and publisher kernel bytes are carrier data and NEVER compiled.
+    exec(compile(source_bytes,FIXED['exporter_Source']['path'],'exec'),fixture.__dict__)
+    entry=fixture.__dict__.get('retain_I13_M3_input_record_partition')
+    _need(type(entry) is types.FunctionType)
+    result=entry(m3=carriers['m3'],publisher=carriers['publisher'],peer=carriers['peer'],
+        catalogue_bytes=catalogue,selection_bytes=selection,
+        partition_id=value['partition_id'],capture_id=value['capture_id'])
+    _need(type(result) is bytes and 0<len(result)<=CAP,'E_RETENTION_OUTPUT_CAP')
+    return result
+
+
+def _dormant_main():
+    _activation_required()
+    try:
+        _need(len(sys.argv)==3)
+        result=_execute_packed(_read_input(sys.argv[1],sys.argv[2]))
+        _need(sys.stdout.buffer.write(result)==len(result),'E_RETENTION_CUSTODY')
+        sys.stdout.buffer.flush()
+    except BaseException as exc:
+        code=getattr(exc,'code','E_RETENTION_CUSTODY')
+        if type(code) is not str or code not in FIXED['errors']:
+            code='E_RETENTION_CUSTODY'
+        message=_wire(dict(error_code=code,exception_type=type(exc).__name__[:128]))
+        _need(len(message)<=512,'E_RETENTION_OUTPUT_CAP')
+        sys.stderr.buffer.write(message);sys.stderr.buffer.flush()
+        raise SystemExit(1) from None
+
+
+if __name__=='__main__':
+    main()

@@ -1,0 +1,119 @@
+"""Different Source reviewer /root/i2_resume_gap. Read/hash/AST only; no imports/calls."""
+import ast
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+ROOT=Path(__file__).parent
+BASE=ROOT/'receipt_caller_integration_015'
+OUT=BASE/'supervisor_source_different_review_002'
+OUT.mkdir(exist_ok=False)
+checks=[]
+def check(name,ok,evidence=None):checks.append(dict(name=name,passed=bool(ok),evidence=evidence))
+def pin(path,raw=None):
+    raw=path.read_bytes() if raw is None else raw
+    return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+def raw(path):
+    with path.open('rb') as f:b=f.read(2097153)
+    assert 0<len(b)<=2097152
+    return b
+def literal(tree,name):
+    node=next(n.value for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id==name for t in n.targets))
+    if isinstance(node,ast.Call):
+        assert isinstance(node.func,ast.Name) and node.func.id=='dict' and not node.args
+        assert all(k.arg is not None for k in node.keywords)
+        return {k.arg:ast.literal_eval(k.value) for k in node.keywords}
+    return ast.literal_eval(node)
+def save(path,value):
+    b=(json.dumps(value,sort_keys=True,indent=2)+'\n').encode();assert len(b)<=2097152
+    with path.open('xb') as f:f.write(b)
+    return pin(path,b)
+sup_path=BASE/'ROOT_I12_ONCE_MEMORY_SUPERVISOR_003.py'
+outer_path=ROOT/'ROOT_CAPTURE_I12_ONCE_SUPERVISOR_EXECUTION_002.py'
+sup,outer=raw(sup_path),raw(outer_path)
+st,ot=ast.parse(sup),ast.parse(outer)
+for path,b,expected in ((sup_path,sup,(22253,'d665d6ae908866575e63b989c4a6b2afe7cce46fdbe267bfa598c5835d1b0817')),(outer_path,outer,(6925,'43baaf74ddbbf743eae96bbd8c004cfc05a55c85163c5df904e6b1ae12450d1b'))):
+    check('exact_actual_Source_pin_'+path.name,(len(b),hashlib.sha256(b).hexdigest())==expected,pin(path,b))
+    compile(b,str(path),'exec',dont_inherit=True)
+    check('AST_compile_metadata_only_'+path.name,True)
+    tree=ast.parse(b)
+    check('only_main_guard_target_entry_'+path.name,any(isinstance(n,ast.If) and ast.unparse(n.test)=="__name__ == '__main__'" for n in tree.body))
+sources=literal(st,'SOURCES');fixture=literal(st,'FIXTURE');catalogue=literal(st,'CATALOGUE');budget=literal(st,'BUDGETS')
+check('exact_three_only_new_module_names',set(sources)=={'formats','single','peer'},sources)
+for name,p in dict(sources,fixture=fixture,catalogue=catalogue).items():
+    b=raw(Path(p['path']))
+    check('complete_frozen_input_pin_'+name,p==pin(Path(p['path']),b),p)
+    check('correct_domain_cap_'+name,len(b)<=(65536 if name in sources else 2097152),len(b))
+    check('new_I12_domain_only_'+name,'resume-20261025-002' in p['path'] and 'i11' not in p['path'].casefold())
+fraw=raw(Path(fixture['path']));ft=ast.parse(fraw);cases=literal(ft,'CASE_CATALOGUE');names=[r['name'] for r in cases]
+for n in ('CASE_CATALOGUE','STATIC_FINDINGS_EXACT_CLOSURE','FINITE_EDGE_TABLE_LITERAL_CLOSURE'):
+    check('fixture_literal_'+n,type(literal(ft,n)) in (list,dict))
+check('exact_1089_unique_names',len(names)==1089==len(set(names)))
+check('JSON_names_digest_literal',hashlib.sha256(json.dumps(names,separators=(',',':'),ensure_ascii=True).encode()).hexdigest()==literal(st,'EXPECTED_CASE_NAMES_SHA256'))
+check('LF_names_digest_distinct_and_exact',hashlib.sha256(('\n'.join(names)+'\n').encode()).hexdigest()=='803dcd7d5ff30cd4d7c047cd3f6fbcca96532129e2feeb9510ae2995066b83db')
+check('literal_count_matches_supervisor',literal(st,'EXPECTED_CASE_COUNT')==len(cases))
+check('177_positive_912_typed_refusals',sum(r['expected']=='PASS' for r in cases)==177 and sum(r['expected']!='PASS' for r in cases)==912)
+check('unchanged_60_50_10_5_2MiB',budget==dict(total_seconds=60,wait_seconds=50,cleanup_seconds=10,reap_seconds=5,stdout_maximum_bytes=2097152,stderr_maximum_bytes=2097152),budget)
+old=raw(BASE/'ROOT_I12_ONCE_MEMORY_SUPERVISOR_002.py');oldtree=ast.parse(old)
+def funcs(tree):return {n.name:ast.dump(n,include_attributes=False) for n in tree.body if isinstance(n,ast.FunctionDef)}
+check('supervisor002_to003_all_function_AST_identical',funcs(st)==funcs(oldtree))
+check('supervisor_only_fixture_literal_binding_changed',all(literal(st,n)==literal(oldtree,n) for n in ('SOURCES','CATALOGUE','BUDGETS','EXPECTED_CASE_COUNT','EXPECTED_CASE_NAMES_SHA256','SCOPE_KEYS','OUTPUT_KEYS')))
+check('preserved_supervisor002_pin',pin(BASE/'ROOT_I12_ONCE_MEMORY_SUPERVISOR_002.py',old)['sha256']=='67e0ad8b21b2a8a31b652ce3bb92db7de629e4976fe10e2ebf105df79e695038')
+text=sup.decode();otext=outer.decode()
+clauses={
+ 'exact_scope_pin_before_decode':"hashlib.sha256(raw).hexdigest() == expected_hash" in text,
+ 'Root_once_scope_closed_keys':"set(value) == set(SCOPE_KEYS)" in text,
+ 'scope_maximum_invocations_builtin1':"type(value['maximum_suite_invocations']) is int" in text and "value['maximum_suite_invocations'] == 1" in text,
+ 'scope_window_and60_reserve':"original60 reserve before claim/child launch" in text,
+ 'source_scope_window_subset':"parse_time(value['interval_end']) <= parse_time(source_scope['interval_end'])" in text,
+ 'Root_Source_adoption_exact_input_coverage':"all(occurs(adoption, value[k])" in text and "all(occurs(adoption, p) for p in SOURCES.values())" in text,
+ 'exclusive_claim_precedes_child_launch':text.index("claim = write_new(outputs['claim']")<text.index('proc = subprocess.Popen'),
+ 'child_claim_parent_pid_join':"claim['parent_pid'] == os.getppid()" in text,
+ 'child_entry_precedes_module_import':text.index("write_new(outputs['child_entry']")<text.index("formats = load_new("),
+ 'isolated_child_flags':"sys.flags.isolated == 1 and sys.flags.no_site == 1 and sys.flags.dont_write_bytecode == 1" in text,
+ 'fixed_source_buffer_exec':"exec(compile(raw, pin['path'], 'exec'), module.__dict__)" in text,
+ 'exact_ModuleType_carrier':"module = types.ModuleType(name)" in text,
+ 'literal_fixture_run_no_callback':"fixture.run(formats=formats, single=single, peer=peer, catalogue_bytes=catalogue_bytes)" in text,
+ 'stdout_stderr_bounded_pumps':"counts[name] > 2097152" in text and "remaining = 2097152 - len(buffers[name])" in text,
+ 'real_EOF_and_pump_error_distinction':"drained = threads_finished and all(stream_eof.values()) and not any(pump_errors.values())" in text,
+ 'wait50_clock_guard':"time.monotonic() - start >= 50" in text,
+ 'owned_only_terminate_and_kill':"proc.terminate(); terminated = True" in text and "proc.kill(); killed = True" in text,
+ 'bounded5_5_cleanup_within60':text.count("min(5, 60 - (time.monotonic() - start))")>=3,
+ 'final_reap_timeout_witness_not_escape':"reason = 'FINAL_REAP_TIMEOUT'" in text and "reaped=proc.returncode is not None" in text,
+ 'exclusive_create_once_writes':"path.open('xb')" in text and "os.fsync(handle.fileno())" in text,
+ 'bounded_metadata_reads':"handle.read(cap + 1)" in text,
+ 'candidate_elapsed_after_output_result_parsing':text.index('acceptance_elapsed_ns =')>text.index("events = [decode(line)"),
+ 'candidate_total60_required':"acceptance_elapsed_ns <= 60000000000" in text,
+ 'final_after_witness_fsync_sample':text.index('final_elapsed_ns =')>text.index("witness_pin = write_new("),
+ 'final_total60_console_exit_join':"final_accepted = accepted and final_elapsed_ns <= 60000000000" in text and "return 0 if final_accepted else 1" in text,
+ 'no_candidate_rewrite':text.count("write_new(outputs['supervisor_result']")==2,
+ 'progress_unknown_without_complete_streams':"progress_unknown_without_complete_streams=events is None" in text,
+ 'no_frozen_interpreter_fallback':"pinned general-host runtime; no frozen interpreter fallback" in text,
+ 'actual_authority_flags_false':all(k+'=False' in text for k in ('target_execution','operational_authority','scientific_authority','actual_family_publication')),
+ 'outer_exact_bounded_hash_approved_scope_buffer':"scope_raw = handle.read(2097153)" in otext and "scope_pin = pin(scope_path, scope_raw)" in otext and "value = json.loads(scope_raw)" in otext,
+ 'outer_no_second_scope_read':otext.count('scope_path.read_bytes()')==0,
+ 'outer_exact_supervisor_runtime_pins':"pin(supervisor[\"path\"]) != supervisor or pin(sys.executable) != value[\"runtime\"]" in otext,
+ 'outer_actual_process_exit_custody_saved':"actual_parent_exit_code" in otext and "streams_drained" in otext and "owned_supervisor_pid" in otext,
+ 'outer_single_launch_no_retry':otext.count('subprocess.Popen(')==1,
+ 'outer75_5_5_witness_not_inner_widening':"communicate(timeout=75)" in otext and otext.count('communicate(timeout=5)')==2 and 'synthetic_supervisor_total_seconds_unchanged\": 60' in otext,
+ 'outer_resource_floors_exact':"1073741824" in otext and "10737418240" in otext,
+ 'outer_no_host_quiet_claim':"whole_host_quiet_or_PID_absence_proved\": False" in otext,
+}
+for name,ok in clauses.items():check(name,ok)
+child=next(n for n in st.body if isinstance(n,ast.FunctionDef) and n.name=='child')
+loads=[n for n in ast.walk(child) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id=='load_new']
+check('exact_four_loads_three_targets_and_fixture',len(loads)==4,[ast.unparse(n) for n in loads])
+check('no_emitter_loader',not any('emitter' in ast.unparse(n) for n in loads))
+for path,tree in ((sup_path,st),(outer_path,ot)):
+    imports=[]
+    for n in ast.walk(tree):
+        if isinstance(n,ast.Import):imports.extend(a.name for a in n.names)
+        elif isinstance(n,ast.ImportFrom):imports.append(n.module)
+    check('stdlib_import_allowlist_'+path.name,set(imports)<=set(('datetime','hashlib','types','json','os','pathlib','re','subprocess','sys','threading','time','ctypes','shutil')),imports)
+    check('no_old_module_imports_'+path.name,not any('receipt' in n or 'i11' in n.casefold() for n in imports))
+full=dict(schema_version=1,record_type='Independent_I12_supervisor003_outer002_Source_review_full_proof',reviewer='/root/i2_resume_gap',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),verdict='PASS_SOURCE_I12_EXACT_ONCE_SUPERVISOR003_AND_OUTER002' if all(c['passed'] for c in checks) else 'REFUSE_SOURCE',checks=checks,checks_passed=sum(c['passed'] for c in checks),checks_failed=sum(not c['passed'] for c in checks),subjects=[pin(sup_path,sup),pin(outer_path,outer)],target_execution=False,operational_authority=False,scientific_authority=False,actual_family_publication=False,tests_executed=False,method='Genuine full Source read, exact actual bytes/SHA, AST/literal and compile metadata only. No supervisor, wrapper, target or fixture imported/invoked. Future exact Root admission and saved-results review remain separate.',review_tool=pin(Path(__file__)),limitations=['No synthetic result or timing evidence is issued by this Source review.','Final acceptance requires saved candidate witness + final supervisor console + actual parent exit0; external Root outer witness and separate saved-results review join them.','Outer75/10 custody envelope does not widen inner60/50/10/5 synthetic budget.','Resource query is local metadata only, no host quiet or physical handle absence qualification.'])
+proof=save(OUT/'INDEPENDENT_I12_SUPERVISOR003_OUTER002_SOURCE_FULL_PROOF_001.json',full)
+capsule={k:full[k] for k in ('schema_version','reviewer','created_utc','verdict','checks_passed','checks_failed','subjects','target_execution','operational_authority','scientific_authority','actual_family_publication','tests_executed','method','limitations')}
+capsule.update(record_type='Independent_I12_supervisor003_outer002_Source_review_capsule',full_proof=proof)
+cap=save(OUT/'INDEPENDENT_I12_SUPERVISOR003_OUTER002_SOURCE_CAPSULE_001.json',capsule)
+print(json.dumps(dict(capsule=cap,full_proof=proof,checks_passed=full['checks_passed'],checks_failed=full['checks_failed'],failed=[c for c in checks if not c['passed']]),sort_keys=True))

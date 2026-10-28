@@ -1,0 +1,28 @@
+"""Snapshot exact consumed run-evidence packaging selection; no subject calls."""
+import datetime as dt,hashlib,json,os,re,sys
+from pathlib import Path
+R=Path(__file__).parent;C=R/'m3_peer_contracts_016';CAP=2097152
+def raw(p):
+ for q in(p,*p.parents):assert not q.is_symlink()and not getattr(q.lstat(),'st_file_attributes',0)&1024
+ a=p.stat();assert p.is_file()and a.st_nlink==1 and a.st_size<=CAP;b=p.read_bytes();z=p.stat();assert p.read_bytes()==b and len(b)==a.st_size==z.st_size and a.st_mtime_ns==z.st_mtime_ns;return b
+def pin(p):
+ b=raw(p);return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def load(p):return json.loads(raw(p))
+def eligible(p):
+ if p.parent==C:return bool(re.fullmatch(r'ROOT_I13_(?:ONCE_SYNTHETIC_MEMORY_SCOPE_\d{3}|FRESH_ONCE_PRELAUNCH_METADATA_\d{3}|ONCE\d{3}_PARENT_TOOL_CONSOLE_AND_EXIT_WITNESS_001)\.json',p.name))
+ return p.parent.parent==C/'owned_memory_runs'and bool(re.fullmatch(r'attempt\d{3}',p.parent.name))and p.name in{'SCOPE_CLAIM_001.json','CHILD_ENTRY_001.json','CHILD_RESULT_001.json','CHILD_STDOUT_001.txt','CHILD_STDERR_001.txt','SUPERVISOR_RESULT_001.json','PARENT_TOOL_STDOUT_RETAINED_001.txt','ROOT_ACTUAL_PARENT_EXEC_TOOL_RETURN_001.json'}
+assert len(sys.argv)==2 and re.fullmatch(r'\d{3}',sys.argv[1]);ordinal=sys.argv[1]
+scope=R/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_003.json';sv=load(scope);now=dt.datetime.now(dt.timezone.utc);assert(dt.datetime.fromisoformat(sv['interval_end'])-now).total_seconds()>60
+scopes=sorted(C.glob('ROOT_I13_ONCE_SYNTHETIC_MEMORY_SCOPE_*.json'));assert scopes
+runs=[];missing=[]
+for p in scopes:
+ sc=load(p);outputs=sc['outputs'];assert all(Path(x).parent.parent==C/'owned_memory_runs'for x in outputs.values())
+ assert Path(outputs['claim']).exists();result=load(Path(outputs['supervisor_result']));assert result['scope']==pin(p) and result['reaped']is result['streams_drained']is True and all(result['actual_stream_EOF'].values())and result['custody_error']is None
+ runs.append(dict(consumed_scope=pin(p),supervisor_result=pin(Path(outputs['supervisor_result'])),claim=pin(Path(outputs['claim'])),recorded_refusal=result['refusal'],recorded_child_result_absent=result['child_result_absent'],root_result_qualification_inferred=False))
+ missing.extend(dict(scope=pin(p),not_created_output=k,path=v)for k,v in outputs.items()if not Path(v).exists())
+members=[pin(p)for p in sorted(C.rglob('*'),key=lambda p:str(p).casefold())if p.is_file()and eligible(p)]
+assert 1<=len(members)<=512 and len({p['path'].casefold()for p in members})==len(members)and sum(p['bytes']for p in members)<=67108864
+v=dict(schema_version=1,record_type='Root_I13_exact_consumed_owned_run_metadata_bundle_selection',author='/root',created_utc=now.isoformat(),Source_scope=pin(scope),Source_scope_Root_adoption=pin(R/'ROOT_I13_CURRENT_SOURCE_SCOPE003_DIFFERENT_REVIEW_ADOPTION_001.json'),members=members,member_count=len(members),original_member_bytes=sum(p['bytes']for p in members),consumed_runs=runs,absent_outputs_remain_absent=missing,maximum_metadata_file_bytes=CAP,maximum_actual_copy_rows=512,maximum_actual_copy_payload_bytes=67108864,selection='Every physically present exact eligible scope/prelaunch/parentwitness and eight owned output metadata names, sorted casefold; complete opaque bytes preserved once, target/kernel/fixture Sources stay direct.',encoding='Canonical RFC4648 whole Base64 in strict JSON bundles each<=2MiB, no member split; index maps originalfact3 to bundlefact3/ordinal. No decoded Source execution, reconstruction writes, normalization or repair.',actual_bundle_creation_requires_exact_helper_Source_adoption=True,actual_inverse_candidate_and_creation_each_require_different_review_Root_adoption=True,original_files_modified=False,target_execution=False,tests_executed=False,actual_family_publication=False,operational_authority=False,scientific_authority=False)
+p=R/('I13_EXACT_OWNED_RUN_METADATA_BUNDLE_PLAN_'+ordinal+'.json');b=(json.dumps(v,sort_keys=True,indent=2)+'\n').encode();assert len(b)<=CAP and not os.path.lexists(p)
+with p.open('xb')as h:h.write(b)
+print(json.dumps(dict(plan=pin(p),members=len(members),bytes=v['original_member_bytes'],consumed_scopes=len(scopes),bundles_created=False)))

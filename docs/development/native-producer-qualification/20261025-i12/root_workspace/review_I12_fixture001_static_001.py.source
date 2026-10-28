@@ -1,0 +1,208 @@
+"""Independent read/hash/strict-JSON/AST review; no target import or call."""
+import ast
+import base64
+import collections
+import datetime as dt
+import hashlib
+import json
+import os
+from pathlib import Path
+
+W = Path(r'D:\Aenv\pro2\WORK\resume-20261025-002\receipt_caller_integration_015')
+D = W / 'fixture_source_review_001'
+P = W / 'i12/test_outside8_receipt_contract_memory_only_001.py'
+checks = []
+
+def check(name, ok, detail=None):
+    checks.append(dict(name=name, passed=bool(ok), detail=detail))
+
+def pin(path):
+    path = Path(path)
+    raw = path.read_bytes()
+    return dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+
+def pairs(rows):
+    out = {}
+    for key, value in rows:
+        assert key not in out
+        out[key] = value
+    return out
+
+def bad(value):
+    raise ValueError('noninteger JSON number')
+
+def load(path):
+    return json.loads(Path(path).read_bytes().decode('utf8'), object_pairs_hook=pairs,
+                      parse_float=bad, parse_constant=bad)
+
+def wire(value):
+    return (json.dumps(value, indent=2, sort_keys=True) + '\n').encode()
+
+def publish(path, value):
+    raw = wire(value)
+    assert len(raw) <= 2097152
+    with path.open('xb') as stream:
+        stream.write(raw)
+        stream.flush()
+        os.fsync(stream.fileno())
+    assert path.read_bytes() == raw
+
+raw = P.read_bytes()
+tree = ast.parse(raw)
+values = {node.targets[0].id: ast.literal_eval(node.value) for node in tree.body
+          if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name)}
+cases = values['CASE_CATALOGUE']
+names = [c['name'] for c in cases]
+mapping = values['VARIANT_TO_LITERAL_CASES']
+fixed = values['FIXED']
+metadata = load(W / 'i12/I12_FRESH_LITERAL_FIXTURE_CASE_CATALOGUE_001.json')
+inventory = load(W / 'i12/I12_FRESH_FIXTURE_SOURCE_REGION_AND_LITERAL_INVENTORY_001.json')
+receipt = load(W / 'i12/I12_FRESH_MEMORY_ONLY_FIXTURE_STATIC_AUTHOR_RECEIPT_001.json')
+catalogue = load(W / 'I12_EXACT_RECEIPT_FORMAT_SCHEMA_AND_FIXED_DATA_CATALOGUE_002.json')
+protocol = load(W / 'I12_EXACT_OUTSIDE8_RECEIPT_FORMAT_AND_METADATA_GRAPH_PROTOCOL_002.json')
+imports = [n.names[0].name for n in tree.body if isinstance(n, ast.Import)]
+functions = {n.name: n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))}
+segments = {name: ast.get_source_segment(raw.decode(), node) for name, node in functions.items()}
+check('fixture_exact_frozen_bytes', pin(P) == receipt['fixture'] == inventory['fixture'] == metadata['fixture'])
+check('fixture_bounded_source', len(raw) <= 2097152)
+check('only_declared_stdlib_imports', imports == ['base64', 'copy', 'hashlib', 'json', 'types'])
+check('no_from_imports', not any(isinstance(n, ast.ImportFrom) for n in ast.walk(tree)))
+check('only_literals_imports_definitions_at_module_level', all(
+    isinstance(n, (ast.Import, ast.Assign, ast.FunctionDef, ast.ClassDef)) or
+    isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant) and isinstance(n.value.value, str)
+    for n in tree.body))
+check('no_open_exec_eval_importlib_subprocess_in_fixture', not any(
+    isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in
+    {'open', 'exec', 'eval', '__import__', 'compile'} for n in ast.walk(tree)))
+check('880_unique_literal_names', len(cases) == len(set(names)) == 880)
+digest = hashlib.sha256(('\n'.join(names) + '\n').encode()).hexdigest()
+check('exact_case_digest', digest == values['CASE_NAME_DIGEST'] == metadata['case_name_digest'] == inventory['case_name_digest'])
+check('literal_catalogue_equals_saved_catalogue', cases == metadata['cases'])
+check('literal_variant_map_equals_saved', mapping == metadata['variant_to_exact_literal_cases'])
+check('all_variant_names_existing', set(n for group in mapping.values() for n in group) == set(names))
+counts = collections.Counter(c['expected'] == 'PASS' for c in cases)
+check('173_positive_707_refusal', counts[True] == 173 and counts[False] == 707)
+check('initial_three_isolation_controls', [c['route'] for c in cases[:3]] == ['isolation'] * 3 and
+      [c['mode'] for c in cases[:3]] == ['positive', 'negative', 'sibling'])
+for i, c in enumerate(cases, 1):
+    check('literal_case_%04d_closed_header' % i, all(type(c[k]) is str and c[k]
+          for k in ('name', 'category', 'expected', 'route', 'first_typed_guard')),
+          dict(name=c['name'], expected=c['expected']))
+    check('literal_case_%04d_variant_membership' % i,
+          c['name'] in mapping[c['category']], c['category'])
+    for operation in c.get('operations', []):
+        check('literal_case_%04d_operation_shape_%s' % (i, len(checks)),
+              type(operation) is list and len(operation) >= 3 and
+              operation[0] in {'delete', 'set', 'ref', 'append', 'root_set'} and
+              type(operation[1]) is str and type(operation[2]) is list)
+for label, row in fixed.items():
+    body = base64.b64decode(row['body64'], validate=True)
+    check('fixed_%s_whole_body' % label,
+          len(body) == row['pin']['bytes'] and hashlib.sha256(body).hexdigest() == row['pin']['sha256'])
+    check('fixed_%s_actual_current_read' % label, pin(row['pin']['path']) == row['pin'])
+check('fixed_capture_not_spent_bodies', not {row['pin']['path'] for row in fixed.values()} &
+      {row['path'] for row in catalogue['spent_pin75']})
+for group in ('bind_exact_kernel_sources', 'bind_exact_kernel_APIs'):
+    for name, p in inventory[group].items():
+        check(group + '_' + name, pin(p['path']) == p)
+check('builder_fixed_deepcopy', 'self.fixed=copy.deepcopy(FIXED)' in segments['_Build'])
+check('builder_catalogue_deepcopy', 'self.catalogue=copy.deepcopy(catalogue)' in segments['_Build'])
+check('builder_resolve_copy_return', 'return copy.deepcopy(self.memo[label])' in segments['_Build'] and
+      'return copy.deepcopy(result)' in segments['_Build'])
+check('builder_finish_graph_copy', 'return copy.deepcopy(dict(packet=packet,records=list(unique.values())' in segments['_Build'])
+check('case_spec_deepcopy_before_mutation', 'spec=copy.deepcopy(original)' in segments['run'])
+check('case_spec_identity_disjoint', 'assert not _mutable_ids(spec).intersection(_mutable_ids(CASE_CATALOGUE))' in segments['run'])
+check('global_fingerprint_after_every_case', 'assert global_snapshot==(_fingerprint(FIXED),_fingerprint(CASE_CATALOGUE))' in segments['run'])
+check('mutation_before_after_assertion', 'assert before!=after' in segments['_change'] and
+      'assert before!=_fingerprint((build.defs,build.packet))' in segments['_invoke'])
+check('postmutation_before_after_assertion', "assert old!=_fingerprint(bundle) or spec['post']=='catalogue_wrong_hash'" in segments['_invoke'])
+check('isolation_fixed_sibling_and_output_identities', all(x in segments['_invoke'] for x in [
+    '_mutable_ids(a.defs).intersection(_mutable_ids(FIXED))',
+    '_mutable_ids(a.defs).intersection(_mutable_ids(b.defs))',
+    '_mutable_ids(first).intersection(_mutable_ids(a.defs))',
+    '_mutable_ids(first).intersection(_mutable_ids(a.memo))',
+    '_mutable_ids(first).intersection(_mutable_ids(second))']))
+check('typed_kernel_exception_exact_classes', 'type(error) in (formats.I12Error,single.I12Error,peer.I12Error)' in segments['run'])
+check('only_named_pass_after_case_success', segments['run'].index("rows.append(dict(name=spec['name'],passed=True))") <
+      segments['run'].index("event='CASE_PASS'"))
+check('explicit_return_authority_holds', all(x in segments['run'] for x in [
+    'metadata_only=True', 'target_execution=False', 'operational_authority=False',
+    'scientific_authority=False', 'actual_family_publication=False']))
+check('positive_all15_false_flags', len(values['AUTHORITY_FALSE_FLAGS']) == 15 and
+      "all(view[key] is False for key in AUTHORITY_FALSE_FLAGS)" in segments['_invoke'])
+check('positive_supply_counters_independent_spent75', all(x in segments['_invoke'] for x in [
+    "view['verified_record_count']==len(bundle['records'])",
+    "view['verified_record_bytes']==sum(len(row['body']) for row in bundle['records'])",
+    "(75 if spec['kind']=='single' else 0)"]))
+check('format36_descriptor_positives', sum(c['category'] == 'P_FORMAT36' for c in cases) == 108)
+check('generic9_and_peer5_graph_positives', sum(c['category'] == 'P_SINGLE9' for c in cases) == 9 and
+      sum(c['category'] == 'P_PEER5' for c in cases) == 5)
+check('co_limit_refusals_truthfully_labelled', all(c['expected'] == 'E_NODES' and
+      'dominates' in c['first_typed_guard'] for c in cases if c['name'].startswith('named_checks_')))
+missing = [dict(ordinal=i, name=c['name'], role=c['role'], expected=c['expected'])
+           for i, c in enumerate(cases, 1) if c['route'] not in ('isolation', 'hold') and
+           'predecessor_' + c['role'] not in fixed]
+
+gaps = [
+    dict(id='F01', status='BLOCKER', requirement='Every finite case can reach its intended target entry',
+         finding='66 format-only positives require absent FIXED predecessor labels in unconditional _Build.__init__; first case28 capture_bound.',
+         evidence=missing, correction='Use explicit format-only synthetic predecessor data or independent format-only builder; captured14 graph routes remain exact.'),
+    dict(id='F02', status='MISSING_ADOPTED_ALTERNATIVES', requirement='nonzero-or-bool count / empty-or-duplicate checks',
+         missing=['checks_failed boolTrue separately in capsule/full', 'duplicate check names with coherent checks_passed count'],
+         intended_guard='E_REVIEW'),
+    dict(id='F03', status='MISSING_ADOPTED_ALTERNATIVES', requirement='every actor context code/stage/draft/receipt/content/proposal/delta/recon including omission/case/descendant',
+         finding='All seven actor-union negatives default only canonical review; no literal proofs selector exercises other proof contexts.',
+         missing=['constructor/emitter code proof contexts', 'selection support proof context', 'draft and generation receipt proof contexts',
+                  'reconciliation proof context', 'peer content and proposal proof contexts',
+                  'explicit caller source_editor same/case/descendant reviewer and Root reviewer'],
+         intended_guard='E_REVIEWER after actors independently recorded and lists omitted'),
+    dict(id='F04', status='MISSING_ADOPTED_ALTERNATIVES', requirement='spent unknown identity / zero notwhitelisted / archivecap applied toordinary',
+         missing=['unknown special spent path', 'zero ordinary bytes', 'zero special observation on nonempty spent identity',
+                  'archive4MiB cap assigned to ordinary observation', 'wrong exact archive cap on actual archived spent row'],
+         intended_guard='E_SPENT_IDENTITY or E_PIN_BYTES/E_OBSERVATION as exact first checked predicate; preserve vectors and body joins before it'),
+    dict(id='F05', status='MISSING_ADOPTED_ALTERNATIVES', requirement='ordinary/spent vec types/shared/size/nlink/reparse/path/cap with coherent earlier guards',
+         missing=['vector nonlist / wrong length / bool item', 'raw9 != path9', 'coherent nlink2', 'coherent reparse attribute',
+                  'wrong declared cap with bytes/pin otherwise valid', 'ordinary required observation missing', 'spent malformed vector'],
+         intended_guard='E_OBSERVATION or E_OBSERVATION_COVERAGE; single29 rename edge remains not applicable'),
+    dict(id='F06', status='MISSING_ADOPTED_ALTERNATIVES', requirement='schema1 historical relabel / wrong request-publication ABI',
+         missing=['single graph actual differently shaped request/publication record substitution', 'graph schema1 or historical relabel input'],
+         finding='No literal case expects E_UNSUPPORTED_PUBLICATION_ABI; wrong-tag constructors exercise E_RECORD_TYPE only.',
+         intended_guard='E_UNSUPPORTED_PUBLICATION_ABI or exact E_VERSION after raw dispatch, with actual shape differences'),
+    dict(id='F07', status='MISSING_ADOPTED_ALTERNATIVES', requirement='each single/peer join independently swapped; receipt27 selection/lease/proposal/decision/adoption/witness/inverse/lists',
+         missing=['single valid-pin owner/selection/tool/lease/facts/review/adoption/reconciliation joins',
+                  'peer valid-pin selection/content adoption/serialization/inverse/list joins'],
+         finding='Deletion controls and null-pin controls stop at schema/pin guards and do not prove these joins.',
+         intended_guard='Exact E_SINGLE_JOIN/E_RECONCILIATION_JOIN/E_PEER_JOIN/E_PEER_INPUTS with supplied valid sibling pins and coherent DAG rehash'),
+    dict(id='F08', status='MISSING_ADOPTED_ALTERNATIVES', requirement='all required chronology edges at equality and just-invalid boundary',
+         missing=['peer just-invalid edges for code->decision->content review/adoption->proposal review/adoption->witness->inverse->receipt->now',
+                  'single remaining canonical full/capsule/adoption and reconciliation full/capsule/adoption/time-now one-tick failures'],
+         finding='Equality cases are broad; invalid peers are absent and several single proof-order edges only implicit.',
+         intended_guard='E_CHRONOLOGY; change dependent timestamps coherently so the advertised edge is the first failure'),
+    dict(id='F09', status='MISSING_ADOPTED_ALTERNATIVES', requirement='extra qualified/admitted/physical/human/I8/I9/environment toggle',
+         missing=['optional physical_IO_qualified or human_review_authenticated true in designated open proof',
+                  'distinct I9/environment/qualified argument rejection or Source-level explicit not-applicable explanation'],
+         intended_guard='E_AUTHORITY for consumed optional proof flag; TypeError/E_SCHEMA for unsupported public fields'),
+]
+
+D.mkdir(exist_ok=True)
+subjects = [pin(P), pin(W / 'i12/I12_FRESH_LITERAL_FIXTURE_CASE_CATALOGUE_001.json'),
+            pin(W / 'i12/I12_FRESH_FIXTURE_SOURCE_REGION_AND_LITERAL_INVENTORY_001.json'),
+            pin(W / 'i12/I12_FRESH_MEMORY_ONLY_FIXTURE_STATIC_AUTHOR_RECEIPT_001.json'),
+            pin(W / 'I12_EXACT_OUTSIDE8_RECEIPT_FORMAT_AND_METADATA_GRAPH_PROTOCOL_002.json'),
+            pin(W / 'I12_EXACT_PACKET_RESULT_ACTOR_AND_REFERENCE_TYPE_CLOSURE_COMPANION_001.json')]
+full_path = D / 'INDEPENDENT_I12_FIXTURE001_STATIC_FINDINGS_FULL_PROOF_001.json'
+capsule_path = D / 'INDEPENDENT_I12_FIXTURE001_STATIC_FINDINGS_CAPSULE_001.json'
+failed = sum(not c['passed'] for c in checks)
+result = dict(schema_version=1, record_type='Independent_I12_fixture_static_Source_findings',
+    reviewer='/root/project_architecture', created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),
+    verdict='REFUSE_SOURCE_FIXTURE001_SETUP_BLOCKER_AND_FINITE_ADOPTED_VARIANT_GAPS',
+    subjects=subjects, checks=checks, checks_passed=len(checks)-failed, checks_failed=failed,
+    finite_catalogue=dict(cases=880, positives=173, expected_refusals=707, names_sha256=digest),
+    findings=gaps, review_tool=pin(__file__),
+    limitations='Static Source/AST/read/hash only. No target or fixture module imported or called; no generated live bundles; no execution or qualification follows.',
+    target_execution=False, operational_authority=False, scientific_authority=False,
+    caller_or_I2_composition_qualified=False, full_G01_closed=False)
+publish(full_path, result)
+publish(capsule_path, {k:v for k,v in result.items() if k != 'checks'} | dict(full_proof=pin(full_path)))
+print(json.dumps(dict(full_proof=pin(full_path), capsule=pin(capsule_path),
+                     checks_passed=len(checks)-failed, checks_failed=failed, gaps=len(gaps))))

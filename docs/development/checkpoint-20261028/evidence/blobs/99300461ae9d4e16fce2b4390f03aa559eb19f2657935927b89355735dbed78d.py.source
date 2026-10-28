@@ -1,0 +1,96 @@
+"""Preserve002 and fix independently reviewed final timing/partial-transport honesty."""
+import ast,base64,datetime as dt,hashlib,json,os,stat
+from pathlib import Path
+R=Path(__file__).parent
+END=dt.datetime.fromisoformat('2026-10-27T15:10:56.767745+00:00')
+def need(v,m):
+ if not v:raise ValueError(m)
+def raw(path):
+ p=Path(path)
+ for q in (p,*p.parents):need(not q.is_symlink() and not getattr(q.lstat(),'st_file_attributes',0)&1024,'ordinary nonreparse lineage')
+ a=p.stat();need(stat.S_ISREG(a.st_mode) and a.st_nlink==1 and 0<=a.st_size<=2097152,'bounded singlelink regular')
+ with p.open('rb') as h:d=os.fstat(h.fileno());b=h.read(2097153);e=os.fstat(h.fileno())
+ z=p.stat();k=lambda x:(x.st_dev,x.st_ino,x.st_mode,x.st_nlink,x.st_size,x.st_mtime_ns)
+ need(k(a)==k(d)==k(e)==k(z) and len(b)==a.st_size,'stable bytes');return b
+def pin(p,b=None):
+ if b is None:b=raw(p)
+ return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def write(name,b,cap=2097152):
+ need(len(b)<=cap and (END-dt.datetime.now(dt.timezone.utc)).total_seconds()>60,'originalcap and fresh60reserve')
+ p=R/name
+ with p.open('xb') as h:need(h.write(b)==len(b),'completeexclusive');h.flush();os.fsync(h.fileno())
+ need(raw(p)==b,'whole savedreadback');return pin(p,b)
+def data(name,v):return write(name,(json.dumps(v,sort_keys=True,indent=2,allow_nan=False)+'\n').encode())
+p=R/'ROOT_I13_HELD_RAW_RETENTION_SUPERVISOR_002.py';b=raw(p)
+need(pin(p,b)['sha256']=='3b6501c6c57dda314eb26c31dfd025e564997e09ac7ba073ca7077258dfb95a5','exact002Source')
+s=b.decode()
+old="""    _need(_read_bound(expected) == body)
+    return expected"""
+new="""    _need(_read_bound(expected) == body)
+    # A late fsync/readback never becomes a passing publication.
+    _check_time(source_end, operation_end, deadline)
+    return expected"""
+need(s.count(old)==1,'exactpostwriteboundary');s=s.replace(old,new)
+s=s.replace('def _claim_present(path):','def _path_present(path):').replace("_claim_present(paths['claim'])","_path_present(paths['claim'])")
+s=s.replace("    transport_created = False\n    evidence = {}", "    transport_created = False\n    transport_write_attempted = False\n    transport_write_and_readback_completed = False\n    evidence = {}")
+old="""        evidence['transport'] = _write_owned(paths['transport'],stdout,scope['interval_end'],admission['interval_end'],deadline)
+        transport_created = True"""
+new="""        transport_write_attempted = True
+        transport_created = None # Unknown until complete write or observed path presence.
+        evidence['transport'] = _write_owned(paths['transport'],stdout,scope['interval_end'],admission['interval_end'],deadline)
+        transport_created = True
+        transport_write_and_readback_completed = True"""
+need(s.count(old)==1,'exacttransportpublication');s=s.replace(old,new)
+old="""        _write_owned(paths['parent_witness'],_wire(witness),scope['interval_end'],admission['interval_end'],deadline)
+        return witness"""
+new="""        _write_owned(paths['parent_witness'],_wire(witness),scope['interval_end'],admission['interval_end'],deadline)
+        _check_time(scope['interval_end'],admission['interval_end'],deadline)
+        return witness"""
+need(s.count(old)==1,'exactfinalsuccessboundary');s=s.replace(old,new)
+old="""        for key,body in (
+            ('failure',_failure(admission,graph['graph_id'],step,code,type(exc).__name__[:128],transport_created)),
+            ('parent_witness',_wire(dict(schema_version=1,"""
+new="""        if transport_write_attempted:
+            try:
+                transport_created = _path_present(paths['transport'])
+            except BaseException:
+                transport_created = None
+        failure_outputs = []
+        # The fixed15-key failure schema cannot truthfully express unknown
+        # physical presence. Do not fabricate False or change that schema.
+        # Preserve an explicit UNKNOWN in the separate bounded parent witness.
+        if type(transport_created) is bool:
+            failure_outputs.append(('failure',_failure(admission,graph['graph_id'],step,code,
+                type(exc).__name__[:128],transport_created)))
+        failure_outputs.append(('parent_witness',_wire(dict(schema_version=1,"""
+need(s.count(old)==1,'exactfailureoutputbegin');s=s.replace(old,new)
+old="""                automatic_retry_permitted=False,complete_graph_or_global_acceptance=False)))):
+            try:"""
+new="""                transport_write_attempted=transport_write_attempted,
+                transport_write_and_readback_completed=transport_write_and_readback_completed,
+                transport_presence_after_error=('PRESENT' if transport_created is True else
+                    'ABSENT' if transport_created is False else 'UNKNOWN'),
+                transport_created=transport_created,
+                fixed_failure_schema_emittable=type(transport_created) is bool,
+                automatic_retry_permitted=False,complete_graph_or_global_acceptance=False))))
+        for key,body in failure_outputs:
+            try:"""
+need(s.count(old)==1,'exactfailureoutputend');s=s.replace(old,new)
+old="""def _failure(admission, graph_id, step, code, exception_type, transport_created):
+    value = dict"""
+new="""def _failure(admission, graph_id, step, code, exception_type, transport_created):
+    _need(type(transport_created) is bool,'E_RETENTION_CUSTODY')
+    value = dict"""
+need(s.count(old)==1,'typedfailurepresence');s=s.replace(old,new)
+nb=s.encode();root=ast.parse(s);need(len(nb)<=65536,'Sourcecap65536')
+np=write('ROOT_I13_HELD_RAW_RETENTION_SUPERVISOR_003.py',nb,65536)
+inv=data('ROOT_HELD_SUPERVISOR003_COMPLETE_UNRUN002_SOURCE_INVERSE_001.json',dict(schema_version=1,author='/root',record_type='Root_held_supervisor003_complete_unrun002_Source_inverse',complete_predecessor=pin(p,b),complete_predecessor_base64=base64.b64encode(b).decode(),successor=np,predecessor_imported_compiled_or_called=False,independent_reviewer='/root/i13_final_review',corrections=['Postfsync/readback and final before-return timing checks prevent late pending witness becoming success.','Separate attempted/completed write from actual observed path presence; unknown never emits fabricated fixed-schema absence.','Nullable unknown transport state stays in a separate bounded typed parent failure witness; all existing partial files remain immutable.'],all_execution_gates_held=True))
+oldfreeze=json.loads(raw(R/'ROOT_I13_HELD_SUPERVISOR002_IMMUTABLE_AUTHOR_FREEZE_001.json'))
+lines=s.splitlines(keepends=True);regions=[]
+for n in ast.walk(root):
+ if type(n) in (ast.FunctionDef,ast.ClassDef):
+  block=''.join(lines[n.lineno-1:n.end_lineno]).encode()
+  regions.append(dict(symbol=n.name,line=n.lineno,end_line=n.end_lineno,UTF8_sha256=hashlib.sha256(block).hexdigest(),AST_sha256=hashlib.sha256(ast.dump(n,include_attributes=False).encode()).hexdigest(),calls=sorted(set(ast.unparse(c.func) for c in ast.walk(n) if type(c)is ast.Call))))
+proof=data('ROOT_I13_HELD_SUPERVISOR003_STATIC_GUARD_AND_CALL_CLOSURE_001.json',dict(schema_version=1,author='/root',record_type='Root_held_retention_supervisor003_static_Source_guard_and_call_inventory',parent_Source=np,embedded_child_Source=oldfreeze['embedded_child_Source'],Source_scope=oldfreeze['Source_scope'],Source_scope_adoption=oldfreeze['Source_scope_adoption'],Source_interface_contract=oldfreeze['Source_interface_contract'],exporter_Source=oldfreeze['exporter_Source'],exporter_API=oldfreeze['exporter_API'],contract=oldfreeze['contract'],schema=oldfreeze['schema'],selection_plan=oldfreeze['selection_plan'],complete002inverse=inv,parent_regions=regions,child_regions_unchanged_basis=oldfreeze['static_guard_call_proof'],postwrite_and_final_deadline_guard=True,partial_transport_presence_may_be_unknown=True,unknown_does_not_fabricate_fixed_failure_schema=True,Source_qualification_only=True,subject_Source_compiled=False,subject_Source_imported=False,subject_calls=0,capture_admitted=False,all_execution_gates_held=True))
+freeze=data('ROOT_I13_HELD_SUPERVISOR003_IMMUTABLE_AUTHOR_FREEZE_001.json',dict(schema_version=1,author='/root',record_type='Root_held_retention_supervisor003_Source_author_freeze',Source_scope=oldfreeze['Source_scope'],Source_scope_adoption=oldfreeze['Source_scope_adoption'],parent_Source=np,embedded_child_Source=oldfreeze['embedded_child_Source'],static_guard_call_proof=proof,complete002inverse=inv,complete_prior_freeze=pin(R/'ROOT_I13_HELD_SUPERVISOR002_IMMUTABLE_AUTHOR_FREEZE_001.json'),Source_interface_contract=oldfreeze['Source_interface_contract'],exporter_Source=oldfreeze['exporter_Source'],exporter_API=oldfreeze['exporter_API'],contract=oldfreeze['contract'],schema=oldfreeze['schema'],selection_plan=oldfreeze['selection_plan'],author_Source=pin(Path(__file__)),independent_Source_review_pending=True,subject_Source_compiled=False,subject_Source_imported=False,subject_functions_called=0,tests_executed=False,capture_admitted=False,supervisor_launched=False,all_execution_gates_held=True))
+print(json.dumps(dict(supervisor=np,inverse=inv,proof=proof,freeze=freeze,child_unchanged=oldfreeze['embedded_child_Source'],all_execution_gates_held=True)))

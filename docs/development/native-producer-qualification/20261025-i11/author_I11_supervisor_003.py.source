@@ -1,0 +1,145 @@
+"""Static supervisor003 author: new exact sources and strict final total accounting.
+Does not import, launch or run any emitted Source or fixture.
+"""
+import ast
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+
+HERE=Path(__file__).parent
+def pin(path):
+    raw=path.read_bytes();return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+def create(path,raw):
+    with path.open('xb') as handle:handle.write(raw)
+    return pin(path)
+def replace(text,old,new):
+    assert text.count(old)==1,(old[:90],text.count(old));return text.replace(old,new,1)
+def literal(text,name):
+    node=next(n for n in ast.parse(text).body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id==name for t in n.targets))
+    return node,ast.literal_eval(node.value)
+def assign(text,name,value):
+    node,_=literal(text,name);lines=text.splitlines(keepends=True)
+    return ''.join(lines[:node.lineno-1])+name+' = '+repr(value)+'\n'+''.join(lines[node.end_lineno:])
+old=HERE/'ROOT_I11_ONCE_MEMORY_SUPERVISOR_002.py'
+source=old.read_text(encoding='utf8')
+module=pin(HERE/'i11'/'validate_finite8_canonical_receipt_metadata_003.py')
+fixture=pin(HERE/'i11'/'test_finite8_canonical_receipt_metadata_memory_only_004.py')
+_,cases=literal(Path(fixture['path']).read_text(encoding='utf8'),'CASE_CATALOGUE')
+names=[c[0] for c in cases]
+digest=hashlib.sha256(json.dumps(names,separators=(',',':'),ensure_ascii=True).encode()).hexdigest()
+for key,value in [('SOURCE',module),('FIXTURE',fixture),('EXPECTED_CASE_COUNT',len(cases)),('EXPECTED_CASE_NAMES_SHA256',digest)]:source=assign(source,key,value)
+source=source.replace("'_i11_new_component_002'","'_i11_new_component_003'").replace("'_i11_new_fixture_002'","'_i11_new_fixture_004'")
+source=replace(source,'def fact(path, raw):', '''def read_limited(path, cap=2097152):
+    path = ordinary(path)
+    with path.open('rb') as handle:
+        raw = handle.read(cap + 1)
+    need(0 < len(raw) <= cap, 'bounded metadata input')
+    return raw
+
+
+def fact(path, raw):''')
+source=replace(source,"    raw = path.read_bytes()\n    need(0 < len(raw) <= 2097152 and hashlib.sha256(raw).hexdigest() == expected_hash, 'exact Root once-scope hash')", "    raw = read_limited(path)\n    need(hashlib.sha256(raw).hexdigest() == expected_hash, 'exact Root once-scope hash')")
+source=replace(source,"    claim_raw = ordinary(outputs['claim']).read_bytes()\n    need(0 < len(claim_raw) <= 2097152, 'bounded once claim')", "    claim_raw = read_limited(outputs['claim'])")
+source=replace(source,"    proc = subprocess.Popen([sys.executable, '-I', '-S', '-B', str(Path(__file__)), '--child', str(scope_path), expected_hash],\n                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))",'''    try:
+        proc = subprocess.Popen([sys.executable, '-I', '-S', '-B', str(Path(__file__)), '--child', str(scope_path), expected_hash],
+                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+    except OSError as exc:
+        elapsed = time.monotonic() - start
+        refused = dict(schema_version=1, record_type='I11_owned_once_memory_supervisor_result', created_utc=utc(), scope=scope_pin,
+                       claim=claim, owned_pid=None, exit_code=None, reaped=False, child_launched=False,
+                       acceptance_at_record_preparation=False, refusal='CHILD_LAUNCH_REFUSAL', exception_type=type(exc).__name__,
+                       elapsed_milliseconds=int(elapsed*1000), budgets=BUDGETS, target_execution=False,
+                       actual_family_publication=False, operational_authority=False, scientific_authority=False,
+                       physical_host_or_PID_absence_proved=False)
+        result_pin = write_new(outputs['supervisor_result'], wire(refused))
+        final_elapsed = time.monotonic() - start
+        print(json.dumps(dict(accepted=False, refusal='CHILD_LAUNCH_REFUSAL', supervisor_result=result_pin,
+                              final_elapsed_milliseconds=int(final_elapsed*1000))), flush=True)
+        return 1''')
+old_cleanup='''    terminated = killed = False
+    if proc.poll() is None:
+        proc.terminate(); terminated = True
+        try:
+            proc.wait(timeout=max(0.001, min(5, 60 - (time.monotonic() - start))))
+        except subprocess.TimeoutExpired:
+            proc.kill(); killed = True
+            proc.wait(timeout=max(0.001, min(5, 60 - (time.monotonic() - start))))
+    else:
+        proc.wait(timeout=5)
+    for thread in threads:
+        thread.join(timeout=max(0.001, min(1, 60 - (time.monotonic() - start))))'''
+new_cleanup='''    terminated = killed = False
+    custody_error = None
+    if proc.poll() is None:
+        try:
+            proc.terminate(); terminated = True
+            try:
+                proc.wait(timeout=max(0, min(5, 60 - (time.monotonic() - start))))
+            except subprocess.TimeoutExpired:
+                proc.kill(); killed = True
+                try:
+                    proc.wait(timeout=max(0, min(5, 60 - (time.monotonic() - start))))
+                except subprocess.TimeoutExpired:
+                    reason = 'FINAL_REAP_TIMEOUT'
+        except OSError as exc:
+            custody_error = type(exc).__name__
+            reason = 'OWNED_CLEANUP_REFUSAL'
+    else:
+        try:
+            proc.wait(timeout=max(0, min(5, 60 - (time.monotonic() - start))))
+        except subprocess.TimeoutExpired:
+            reason = 'FINAL_REAP_TIMEOUT'
+    for thread in threads:
+        thread.join(timeout=max(0, min(1, 60 - (time.monotonic() - start))))'''
+source=replace(source,old_cleanup,new_cleanup)
+source=replace(source,"    if os.path.lexists(outputs['child_result']):\n        path = ordinary(outputs['child_result']); body = path.read_bytes()\n        need(len(body) <= 2097152, 'bounded child result')\n        result = dict(pin=fact(path, body), value=decode(body))",'''    if os.path.lexists(outputs['child_result']):
+        try:
+            path = ordinary(outputs['child_result']); body = read_limited(path)
+            decoded = decode(body)
+            need(type(decoded) is dict, 'child result object')
+            result = dict(pin=fact(path, body), value=decoded)
+        except (OSError, ValueError, UnicodeError) as exc:
+            reason = reason or 'CHILD_RESULT_REFUSAL'
+            child_result_error = type(exc).__name__
+        else:
+            child_result_error = None
+    else:
+        child_result_error = None''')
+source=replace(source,"    accepted = reason is None and proc.returncode == 0 and drained and not overflow.is_set() and catalogue_valid",'''    # This sample includes reap, stream drains, stdout/stderr writes and result
+    # parsing. The create-once witness reports this candidate honestly. Final
+    # acceptance is sampled again after its fsync and joined to parent exit0.
+    acceptance_elapsed = time.monotonic() - start
+    if acceptance_elapsed > 60:
+        reason = 'TOTAL60_REFUSAL'
+    accepted = reason is None and proc.returncode == 0 and drained and not overflow.is_set() and catalogue_valid and acceptance_elapsed <= 60''')
+source=replace(source,"                   elapsed_milliseconds=int((time.monotonic()-start)*1000), budgets=BUDGETS, child_result=result,\n                   accepted_complete_new_synthetic_run=accepted, actual_family_publication=False, target_execution=False,", "                   elapsed_milliseconds=int(acceptance_elapsed*1000), acceptance_elapsed_seconds=acceptance_elapsed, budgets=BUDGETS, child_result=result,\n                   acceptance_at_record_preparation=accepted, final_acceptance_requires_saved_console_and_parent_exit0=True,\n                   child_launched=True, custody_error=custody_error, child_result_error=child_result_error,\n                   actual_family_publication=False, target_execution=False,")
+# Float-free saved metadata: exact monotonic sample represented integer ns and
+# used in acceptance as that same integer, not a rounded millisecond proxy.
+source=replace(source,"    acceptance_elapsed = time.monotonic() - start\n    if acceptance_elapsed > 60:", "    acceptance_elapsed_ns = int((time.monotonic() - start) * 1000000000)\n    if acceptance_elapsed_ns > 60000000000:")
+source=replace(source,"and acceptance_elapsed <= 60\n", "and acceptance_elapsed_ns <= 60000000000\n")
+source=replace(source,"elapsed_milliseconds=int(acceptance_elapsed*1000), acceptance_elapsed_seconds=acceptance_elapsed", "elapsed_milliseconds=acceptance_elapsed_ns//1000000, acceptance_elapsed_nanoseconds=acceptance_elapsed_ns")
+source=replace(source,"    write_new(outputs['supervisor_result'], wire(witness))\n    print(json.dumps(dict(accepted=accepted, supervisor_result=outputs['supervisor_result'], owned_pid=proc.pid, exit_code=proc.returncode)), flush=True)\n    return 0 if accepted else 1",'''    witness_pin = write_new(outputs['supervisor_result'], wire(witness))
+    # Reporting boundary: no rewrite of the saved candidate. Final console and
+    # actual parent exit must both be retained and joined with this exact pin.
+    final_elapsed_ns = int((time.monotonic() - start) * 1000000000)
+    final_accepted = accepted and final_elapsed_ns <= 60000000000
+    final_reason = 'TOTAL60_REFUSAL' if final_elapsed_ns > 60000000000 else reason
+    print(json.dumps(dict(accepted=final_accepted, refusal=final_reason, supervisor_result=witness_pin,
+                          owned_pid=proc.pid, exit_code=proc.returncode, final_elapsed_nanoseconds=final_elapsed_ns,
+                          acceptance_at_record_preparation=accepted, reaped=proc.returncode is not None,
+                          streams_drained=drained, total_budget_nanoseconds=60000000000)), flush=True)
+    return 0 if final_accepted else 1''')
+raw=source.encode();tree=ast.parse(raw);compile(raw,'<supervisor003 data compile>','exec')
+assert not any(isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=='read_bytes' for n in ast.walk(tree))
+sp=create(HERE/'ROOT_I11_ONCE_MEMORY_SUPERVISOR_003.py',raw)
+receipt=dict(schema_version=1,record_type='I11_supervisor003_static_frozen_Source_binding_author_receipt',author='/root/i2_resume_gap',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),
+             supervisor=sp,module=module,fixture=fixture,previous_supervisor=pin(old),author_tool=pin(Path(__file__)),literal_case_count=len(cases),case_names_sha256=digest,
+             scope_record_type='Root_I11_once_owned_synthetic_memory_scope',scope_keys=literal(source,'SCOPE_KEYS')[1],output_keys=literal(source,'OUTPUT_KEYS')[1],
+             budgets=dict(total_seconds=60,wait_seconds=50,cleanup_seconds=10,reap_seconds=5,stdout_maximum_bytes=2097152,stderr_maximum_bytes=2097152),
+             reporting_boundary='Saved candidate acceptance_at_record_preparation uses exact monotonic nanosecond elapsed after reap, stream drains, stdout/stderr writes and child-result parsing. Final emitted console after supervisor_result fsync supplies final_elapsed_nanoseconds<=60000000000 and accepted; actual parent exit0 is separately required. Root saved-result adoption must join exact supervisor_result pin, final console and actual parent exit. Candidate alone is not final acceptance; no create-once witness rewrite.',
+             reap_timeout='Final kill/reap timeout records FINAL_REAP_TIMEOUT with actual returncode/reaped/drained/custody fields and refusal, without escaping or retrying.',
+             capped_reads='Scope, claim and child-result use read(cap+1); all pinned bodies retain whole-byte dual bounded read/hash checks.',
+             tests_executed=False,target_execution=False,target_imports=0,target_calls=0,operational_authority=False,scientific_authority=False,actual_family_publication=False)
+rp=create(HERE/'I11_SUPERVISOR003_STATIC_SOURCE_AUTHOR_RECEIPT_001.json',(json.dumps(receipt,sort_keys=True,indent=2)+'\n').encode())
+print(json.dumps(dict(supervisor=sp,receipt=rp,literal_case_count=len(cases),case_names_sha256=digest,tests_executed=False),sort_keys=True))

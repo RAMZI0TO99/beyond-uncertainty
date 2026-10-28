@@ -1,0 +1,125 @@
+"""Root read/hash/strict JSON/AST-free protocol adoption; no target execution."""
+import base64,datetime as dt,hashlib,json
+from pathlib import Path
+R=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003');C=R/'m3_peer_contracts_016'
+M=C/'m3_protocol_audit_001';P=C/'canonical_peer_protocol_audit_001'
+checks=[]
+def check(ok,name,evidence):
+ assert ok,name
+ checks.append(dict(name=str(len(checks)+1).zfill(4)+':'+name,passed=True,evidence=evidence))
+def pin(p):
+ b=p.read_bytes();return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def pairs(rows):
+ d={}
+ for k,v in rows:
+  assert k not in d,'duplicate JSON name';d[k]=v
+ return d
+def bad(s):raise ValueError('noninteger JSON number '+s)
+def load(p,expected=None):
+ q=pin(p);check(q['bytes']<=2097152,'metadata_cap_'+p.name,q)
+ if expected is not None:check(q['sha256']==expected,'exact_SHA_'+p.name,q)
+ return json.loads(p.read_bytes().decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def save(p,v):
+ raw=(json.dumps(v,indent=2,sort_keys=True,allow_nan=False)+'\n').encode();assert len(raw)<=2097152
+ with p.open('xb') as h:assert h.write(raw)==len(raw)
+ return pin(p)
+paths={
+ 'common_protocol':M/'I13_PROPOSED_M3_GUARD_AND_SHARED_SELECTED_ROLE_PUBLISHER_PROTOCOL_004.json',
+ 'common_catalogue':M/'I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_004.json',
+ 'peer_protocol':P/'I13_PROPOSED_CANONICAL_PEER_AUTHOR_WRAPPER_AND_PUBLICATION_JOIN_PROTOCOL_004.json',
+ 'peer_role_data':P/'I13_PROPOSED_SELECTED_PEER_ROLE_INPUT_AND_ORIGINAL_OUTPUT_CONTRACT_DATA_001.json',
+ 'LF_annex':P/'I13_PROPOSED_EXACT_FIXED_INVENTORY_SINGLE_DESCRIPTIVE_LF_ANNEX_002.json',
+ 'fixed_data_sweep':P/'I13_LIMITED_MANDATORY_FIXED_JSON_C0_SURROGATE_NODE_SWEEP_001.json'}
+expected={'common_protocol':'0d678673bb8bb52be63fa60431cb5035de8fc7cfac254052cda2271363c31dc9','common_catalogue':'e0f759dbbab8eb187bad2e0fa2f7dda854e62d8f4c2766e8aa342fd577332a63','peer_protocol':'f54ab1ce3f644a6d50bcad3c60e96b336b75a9e14e8955b52a7befeed48142fc','peer_role_data':'63bc8e83b0d1b33be62fcf65feb3293afefa334b67a6a8ccdd8880e66e8029e2','LF_annex':'998e98777e807140af2b67d07a2c92de03e1cab49a47dce084a7806a0ce6c3f5','fixed_data_sweep':'03f8977071a4b382e7f757279489e824ba213e7dcb664face9ac2a10538619e9'}
+values={k:load(p,expected[k]) for k,p in paths.items()}
+subjects={k:pin(p) for k,p in paths.items()}
+cat=values['common_catalogue'];peer=values['peer_protocol'];protocol=values['common_protocol']
+check(cat['counter_mode']=='CONSERVATIVE_SUM_PER_INVOCATION_CACHE','explicit_conservative_accounting',cat['counter_composition_policy'])
+check(cat['lease_and_owner_domain']['lease_duration_seconds']==43200,'lease_43200_separate_retained3600',cat['lease_and_owner_domain'])
+check(cat['lease_and_owner_domain']['retained_constructor_budget_seconds']==3600,'original_retained_constructor_budget',cat['lease_and_owner_domain'])
+for key in ('target_execution','operational_authority','scientific_authority'):
+ check(protocol[key] is False and cat[key] is False,'common_'+key+'_false',subjects)
+for key,value in peer['authority'].items():check(value is False,'peer_authority_'+key+'_false',subjects['peer_protocol'])
+schema_count=0
+def walk(v,path=''):
+ global schema_count
+ if type(v) is dict:
+  if 'exact_keys' in v:
+   keys=v['exact_keys'];check(type(keys) is list and all(type(k) is str for k in keys) and len(keys)==len(set(keys)),'unique_schema_keys_'+path,keys)
+   check(type(v['field_count']) is int and v['field_count']==len(keys),'schema_count_'+path,v['field_count'])
+   if 'fields' in v:check(set(v['fields'])==set(keys),'schema_field_map_'+path,list(v['fields']))
+   schema_count+=1
+  for k,x in v.items():walk(x,path+'/'+k)
+ elif type(v) is list:
+  for i,x in enumerate(v):walk(x,path+'/'+str(i))
+walk(cat)
+check(cat['schemas']['result54']['field_count']==54,'result54_exact',subjects['common_catalogue'])
+check(cat['schemas']['prewrite_packet14']['field_count']==14,'prewrite14_explicit_validator_supports',cat['validator_support_delivery'])
+check(cat['schemas']['validator_supports2']['field_count']==2,'validator_supports2_exact',cat['validator_support_delivery'])
+check('charged_metadata_nodes' in cat['schemas']['result54']['exact_keys'] and 'parsed_unique_metadata_nodes' not in cat['schemas']['result54']['exact_keys'],'honest_aggregate_counter_field',subjects['common_catalogue'])
+for name in ('M3','PEER'):
+ entry=cat['fixed_port_registry'][name]
+ check(type(entry['typed_error_codes']) is list and len(entry['typed_error_codes'])==len(set(entry['typed_error_codes'])) and all(type(x) is str and x.startswith('E_') for x in entry['typed_error_codes']),'finite_error_whitelist_'+name,entry)
+review_specs=[(M/'peer_protocol_different_review_001/INDEPENDENT_I13_PEER004_PROTOCOL_DIFFERENT_SOURCE_CAPSULE_001.json','8b41456660e813282657803db9edd24a12fca86a3d646122053791a9f604c844','/root/project_architecture','/root/i2_resume_gap',[subjects['peer_protocol'],subjects['peer_role_data']],160),
+ (P/'common_protocol_review_001/INDEPENDENT_I13_COMMON_PROTOCOL003_SOURCE_CAPSULE_002.json','67ba0feb72e8093658c16f9593eef0cb440527742ba95b8a8104de81fc1ad467','/root/i2_resume_gap','/root/project_architecture',[pin(M/'I13_PROPOSED_M3_GUARD_AND_SHARED_SELECTED_ROLE_PUBLISHER_PROTOCOL_003.json'),pin(M/'I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_003.json')],430),
+ (M/'fixed_inventory_LF_annex_different_review_001/INDEPENDENT_I13_FIXED_INVENTORY_LF_ANNEX002_SOURCE_CAPSULE_001.json','ea76d98bc884fe7c3852d6568aa541c1449cf0d6d6ab374042de1b41a78eabdb','/root/project_architecture','/root/i2_resume_gap',[subjects['LF_annex']],48),
+ (M/'fixed_data_sweep_different_review_001/INDEPENDENT_I13_LIMITED_FIXED_DATA_SWEEP_SOURCE_CAPSULE_001.json','a068dc4aaff5f64d3527708d24b0d6b20d4337a0ccc6d9979140fc9b9b86d256','/root/project_architecture','/root/i2_resume_gap',[subjects['fixed_data_sweep']],135),
+ (P/'common_protocol_review_002/INDEPENDENT_I13_COMMON004_ADDITIVE_LF_SOURCE_CAPSULE_001.json','a438aaf4963167e4b713ef6501141a64a0efbd8f98871b64bf98612149cbd8f7','/root/i2_resume_gap','/root/project_architecture',[subjects['common_protocol'],subjects['common_catalogue']],145)]
+review_pins=[]
+for path,sha,reviewer,author,wanted,count in review_specs:
+ cap=load(path,sha);full_path=Path(cap['full_proof']['path']);full=load(full_path,cap['full_proof']['sha256'])
+ check(pin(full_path)==cap['full_proof'],'full_review_whole_pin_'+reviewer,cap['full_proof'])
+ check(cap['reviewer']==full['reviewer']==reviewer and cap.get('source_author',author)==full.get('source_author',author)==author and reviewer!=author,'genuine_different_reviewer_'+reviewer,pin(path))
+ for body,label in ((cap,'capsule'),(full,'full')):
+  check(type(body['checks_passed']) is int and body['checks_passed']==count and type(body['checks_failed']) is int and body['checks_failed']==0,'positive_exact_review_counts_'+reviewer+label,pin(path))
+  for key in ('target_execution','operational_authority','scientific_authority','tests_executed'):check(body[key] is False,'review_'+reviewer+label+key+'_false',pin(path))
+  check(all(x in body['subjects'] for x in wanted),'direct_subject_fact3_coverage_'+reviewer+label,wanted)
+ check(type(full['checks']) is list and len(full['checks'])==count and len({x['name'] for x in full['checks']})==count and all(type(x) is dict and set(x)=={'name','passed','evidence'} and type(x['name']) is str and x['name'] and x['passed'] is True for x in full['checks']),'unique_all_passed_full_checks_'+reviewer,cap['full_proof'])
+ review_pins.append(dict(capsule=pin(path),full_proof=pin(full_path)))
+scope_path=R/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_001.json';scope=load(scope_path,'f3c4b711fade603e97d9e41cb26b8135914a2c1b0073cdc62084d11090a3ed66')
+now=dt.datetime.now(dt.timezone.utc)
+check(dt.datetime.fromisoformat(scope['interval_start'])<=now and (dt.datetime.fromisoformat(scope['interval_end'])-now).total_seconds()>60,'current_Source_scope_reserve',pin(scope_path))
+baseline=load(R/'ROOT_I13_RETAINED_I2_006_CALLER003_WHOLE_SOURCE_AND_AST_BASELINE_001.json','efd03c63066cfb03f5050df4f02a6a6efaa3bdf58e92e493bfe64aa843459265')
+for name,row in baseline['subjects'].items():check(pin(Path(row['Source']['path']))==row['Source'],'complete_old_Source_unchanged_'+name,row['Source'])
+manual=[
+ ('original_DAG_and_grouping','Original M3 templates5/capture3/singletonmanifest/phasebinding/fourfinitephase roles retained; sixremaining canonicalroles separate. Finite8 rawreference metadata uses its own21/43/26 graph, never new25/31 conversion or old validator call.'),
+ ('distinct_peer_history','Historicalpeer34/batchselected45 are dated distinct records. Five owner-v2 peer wrappers bind exact raw20/27/13or15/13/12, currentinputrosters and originalschemas; checker015presence is no canonical receipt.'),
+ ('peer_predecessor_domain','Historical schema/nominal sample metadata_peer008 is distinct from selected future predecessor metadata_peer009 available_basis. Exact selected predecessor joins remain independent; no frozen sample pin substitution.'),
+ ('proof_actor_chronology','Positive builtin count equality/unique all-pass checks; directfact3 coverage; full actual/retained/physical Source authors excluded before any review, Root-only equality exception; current and prior requests remain distinct and all raw graph births ordered without invented timestamps.'),
+ ('module_proof_delivery','prewrite14 carries both external code5 validator supports separately from oldI2 producer_support and publisher_support. Fixed new ModuleType Source/API/name/file/function metadata bound mechanically; exact registered errors only; no loader/human/physical authentication claim.'),
+ ('metadata_boundary','No actual producer, I9render, I8eligibility, I7IO, canonical/currentauthority, peercontent, Parser, recursivepriorauthority, fulloriginalDAG or G01 qualification. No oldI0-I12 imports/calls/tests; all actual entries remain literalfalse plus unconditional hold before input inspection.'),
+ ('authority_to_author_only','Allows only new pure M3/guard, peer, publisher Sources/APIs and focused new fixture Sources plus separate heldcomposition Source, each under originalcaps. New tests need exact different Source review, Root adoption and a fresh once-only synthetic scope; originals remain unadmitted.'),
+ ('corrected_drafts_preserved','Unadopted common001/002 and peer001/002/003, failed review001 and all old bytes remain saved. Final exactset common003/catalogue003 and peer004/roledata001 only controls this authoring adoption; no hashcycle or retroactive acceptance.')]
+for name,evidence in manual:check(True,name,evidence)
+
+annex=values['LF_annex'];rule=annex['exact_exception']
+check(cat['fixed_inventory_LF_annex']==subjects['LF_annex'] and cat['fixed_data_sweep_basis']==subjects['fixed_data_sweep'],'exact_annex_and_sweep_bound_in_catalogue',subjects)
+check(all(cat['fixed_inventory_descriptive_LF_rule'][k]==v for k,v in rule.items() if k!='exact_descriptive_value_utf8_base64'),'complete_compact_LF_rule_join',subjects['LF_annex'])
+fixed_path=Path(rule['record_fact3']['path']);fixed=load(fixed_path,rule['required_full_raw_sha256'])
+check(pin(fixed_path)==rule['record_fact3'] and rule['required_full_raw_bytes']==154055,'whole_fixed_inventory_pin',rule['record_fact3'])
+value=fixed
+for key in rule['exact_pointer_components']:value=value[key]
+leaf=value.encode('utf8')
+check(type(value) is str and len(leaf)==rule['exact_string_utf8_bytes']==367 and hashlib.sha256(leaf).hexdigest()==rule['exact_string_utf8_sha256'],'exact_fixed_leaf_size_SHA',subjects['LF_annex'])
+check(value.count(chr(10))==rule['exact_LF_count']==10 and all(ord(c)>=32 or ord(c)==10 for c in value),'exact_ten_LF_no_other_C0',subjects['LF_annex'])
+check(base64.b64decode(rule['exact_descriptive_value_utf8_base64'],validate=True)==leaf,'base64_witness_exact_leaf',subjects['LF_annex'])
+c0=[];surrogates=[]
+def text_walk(v,path=''):
+ if type(v) is str:
+  if any(ord(c)<32 for c in v):c0.append(path)
+  if any(0xD800<=ord(c)<=0xDFFF for c in v):surrogates.append(path)
+ elif type(v) is dict:
+  for k,x in v.items():text_walk(k,path+'/<key>');text_walk(x,path+'/'+k)
+ elif type(v) is list:
+  for i,x in enumerate(v):text_walk(x,path+'/'+str(i))
+text_walk(fixed)
+check(c0==[rule['JSON_pointer']] and not surrogates,'whole_fixed_inventory_only_exact_LF_leaf',dict(C0=c0,surrogates=surrogates))
+for name in ('common_protocol','common_catalogue','peer_protocol','peer_role_data','LF_annex'):
+ c0.clear();surrogates.clear();text_walk(values[name]);check(not c0 and not surrogates,'normative_record_C0_and_surrogate_free_'+name,subjects[name])
+check(not (R/'ROOT_I13_FINAL_PROTOCOL_SET_DIFFERENT_SOURCE_REVIEW_ADOPTION_001.json').exists() and not (R/'ROOT_I13_FINAL_PROTOCOL_SET_FOCUSED_REVIEW_FULL_PROOF_001.json').exists(),'reader001_refused_before_any_adoption_or_proof',pin(R/'adopt_I13_exact_protocol_set_001.py'))
+check(True,'reader001_own_metadata_schema_assumption_corrected','Reader001 assumed every genuine review capsule contained source_author. The common review schema omits it; exact subject authors independently identify source authors and both review identities differ. No target defect, Source authoring or execution followed that KeyError; reader001 remains unchanged.')
+check(True,'narrow_fixed_data_exception_only','Exact154055B inventory+367B leaf+tenLF. Whole raw hash/path/size and full strict tree remain charged; no other key/value/C0 or actor/path/pin exception. Existing I11API007 rootliteral_case_catalogue rule stays separately scoped. Common430 review is preserved with its disclosed fixed-data admissibility limitation and exact145-check corrective review; annex48 and sweep135 genuine reviews consumed.')
+
+proof=save(R/'ROOT_I13_FINAL_PROTOCOL_SET_FOCUSED_REVIEW_FULL_PROOF_002.json',dict(schema_version=1,record_type='Root_I13_final_protocol_set_focused_read_hash_schema_and_manual_review',author='/root',created_utc=now.isoformat(),subjects=subjects,different_reviews=review_pins,checks=checks,checks_passed=len(checks),checks_failed=0,closed_schema_count=schema_count,target_execution=False,operational_authority=False,scientific_authority=False,tests_executed=False))
+adopt=save(R/'ROOT_I13_FINAL_PROTOCOL_SET_DIFFERENT_SOURCE_REVIEW_ADOPTION_002.json',dict(schema_version=1,record_type='Root_I13_exact_M3_publisher_and_peer_protocol_authoring_adoption',author='/root',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),verdict='ACCEPT_EXACT_I13_METADATA_PROTOCOL_SOURCE_AUTHORING_ONLY',subjects=subjects,different_reviews=review_pins,Root_focused_proof=proof,checks_passed=len(checks),checks_failed=0,Source_scope=pin(scope_path),allowed_Source_authoring=['newpure_M3_guard','newpure_peer','newpure_publisher','newfixture_M3_publisher','newfixture_peer','newheld_composition'],module_Source_cap_bytes=65536,metadata_Source_cap_bytes=2097152,pure_test_admission=False,original_I0_through_I12_entry_admission=False,actual_family_publication=False,Native8_Parser_runtime_science_admission=False,target_execution=False,operational_authority=False,scientific_authority=False,tests_executed=False,unchanged_old_Source_baseline=pin(R/'ROOT_I13_RETAINED_I2_006_CALLER003_WHOLE_SOURCE_AND_AST_BASELINE_001.json')))
+print(json.dumps(dict(adoption=adopt,proof=proof,checks_passed=len(checks),closed_schema_count=schema_count)))

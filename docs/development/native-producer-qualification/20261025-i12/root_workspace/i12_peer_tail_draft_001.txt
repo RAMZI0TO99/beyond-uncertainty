@@ -1,0 +1,74 @@
+
+class _Peer(_Graph):
+    def source_pins(self,pins):
+        _pin_list(pins,True)
+        for pin in pins:
+            cap=CAP
+            for role,row in self.rows.items():
+                if role!='composer' and pin['path'] in (row['canonical_path'],row['draft_path'],row['predecessor']['path']):
+                    cap=min(cap,self.c['ROLE_SOURCE_CAPS'][role])
+            self.s.raw(pin,cap)
+    def validate(self):
+        p,c=self.p,self.c
+        receipt=self.record(p['receipt'],'selected_peer_receipt27_v2')
+        decision=self.record(p['content_decision'],'phase_content_decision15_v2' if self.role=='phase_peer' else 'generic_peer_content_decision13_v2')
+        witness=self.record(p['serialization_witness'],'peer_serialization_witness13_v2')
+        inverse=self.record(p['inverse_evidence'],'peer_inverse12_v2')
+        self.add_actors(receipt,decision,witness,inverse)
+        actor=_actor(p['actual_content_actor'],True);self.excluded.add(actor.casefold())
+        _need(receipt['role']==decision['role']==self.role and receipt['genuine_content_author_and_reviewer']==decision['author']==decision['reviewer']==actor, 'E_ACTOR_JOIN')
+        _need(receipt['metadata_Source_worker']==self.row['preparation_Source_author'] and receipt['retained_semantic_Source_author']==self.row['retained_semantic_Source_author'], 'E_ACTOR_JOIN')
+        for value in (receipt,decision,witness,inverse):_need(_same(value['current_owner_scope'],self.scope), 'E_PEER_JOIN')
+        _need(_same(receipt['Root_future_path_selection'],self.selection_pin) and _same(receipt['new_canonical_lease'],self.lease) and _same(receipt['draft'],p['draft']) and _same(receipt['predecessor'],p['predecessor']), 'E_PEER_JOIN')
+        prior=self.s.record(p['predecessor'])
+        _need(receipt['original_peer_source_author_nominal']==prior.get('source_author') and receipt['original_peer_source_author_nominal']==self.row['retained_semantic_Source_author'], 'E_ACTOR_JOIN')
+        self.source_pins(p['recipe_sources']);self.source_pins(p['current_source_inputs'])
+        _need(_same(receipt['actual_recipe_Source_support'],p['recipe_sources']) and _same(receipt['actual_current_Source_inputs'],p['current_source_inputs']) and _same(decision['actual_current_Source_inputs'],p['current_source_inputs']) and _same(decision['actual_support_fact3s'],p['current_source_inputs']), 'E_PEER_INPUTS')
+        _need(p['proposal']['path']!=p['draft']['path'] and self.s.raw(p['proposal'],self.cap)==self.s.raw(p['draft'],self.cap), 'E_SELECTED_MATERIAL')
+        for key,pin in (('actual_genuine_content_proposal',p['proposal']),('actual_genuine_content_decision',p['content_decision']),('actual_Root_content_adoption',p['proposal_support']['Root_adoption']),('actual_Root_serialization_witness',p['serialization_witness']),('actual_complete_predecessor_inverse',p['inverse_evidence'])):
+            _need(_same(receipt[key],pin), 'E_PEER_JOIN')
+        _need(_same(p['content_support']['decision'],p['content_decision']) and _same(p['proposal_support']['proposal'],p['proposal']), 'E_PEER_JOIN')
+        if self.role=='phase_peer':
+            _need(p['context'] is not None,'E_PEER_CONTEXT')
+            context=self.record(p['context'],'phase_context21_v2')
+            _need(_same(context['current_owner_scope'],self.scope) and _same(context['genuine_content_support'],p['content_support']) and _same(context['genuine_proposal_support'],p['proposal_support']) and _same(context['selection_support'],p['selection_support']), 'E_PEER_CONTEXT')
+            parser=_schema(context['fresh_parser_support'],'phase_parser_support9_v2',c)
+            self.source_pins(decision['actual_fresh_native_Parser_support'])
+            _need(_same(decision['actual_fresh_native_Parser_result'],parser['result']), 'E_PEER_CONTEXT')
+            for key in ('result','request','owner_purpose_acceptance','Root_admission','different_result_review','result_Root_adoption'):
+                self.s.raw(parser[key]);_need(any(_same(parser[key],pin) for pin in decision['actual_fresh_native_Parser_support']), 'E_PEER_CONTEXT')
+            # These code5s are structural reference metadata, not executable ports;
+            # their Source/API bytes are supplied and every declared actor excluded.
+            for key in ('own_program_support','Source_producer_support','publisher_support','lease_producer_support'):
+                support=_schema(context[key],'code_support5',c)
+                for field in ('Source','API','different_review','Root_adoption'):self.s.raw(support[field],65536 if field=='Source' else CAP)
+                self.excluded.add(_actor(support['editor'],True).casefold())
+            self._proof_author_slots([context[key][field] for key in ('own_program_support','Source_producer_support','publisher_support','lease_producer_support') for field in ('different_review','Root_adoption')])
+        else:
+            _need(p['context'] is None,'E_PEER_CONTEXT')
+        for value in (witness,inverse):
+            _need(_same(value['selection'],self.selection_pin), 'E_PEER_JOIN')
+        for key,pin in (('proposal',p['proposal']),('selected_draft',p['draft']),('content_Root_adoption',p['content_support']['Root_adoption']),('proposal_Root_adoption',p['proposal_support']['Root_adoption'])):
+            _need(_same(witness[key],pin), 'E_PEER_JOIN')
+        _need(_same(inverse['draft'],p['draft']) and _same(inverse['predecessor'],p['predecessor']), 'E_INVERSE')
+        rebuilt=base64.b64decode(inverse['complete_predecessor_bytes_base64'],validate=True)
+        _need(rebuilt==self.s.raw(p['predecessor'],self.cap) and hashlib.sha256(rebuilt).hexdigest()==inverse['inverse_sha256']==p['predecessor']['sha256'], 'E_INVERSE')
+        earliest=self.prepare_proofs()
+        subjects=[p['content_decision'],*p['current_source_inputs'],self.scope,self.selection_pin]
+        content_review,content_time=self.support(p['content_support'],subjects)
+        proposal_review,proposal_time=self.support(p['proposal_support'],[p['proposal'],p['content_decision'],*p['current_source_inputs'],self.scope,self.selection_pin])
+        decision_t,witness_t,inverse_t,receipt_t=(_time(v['created_utc']) for v in (decision,witness,inverse,receipt))
+        _need(earliest<=decision_t<=content_review['full_time']<=content_time<=proposal_review['full_time']<=proposal_time<=witness_t<=inverse_t<=receipt_t<=self.now, 'E_CHRONOLOGY')
+        return self.result(True)
+
+
+def validate_selected_peer_receipt_metadata(*, packet, records, catalogue_bytes, expected_root_thread, source_editor, now_utc):
+    return _Peer(packet=packet,records=records,catalogue_bytes=catalogue_bytes,expected_root_thread=expected_root_thread,source_editor=source_editor,now_utc=now_utc,peer=True).validate()
+
+
+def validate_selected_peer_canonical_dependency_metadata(*, packet, records, catalogue_bytes, expected_root_thread, source_editor, now_utc):
+    raise I12Error('E_UNSUPPORTED_CANONICAL_PEER_PUBLICATION_ROUTE')
+
+
+def execute_stage(*args, **kwargs):
+    raise I12Error('E_ACTUAL_ENTRY_UNWIRED')

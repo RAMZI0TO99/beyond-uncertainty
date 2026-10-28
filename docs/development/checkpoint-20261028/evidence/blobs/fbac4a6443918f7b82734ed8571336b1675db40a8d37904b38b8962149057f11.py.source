@@ -1,0 +1,95 @@
+"""Author a fresh inert once supervisor from an own metadata-control predecessor.
+
+Requires a later frozen Source-input manifest. This helper never imports a target,
+launches a child, creates a once claim, or issues execution admission.
+"""
+import ast,hashlib,json,re
+from pathlib import Path
+R=Path(__file__).parent;C=R/'m3_peer_contracts_016'
+manifest_path=C/'I13_FINAL_ONCE_SOURCE_INPUT_MANIFEST_002.json'
+manifest=json.loads(manifest_path.read_bytes())
+def sha(raw):return hashlib.sha256(raw).hexdigest()
+def read_pin(pin,cap):
+ assert type(pin) is dict and set(pin)=={'path','bytes','sha256'}
+ path=Path(pin['path']);assert path.resolve().is_relative_to(C.resolve())
+ raw=path.read_bytes();assert 0<len(raw)==pin['bytes']<=cap and sha(raw)==pin['sha256']
+ return raw
+assert set(manifest['modules'])==set(manifest['APIs'])=={'m3','publisher','peer'}
+assert set(manifest['fixtures'])==set(manifest['case_names_by_fixture'])=={'m3_publisher','peer'}
+for p in manifest['modules'].values():ast.parse(read_pin(p,65536),filename=p['path'])
+for p in manifest['fixtures'].values():ast.parse(read_pin(p,2097152),filename=p['path'])
+for k,p in manifest['APIs'].items():assert json.loads(read_pin(p,2097152))['Source']==manifest['modules'][k]
+names=sum((manifest['case_names_by_fixture'][key] for key in ('m3_publisher','peer')),[])
+assert 0<len(names)<=10000 and len(names)==len(set(names)) and all(type(x) is str and re.fullmatch('[A-Za-z0-9_.:-]+',x) for x in names)
+prior=Path(r'D:\Aenv\pro2\WORK\resume-20261025-002\receipt_caller_integration_015\ROOT_I12_ONCE_MEMORY_SUPERVISOR_003.py')
+prior_raw=prior.read_bytes();assert len(prior_raw)==22253 and sha(prior_raw)=='d665d6ae908866575e63b989c4a6b2afe7cce46fdbe267bfa598c5835d1b0817'
+source=prior_raw.decode().replace('I12','I13').replace('_i12','_i13')
+def replace(old,new):
+ global source
+ assert old in source,old
+ source=source.replace(old,new)
+def assignment(name,value):
+ global source
+ pattern=r'^'+name+r' = .*?$'
+ source,n=re.subn(pattern,lambda _:name+' = '+repr(value),source,flags=re.M)
+ assert n==1,name
+assignment('SOURCES',manifest['modules'])
+assignment('CATALOGUE',manifest['catalogue'])
+assignment('FIXTURE',manifest['fixtures'])
+replace('FIXTURE = ','FIXTURES = ')
+assignment('EXPECTED_CASE_COUNT',len(names))
+assignment('EXPECTED_CASE_NAMES_SHA256',sha(json.dumps(names,separators=(',',':'),ensure_ascii=True).encode()))
+replace('OWNED_PARENT_ROOT =', 'APIS = '+repr(manifest['APIs'])+'\nEXPECTED_CASE_NAMES_BY_FIXTURE = '+repr(manifest['case_names_by_fixture'])+'\nOWNED_PARENT_ROOT =')
+replace("'modules', 'catalogue', 'fixture', 'supervisor', 'runtime', 'outputs', 'budgets'", "'modules', 'APIs', 'catalogue', 'fixtures', 'supervisor', 'runtime', 'prelaunch', 'outputs', 'budgets'")
+replace("value['modules'] == SOURCES and value['catalogue'] == CATALOGUE and value['fixture'] == FIXTURE", "value['modules'] == SOURCES and value['APIs'] == APIS and value['catalogue'] == CATALOGUE and value['fixtures'] == FIXTURES")
+replace("('catalogue', 'fixture', 'supervisor', 'runtime', 'source_scope', 'protocol_adoption', 'source_adoption')", "('catalogue', 'supervisor', 'runtime', 'source_scope', 'protocol_adoption', 'source_adoption', 'prelaunch')")
+replace("    for source_pin in SOURCES.values():\n        read_pin(source_pin, cap=65536)", "    for source_pin in SOURCES.values():\n        read_pin(source_pin, cap=65536)\n    for name, api_pin in APIS.items():\n        need(decode(read_pin(api_pin))['Source'] == SOURCES[name], 'whole new API Source join')\n    for fixture_pin in FIXTURES.values():\n        read_pin(fixture_pin)")
+replace("Root_current_I13_remaining_receipt_and_caller_Source_scope", "Root_current_I13_M3_producer_publisher_and_canonical_peer_Source_scope")
+replace("all(occurs(adoption, value[k]) for k in ('catalogue', 'fixture', 'supervisor')) and all(occurs(adoption, p) for p in SOURCES.values())", "all(occurs(adoption, value[k]) for k in ('catalogue', 'supervisor')) and all(occurs(adoption, p) for p in tuple(SOURCES.values()) + tuple(APIS.values()) + tuple(FIXTURES.values()))")
+replace("    need(type(value['outputs']) is dict", "    prelaunch = decode(read_pin(value['prelaunch']))\n    need(prelaunch.get('record_type') == 'Root_I13_fresh_once_synthetic_prelaunch_metadata' and\n         prelaunch.get('source_scope') == value['source_scope'] and prelaunch.get('source_adoption') == value['source_adoption'] and\n         prelaunch.get('peer_reported_full_custody_release') is True and prelaunch.get('new_peer_grant_after_release') is False and\n         prelaunch.get('target_execution') is False and prelaunch.get('operational_authority') is False and\n         type(prelaunch.get('available_RAM_bytes')) is int and prelaunch['available_RAM_bytes'] >= 1073741824 and\n         type(prelaunch.get('disk_free_bytes')) is int and prelaunch['disk_free_bytes'] >= 10737418240 and\n         0 <= (now - parse_time(prelaunch['observed_utc'])).total_seconds() <= 60, 'fresh resources and reported peer custody release; no host quiet inference')\n    peer_report = decode(read_pin(prelaunch['peer_custody_release_report']))\n    need(peer_report.get('reported_full_compute_custody_released') is True and peer_report.get('grant_consumed_closed') is True and\n         peer_report.get('Root_acceptance', {}).get('peer_result_accepted') is False, 'retained peer report only; original gates held')\n    need(type(value['outputs']) is dict")
+replace("tuple(SOURCES.values()) + (value['catalogue'], value['fixture'], value['supervisor'])", "tuple(SOURCES.values()) + tuple(APIS.values()) + tuple(FIXTURES.values()) + (value['catalogue'], value['supervisor'])")
+start=source.index('def load_new(');end=source.index('\ndef child(',start)
+source=source[:start]+'''def load_new(name, pin, api_pin=None):
+    raw = read_pin(pin)
+    module = types.ModuleType(name)
+    module.__file__ = pin['path']
+    exec(compile(raw, pin['path'], 'exec'), module.__dict__)
+    module.__source_pin__ = dict(pin)
+    module.__source_bytes__ = raw
+    if api_pin is not None:
+        module.__API_pin__ = dict(api_pin)
+        module.__API_bytes__ = read_pin(api_pin)
+    return module
+
+''' + source[end:]
+start=source.index("    formats = load_new(");end=source.index("    result.update(owned_pid",start)
+source=source[:start]+'''    m3 = load_new('_i13_fixed_m3', SOURCES['m3'], APIS['m3'])
+    peer = load_new('_i13_fixed_peer', SOURCES['peer'], APIS['peer'])
+    publisher = load_new('_i13_fixed_publisher', SOURCES['publisher'], APIS['publisher'])
+    catalogue_bytes = read_pin(CATALOGUE)
+    fixtures = {key: load_new('_i13_new_fixture_' + key, FIXTURES[key]) for key in ('m3_publisher', 'peer')}
+    print(json.dumps(dict(event='SUITE_ENTRY', case_count=sum(len(f.CASE_CATALOGUE) for f in fixtures.values()))), flush=True)
+    cases = []
+    for key in ('m3_publisher', 'peer'):
+        part = fixtures[key].run(m3=m3, publisher=publisher, peer=peer, catalogue_bytes=catalogue_bytes)
+        need(type(part) is dict and type(part.get('cases')) is list and part.get('metadata_only') is True and
+             all(part.get(k) is False for k in ('actual_family_publication', 'target_execution', 'operational_authority', 'scientific_authority')), 'exact new fixture metadata-only boundary')
+        need(all(type(c) is dict and set(c) == {'name', 'passed'} and type(c['name']) is str and c['passed'] is True for c in part['cases']) and
+             [c['name'] for c in part['cases']] == EXPECTED_CASE_NAMES_BY_FIXTURE[key] and
+             type(part.get('passed')) is int and part['passed'] == len(part['cases']) and
+             type(part.get('failed')) is int and part['failed'] == 0, 'actual focused fixture catalogue and all-pass counters')
+        cases.extend(part['cases'])
+    result = dict(schema_version=1, record_type='I13_owned_synthetic_memory_case_results', cases=cases, passed=len(cases), failed=0,
+                  metadata_only=True, actual_family_publication=False, target_execution=False, operational_authority=False, scientific_authority=False)
+''' + source[end:]
+replace('Fresh I13 synthetic-only once supervisor Source. Unrun pending separate admission.', 'Fresh I13 synthetic-only once supervisor Source. Unrun pending separate exact Source admission.')
+replace('It loads exactly three new reviewed I13 modules and\nfixture', 'It loads exactly three new reviewed I13 modules/APIs and\ntwo focused fixtures')
+replace('exact frozen three new modules/catalogue/fixture', 'exact frozen three new modules/APIs/catalogue/two fixtures')
+replace('actual Root Source adoption covers exact three programs', 'actual Root Source adoption covers exact new programs/APIs and supervisor')
+assert not any(isinstance(n, ast.Name) and n.id == 'FIXTURE' for n in ast.walk(ast.parse(source))) and "value['fixture']" not in source and 'formats = load_new' not in source
+assert "I12" not in source
+ast.parse(source)
+out=C/'ROOT_I13_ONCE_MEMORY_SUPERVISOR_002.py'
+with out.open('xb') as h:h.write(source.encode('utf8'))
+raw=out.read_bytes()
+print(json.dumps(dict(supervisor=dict(path=str(out),bytes=len(raw),sha256=sha(raw)),expected_case_count=len(names),expected_case_names_sha256=sha(json.dumps(names,separators=(',',':'),ensure_ascii=True).encode()),target_execution=False,admission_issued=False)))

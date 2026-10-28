@@ -1,0 +1,176 @@
+
+def _wire(value):
+    return (json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False)+'\n').encode('utf8')
+
+
+def _time(second):
+    return '2026-10-25T00:00:'+str(second).zfill(2)+'.000000+00:00'
+
+
+def _ref(label):
+    return ('$REF',label)
+
+
+def _pin(path,raw):
+    return dict(path=path,bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+
+
+def _fingerprint(value):
+    def describe(v):
+        if type(v) is bytes:return ['bytes',len(v),hashlib.sha256(v).hexdigest()]
+        if type(v) in (str,int,bool) or v is None:return [type(v).__name__,v]
+        if type(v) is dict:return ['dict',[[k,describe(x)] for k,x in sorted(v.items())]]
+        if type(v) in (list,tuple):return [type(v).__name__,[describe(x) for x in v]]
+        if isinstance(v,dict):return ['dict_subclass',describe(dict(v))]
+        if isinstance(v,list):return ['list_subclass',describe(list(v))]
+        if isinstance(v,str):return ['str_subclass',str(v)]
+        if isinstance(v,int):return ['int_subclass',int(v)]
+        if isinstance(v,bytes):return ['bytes_subclass',len(v),hashlib.sha256(v).hexdigest()]
+        return [type(v).__name__,repr(v)]
+    return hashlib.sha256(_wire(describe(value))).hexdigest()
+
+
+def _mutable_ids(value,seen=None):
+    seen=set() if seen is None else seen
+    if type(value) in (dict,list,set):
+        if id(value) in seen:return seen
+        seen.add(id(value))
+        children=value.values() if type(value) is dict else value
+        for child in children:_mutable_ids(child,seen)
+    elif type(value) is tuple:
+        for child in value:_mutable_ids(child,seen)
+    return seen
+
+
+class _Build:
+    def __init__(self,kind,role,catalogue):
+        self.kind,self.role=kind,role
+        self.catalogue=copy.deepcopy(catalogue)
+        self.fixed=copy.deepcopy(FIXED)
+        self.defs={};self.paths={};self.memo={};self.resolving=set()
+        for label,row in self.fixed.items():
+            raw=base64.b64decode(row['body64'],validate=True)
+            assert _pin(row['pin']['path'],raw)==row['pin']
+            self.raw(label,row['pin']['path'],raw)
+        old=json.loads(self.defs['old_selection'].decode('utf8'))
+        inventory=json.loads(self.defs['m3_inventory'].decode('utf8'))
+        basis={r['role']:copy.deepcopy(r['available_basis']) for r in inventory['roles']}
+        rows=copy.deepcopy(old['rows'])
+        for row in rows:
+            if row['role']=='composer':continue
+            name=row['role']+'_101.json'
+            row.update(canonical_path=HOME+'\\canonical\\'+name,draft_path=HOME+'\\drafts\\'+name,selected_ordinal=101,must_change_Source_bytes=True,preparation_Source_author='/root/i12_synthetic_preparer')
+            if row['role'] in basis:row['predecessor']=copy.deepcopy(basis[row['role']])
+        self.rows=copy.deepcopy(rows)
+        self.row=next(r for r in rows if r['role']==role)
+        # Selected predecessor data is captured by the metadata author, never read
+        # by this fixture and never imported/invoked. New draft data is synthetic.
+        chosen='predecessor_'+role
+        self.raw('predecessor',self.fixed[chosen]['pin']['path'],base64.b64decode(self.fixed[chosen]['body64'],validate=True))
+        if kind=='single':draft=b'# I12 fresh synthetic single-role Source data '+role.encode('ascii')+b'\n'
+        else:draft=_wire(dict(record_type='I12_fresh_synthetic_peer_draft_content',source_author=self.row['retained_semantic_Source_author'],role=role,metadata_only=True))
+        self.raw('draft',self.row['draft_path'],draft)
+        self.add('scope',dict(schema_version=1,record_type='I12_fresh_synthetic_current_owner_scope_data',author='/root',Root_thread=ROOT_THREAD,created_utc=_time(0),target_execution=False,operational_authority=False))
+        self.add('lease',dict(schema_version=1,record_type='I12_fresh_synthetic_lease_data',author='/root',created_utc=_time(0),current_owner_scope=_ref('scope'),target_execution=False,operational_authority=False))
+        self.add('selection',dict(schema_version=2,record_type='Root_owner_v2_actual_separate_future45_Source_path_selection',author='/root',created_utc=_time(1),current_owner_scope=_ref('scope'),new_canonical_lease=_ref('lease'),current_selection=_ref('old_selection'),current_complete45_inventory=_ref('historical_inventory'),derived_launcher_runtime_path=HOME+'\\future\\runtime.py',selected_Source_nonce='ab'*16,rows=copy.deepcopy(rows),target_execution=False,operational_authority=False))
+        self.proof('selection',[_ref('selection'),_ref('lease')],2)
+        self.proof('constructor',[_ref('constructor_source'),_ref('constructor_api')],2,code=True)
+        self.proof('emitter',[_ref('emitter_source'),_ref('emitter_api')],2,code=True)
+        self.constructor=self.code('constructor')
+        self.emitter=self.code('emitter')
+        common=dict(root_thread=ROOT_THREAD,role=role,owner_scope=_ref('scope'),selection_support=dict(subject=_ref('selection'),different_review=_ref('selection_capsule'),Root_adoption=_ref('selection_adoption')),lease=_ref('lease'),constructor_support=copy.deepcopy(self.constructor),actual_content_authors=[])
+        if kind=='single':self.single(common)
+        else:self.peer(common)
+    def raw(self,label,path,body):
+        self.defs[label]=body;self.paths[label]=path
+    def add(self,label,value):
+        self.defs[label]=copy.deepcopy(value);self.paths[label]=HOME+'\\metadata\\'+label+'.json'
+    def code(self,label):
+        return dict(Source=_ref(label+'_source'),API=_ref(label+'_api'),editor='/root/i2_resume_gap',different_review=_ref(label+'_capsule'),Root_adoption=_ref(label+'_adoption'))
+    def proof(self,label,subjects,second,code=False):
+        verdict='PASS_SOURCE_I12_FRESH_SYNTHETIC_METADATA' if code else 'PASS_I12_FRESH_SYNTHETIC_METADATA'
+        required=copy.deepcopy(subjects)
+        self.add(label+'_full',dict(schema_version=1,record_type='I12_fresh_synthetic_full_proof',reviewer=REVIEWER,author=REVIEWER,created_utc=_time(second),verdict=verdict,checks_failed=0,checks_passed=1,checks=[dict(name='fresh_owned_metadata_assertion',passed=True)],subjects=required,target_execution=False,operational_authority=False))
+        self.add(label+'_capsule',dict(schema_version=1,record_type='I12_fresh_synthetic_capsule',reviewer=REVIEWER,author=REVIEWER,created_utc=_time(second+1),verdict=verdict,checks_failed=0,checks_passed=1,full_proof=_ref(label+'_full'),subjects=required,target_execution=False,operational_authority=False))
+        self.add(label+'_adoption',dict(schema_version=1,record_type='I12_fresh_synthetic_Root_adoption',author='/root',created_utc=_time(second+2),verdict='ACCEPT_I12_FRESH_SYNTHETIC_METADATA',subjects=required+[_ref(label+'_full'),_ref(label+'_capsule'),_ref('scope'),_ref('selection')],target_execution=False,operational_authority=False))
+    def lease_support(self):
+        return {key:_ref('lease') for key in self.catalogue['schemas']['I5_closed9_lease_support']['fields']}
+    def observation(self,pin,cap,spent=False,second=11):
+        vector=[1,2,pin['bytes'],3,4,0o100600,1,0,5]
+        value=dict(path=pin['path'],bytes=pin['bytes'],sha256=pin['sha256'],cap=cap,raw9=list(vector),path9=list(vector),descriptor9=list(vector),two_read_match=True,observed_utc=_time(second))
+        if spent:value['exact_spent_exception']=True
+        else:value.update(shared_identity_indexes=[0,1,2,3,6,7,8],shared_descriptor7=[vector[i] for i in [0,1,2,3,6,7,8]],both_full_API9_independently_stable=True)
+        return value
+    def single(self,common):
+        role=self.role;stage='binding' if role=='binding' else 'config' if role=='checker_config' else 'render'
+        self.raw('canonical',self.row['canonical_path'],self.defs['draft'])
+        for prefix,which,second in (('generation',stage,10),('publication','publish',30)):
+            self.add(prefix+'_decision',dict(schema_version=2,record_type='Root_owner_v2_exact_metadata_stage_decision',author='/root',created_utc=_time(second),physical_actor='/root',current_owner_scope=_ref('scope'),Root_selection=_ref('selection'),tool_source=_ref('emitter_source'),lawful_lease=_ref('lease'),stage=which,role=role,decision='ADMIT_SEPARATE_CURRENT_OWNER_LAWFUL_COHORT_METADATA_STAGE',target_execution=False,operational_authority=False))
+            self.add(prefix+'_facts',dict(schema_version=2,record_type='Root_owner_v2_exact_deferred_metadata_stage_facts',author='/root',created_utc=_time(second+1),physical_actor='/root',metadata_Source_worker='/root/i12_synthetic_preparer',source_only=True,target_execution=False,operational_authority=False,lease_issuance=False,current_owner_scope=_ref('scope'),tool_source=_ref('emitter_source'),tool_review=_ref('emitter_capsule'),tool_Root_adoption=_ref('emitter_adoption'),Root_selection=_ref('selection'),selection_review=_ref('selection_capsule'),selection_Root_adoption=_ref('selection_adoption'),lawful_lease_support=self.lease_support(),stage=which,role=role,predecessor=_ref('predecessor'),canonical_dependencies={},stage_support={},output_namespace=HOME+'\\metadata',publication_request=_ref('request') if which=='publish' else None,stage_decision=_ref(prefix+'_decision')))
+        envelope=dict(schema_version=2,author='/root',physical_actor='/root',metadata_Source_worker='/root/i12_synthetic_preparer',retained_semantic_Source_author=self.row['retained_semantic_Source_author'],current_owner_scope=_ref('scope'),Root_selection=_ref('selection'),lawful_lease_support=self.lease_support(),tool_source=_ref('emitter_source'),tool_Source_review=_ref('emitter_capsule'),tool_Root_adoption=_ref('emitter_adoption'),role=role,predecessor=_ref('predecessor'),draft=_ref('draft'),target_execution=False,operational_authority=False,lease_issuance=False,genuine_peer_authored=False,Native_or_Parser_or_original_fixture_or_science=False,original_Source_guards_caps_inverse_and_all_spent_gates_preserved=True)
+        draftpin=_pin(self.paths['draft'],self.defs['draft']);canonicalpin=_pin(self.paths['canonical'],self.defs['canonical']);cap=self.catalogue['ROLE_SOURCE_CAPS'][role]
+        self.add('generation',dict(envelope,record_type='Root_owner_v2_selected_role_deferred_metadata_stage_receipt',created_utc=_time(12),actual_Root_late_facts=_ref('generation_facts'),original_request=None,stage=stage,canonical=None,canonical_publication=False,details={},actual_paired_metadata_inputs=[self.observation(draftpin,cap)]))
+        self.proof('draft',[_ref('draft')],20)
+        self.proof('generation',[_ref('generation')],20)
+        stage_support=dict(draft=_ref('draft'),draft_Source_review=_ref('draft_capsule'),draft_Root_adoption=_ref('draft_adoption'),generation_receipt=_ref('generation'),generation_receipt_review=_ref('generation_capsule'),generation_receipt_Root_adoption=_ref('generation_adoption'))
+        self.defs['publication_facts']['stage_support']=copy.deepcopy(stage_support)
+        self.add('request',dict(schema_version=2,record_type='Root_owner_v2_selected_role_exact_reviewed_Source_publication_request',author='/root',created_utc=_time(32),current_owner_scope=_ref('scope'),Root_selection=_ref('selection'),role=role,draft=_ref('draft'),canonical_path=self.paths['canonical'],Source_review=_ref('draft_capsule'),Root_adoption=_ref('draft_adoption'),decision='PUBLISH_EXACT_REVIEWED_SOURCE_ONLY_SELECTED_ROLE',target_execution=False,operational_authority=False))
+        observations=[self.observation(draftpin,cap,second=33),self.observation(canonicalpin,cap,second=33)]
+        archive={pin['path'] for pin in self.catalogue['archival_spent2']}
+        observations.extend(self.observation(copy.deepcopy(pin),4194304 if pin['path'] in archive else 2097152,spent=True,second=33) for pin in self.catalogue['spent_pin75'])
+        self.add('publication',dict(envelope,record_type='Root_owner_v2_selected_role_Source_canonical_publication',created_utc=_time(34),actual_Root_late_facts=_ref('publication_facts'),original_request=_ref('request'),stage='publish',canonical=_ref('canonical'),canonical_publication=True,details=dict(generation_receipt=_ref('generation'),different_draft_Source_review=_ref('draft_capsule'),Root_draft_adoption=_ref('draft_adoption'),original_request=_ref('request'),canonical_publication=True),actual_paired_metadata_inputs=observations))
+        self.add('witness',dict(record_type='I12_fresh_synthetic_execution_witness_data',author='/root',created_utc=_time(35),target_execution=False,operational_authority=False))
+        self.proof('canonical',[_ref(k) for k in ('canonical','draft','generation','request','publication','witness','scope','selection')],40)
+        self.add('reconciliation',dict(schema_version=2,record_type='Root_owner_v2_verified_prior_single_role_Source_publication_reconciliation',author='/root',created_utc=_time(43),canonical_Source_birth_utc=_time(33),prior_publication_created_utc=_time(34),Root_future_path_selection=_ref('selection'),current_owner_scope=_ref('scope'),actual_canonical_delta_Source_review=_ref('canonical_capsule'),canonical_Source=_ref('canonical'),canonical_delta_Root_adoption=_ref('canonical_adoption'),exact_draft_Source=_ref('draft'),initial_actual_Root_request=_ref('request'),initial_actual_canonical_publication_receipt=_ref('publication'),initial_actual_execution_witness=_ref('witness'),new_canonical_lease=_ref('lease'),prior_actual_publisher_Source=_ref('emitter_source'),actual_input_observations=[],canonical_publication=True,canonical_publication_flag_scope=self.catalogue['schemas']['single_reconciliation26_v2']['fields']['canonical_publication_flag_scope'][8:],verdict='ACCEPT_CURRENT_CANONICAL_SOURCE_DELTA_AND_VERIFIED_PRIOR_ROOT_PUBLICATION_ONLY',new_canonical_Source_write_by_reconciliation=False,Git_mutation=False,target_execution=False,operational_authority=False,whole_cohort_or_runtime_or_fixture_acceptance=False))
+        self.proof('reconciliation',[_ref(k) for k in ('reconciliation','canonical','publication','scope','selection')],44)
+        self.packet=dict(common,emitter_support=copy.deepcopy(self.emitter),generation_receipt=_ref('generation'),generation_facts=_ref('generation_facts'),publication_facts=_ref('publication_facts'),generation_stage_decision=_ref('generation_decision'),publication_stage_decision=_ref('publication_decision'),request=_ref('request'),publication=_ref('publication'),execution_witness=_ref('witness'),canonical=_ref('canonical'),draft=_ref('draft'),predecessor=_ref('predecessor'),canonical_support=dict(different_review=_ref('canonical_capsule'),Root_adoption=_ref('canonical_adoption')),reconciliation=_ref('reconciliation'),reconciliation_support=dict(different_review=_ref('reconciliation_capsule'),Root_adoption=_ref('reconciliation_adoption')))
+    def peer(self,common):
+        role=self.role;actor='/root/i12_synthetic_content_author'
+        self.raw('proposal',HOME+'\\proposal\\'+role+'_101.json',self.defs['draft'])
+        self.raw('recipe',HOME+'\\recipe\\'+role+'.txt',b'I12 fresh synthetic inert recipe Source data\n')
+        self.raw('content_input',HOME+'\\inputs\\'+role+'.txt',b'I12 fresh synthetic current Source input data\n')
+        inputs=[_ref('content_input')]
+        phase=role=='phase_peer'
+        decision=dict(schema_version=2,record_type='Root_owner_v2_actual_genuine_phase_peer_content_decision' if phase else 'Root_owner_v2_actual_genuine_selected_peer_content_decision',author=actor,reviewer=actor,created_utc=_time(10),verdict='PASS_STATIC_ACTUAL_PHASE_PS_SOURCE_BINDINGS_ONLY' if phase else 'PASS_STATIC_SELECTED_PEER_METADATA_CONTENT_ONLY',role=role,current_owner_scope=_ref('scope'),approved_original_schema_updates={},actual_current_Source_inputs=copy.deepcopy(inputs),actual_support_fact3s=copy.deepcopy(inputs),target_execution=False,operational_authority=False)
+        if phase:
+            for label in ('parser_result','parser_request','parser_purpose','parser_admission','parser_review','parser_adoption'):
+                self.raw(label,HOME+'\\parser_refs\\'+label+'.txt',('I12 synthetic unqualified Parser metadata reference '+label+'\n').encode())
+            decision.update(actual_fresh_native_Parser_result=_ref('parser_result'),actual_fresh_native_Parser_support=[_ref(label) for label in ('parser_result','parser_request','parser_purpose','parser_admission','parser_review','parser_adoption')])
+        self.add('decision',decision)
+        self.proof('content',[_ref('decision'),*inputs,_ref('scope'),_ref('selection')],20)
+        self.proof('proposal',[_ref('proposal'),_ref('decision'),*inputs,_ref('scope'),_ref('selection')],24)
+        content=dict(decision=_ref('decision'),different_review=_ref('content_capsule'),Root_adoption=_ref('content_adoption'))
+        proposal=dict(proposal=_ref('proposal'),different_review=_ref('proposal_capsule'),Root_adoption=_ref('proposal_adoption'))
+        self.add('serialization',dict(schema_version=2,record_type='Root_owner_v2_selected_peer_serialization_metadata_witness',author='/root',created_utc=_time(30),physical_Source_editor='/root',current_owner_scope=_ref('scope'),selection=_ref('selection'),proposal=_ref('proposal'),selected_draft=_ref('draft'),content_Root_adoption=_ref('content_adoption'),proposal_Root_adoption=_ref('proposal_adoption'),target_execution=False,operational_authority=False))
+        self.add('inverse',dict(schema_version=2,record_type='Root_owner_v2_peer_complete_predecessor_inverse_metadata',author='/root',created_utc=_time(31),current_owner_scope=_ref('scope'),selection=_ref('selection'),draft=_ref('draft'),predecessor=_ref('predecessor'),complete_predecessor_bytes_base64=base64.b64encode(self.defs['predecessor']).decode('ascii'),inverse_sha256=hashlib.sha256(self.defs['predecessor']).hexdigest(),target_execution=False,operational_authority=False))
+        self.add('receipt',dict(schema_version=2,record_type='Root_owner_v2_genuine_static_peer_selected_byte_author_receipt',author='/root',created_utc=_time(32),role=role,draft=_ref('draft'),predecessor=_ref('predecessor'),Root_future_path_selection=_ref('selection'),new_canonical_lease=_ref('lease'),current_owner_scope=_ref('scope'),physical_selected_byte_editor='/root',physical_receipt_author='/root',genuine_content_author_and_reviewer=actor,metadata_Source_worker='/root/i12_synthetic_preparer',retained_semantic_Source_author=self.row['retained_semantic_Source_author'],original_peer_source_author_nominal=json.loads(self.defs['predecessor'].decode('utf8'))['source_author'],actual_genuine_content_proposal=_ref('proposal'),actual_genuine_content_decision=_ref('decision'),actual_Root_content_adoption=_ref('proposal_adoption'),actual_Root_serialization_witness=_ref('serialization'),actual_complete_predecessor_inverse=_ref('inverse'),actual_recipe_Source_support=[_ref('recipe')],actual_current_Source_inputs=copy.deepcopy(inputs),target_execution=False,operational_authority=False,canonical_publication=False,original_fixtures_and_runtime_admission=False))
+        if phase:
+            parser=dict(schema_version=2,record_type='Root_owner_v2_fresh_Parser_saved_result_support',implementation_support={},result=_ref('parser_result'),request=_ref('parser_request'),owner_purpose_acceptance=_ref('parser_purpose'),Root_admission=_ref('parser_admission'),different_result_review=_ref('parser_review'),result_Root_adoption=_ref('parser_adoption'))
+            self.add('context',dict(schema_version=2,record_type='Root_owner_v2_actual_genuine_phase_peer_dictionary_context',author='/root',created_utc=_time(28),role=role,current_owner_scope=_ref('scope'),own_program_support=copy.deepcopy(self.constructor),Source_producer_support=copy.deepcopy(self.constructor),publisher_support=copy.deepcopy(self.constructor),lease_producer_support=copy.deepcopy(self.constructor),new_lease_support={},selection_support=copy.deepcopy(common['selection_support']),canonical_Source_inputs={},carried_Source_inputs={},genuine_content_support=copy.deepcopy(content),genuine_proposal_support=copy.deepcopy(proposal),fresh_parser_support=parser,actual_reversal_FILEs={},current_content_evidence_support={},target_execution=False,operational_authority=False))
+        self.packet=dict(common,receipt=_ref('receipt'),draft=_ref('draft'),predecessor=_ref('predecessor'),proposal=_ref('proposal'),content_decision=_ref('decision'),content_support=copy.deepcopy(content),proposal_support=copy.deepcopy(proposal),serialization_witness=_ref('serialization'),inverse_evidence=_ref('inverse'),recipe_sources=[_ref('recipe')],current_source_inputs=copy.deepcopy(inputs),actual_content_actor=actor,context=_ref('context') if phase else None)
+    def expand(self,value):
+        if type(value) is tuple and len(value)==2 and value[0]=='$REF':return self.resolve(value[1])[0]
+        if type(value) is dict:return {k:self.expand(v) for k,v in value.items()}
+        if type(value) is list:return [self.expand(v) for v in value]
+        return copy.deepcopy(value)
+    def resolve(self,label):
+        if label in self.memo:return copy.deepcopy(self.memo[label])
+        assert label in self.defs and label not in self.resolving
+        self.resolving.add(label)
+        value=self.defs[label]
+        raw=value if type(value) is bytes else _wire(self.expand(value))
+        result=(_pin(self.paths[label],raw),raw)
+        self.memo[label]=result;self.resolving.remove(label)
+        return copy.deepcopy(result)
+    def finish(self):
+        packet=_wire(self.expand(self.packet))
+        for label in list(self.defs):self.resolve(label)
+        records=[dict(pin=copy.deepcopy(pin),body=raw) for pin,raw in self.memo.values()]
+        # Two labels can deliberately name the same exact retained predecessor;
+        # only one whole-byte record is supplied; no ambiguous/casefold aliases.
+        unique={}
+        for row in records:
+            key=row['pin']['path']
+            if key in unique:assert unique[key]==row
+            unique[key]=copy.deepcopy(row)
+        return copy.deepcopy(dict(packet=packet,records=list(unique.values()),expected_root_thread=ROOT_THREAD,source_editor='/root/project_architecture',now_utc=_time(59)))

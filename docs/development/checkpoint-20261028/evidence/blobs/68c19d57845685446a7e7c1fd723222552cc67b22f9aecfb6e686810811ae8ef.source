@@ -1,0 +1,273 @@
+"""New I13 synthetic outer-envelope helper SOURCE, copied into owned fixtures.
+
+No old fixture import, runtime callback or target call. This helper is unrun.
+Caller gives a detached new author bundle with owner/lease/selection labels.
+All generated records explicitly describe synthetic, unissued metadata.
+"""
+import base64
+import copy
+import datetime
+import hashlib
+import json
+
+_OW_HOME = r'D:\Aenv\pro2\WORK\resume-20261025-003\m3_peer_contracts_016\i13\synthetic_outer'
+_OW_ZERO = datetime.datetime(2026,10,25,11,0,0,tzinfo=datetime.timezone.utc)
+
+
+def _ow_wire(value):
+    return (json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False)+'\n').encode('utf8')
+
+
+def _ow_json(raw):
+    return json.loads(raw.decode('utf8'))
+
+
+def _ow_time(seconds, seven=False):
+    text = (_OW_ZERO+datetime.timedelta(seconds=seconds)).isoformat(timespec='microseconds')
+    return text.replace('+00:00','0+00:00') if seven else text
+
+
+def _ow_ns(seconds):
+    delta = _OW_ZERO+datetime.timedelta(seconds=seconds)-datetime.datetime(1970,1,1,tzinfo=datetime.timezone.utc)
+    return (delta.days*86400+delta.seconds)*1000000000+delta.microseconds*1000
+
+
+def _ow_pin(path, raw):
+    return dict(path=path,bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+
+
+def _ow_pins(value):
+    if type(value) is dict:
+        if set(value) == {'path','bytes','sha256'}:
+            return [copy.deepcopy(value)]
+        return [p for child in value.values() for p in _ow_pins(child)]
+    if type(value) is list:
+        return [p for child in value for p in _ow_pins(child)]
+    return []
+
+
+def _ow_replace(value, old, new):
+    if type(value) is dict:
+        if set(value) == {'path','bytes','sha256'} and value == old:
+            return copy.deepcopy(new)
+        return {k:_ow_replace(v,old,new) for k,v in value.items()}
+    if type(value) is list:
+        return [_ow_replace(v,old,new) for v in value]
+    return value
+
+
+class _Outer:
+    def __init__(self, bundle):
+        self.b = copy.deepcopy(bundle)
+        self.b.setdefault('mutable',[])
+        self.mutable = set(self.b['mutable'])
+        self.prefix = 'outer_'
+        self.scope = self.selection = None
+
+    def row(self, label):
+        return next(r for r in self.b['records'] if r['pin']['path'] == self.b['labels'][label])
+
+    def p(self, label):
+        return copy.deepcopy(self.row(label)['pin'])
+
+    def value(self, label):
+        return _ow_json(self.row(label)['body'])
+
+    def add_raw(self, label, raw, path=None, mutable=False):
+        path = path or _OW_HOME+'\\'+label+'.json'
+        assert type(raw) is bytes and raw and all(r['pin']['path'].casefold() != path.casefold() for r in self.b['records'])
+        pin = _ow_pin(path,raw)
+        self.b['records'].append(dict(pin=copy.deepcopy(pin),body=raw))
+        self.b['labels'][label] = path
+        if mutable:self.mutable.add(path)
+        return copy.deepcopy(pin)
+
+    def add(self, label, value, path=None):
+        return self.add_raw(label,_ow_wire(value),path,True)
+
+    def rewrite(self, label, value, path=None):
+        row = self.row(label); old = copy.deepcopy(row['pin'])
+        raw = value if type(value) is bytes else _ow_wire(value)
+        path = path or old['path']; new = _ow_pin(path,raw)
+        row.update(pin=new,body=raw); self.b['labels'][label] = path
+        self.mutable.discard(old['path']);self.mutable.add(path)
+        queue = [(old,copy.deepcopy(new))]
+        while queue:
+            before,after = queue.pop(0)
+            for other in self.b['records']:
+                if other is row or other['pin']['path'] not in self.mutable:continue
+                current = _ow_json(other['body']); updated = _ow_replace(current,before,after)
+                if current != updated:
+                    prev = copy.deepcopy(other['pin']);other['body'] = _ow_wire(updated);other['pin'] = _ow_pin(prev['path'],other['body']);queue.append((prev,copy.deepcopy(other['pin'])))
+        return self.p(label)
+
+    def proof(self, name, subjects, at, adopt, extra=None, context=True):
+        subjects = list({p['path']:copy.deepcopy(p) for p in subjects}.values())
+        common = dict(schema_version=2,record_type='synthetic_new_I13_general_Source_proof',reviewer='/root/i13_outer_independent_review',created_utc=_ow_time(at),verdict='PASS_SOURCE_SYNTHETIC_RECORDED_METADATA_ONLY',checks_passed=1,checks_failed=0,subjects=subjects,target_execution=False,operational_authority=False,native_Parser_executed=False)
+        if extra:common.update(copy.deepcopy(extra))
+        full = copy.deepcopy(common);full['checks'] = [dict(name='whole_bytes_and_declared_metadata',passed=True,evidence=subjects)]
+        fp = self.add(name+'_full',full)
+        cap = copy.deepcopy(common);cap['full_proof'] = fp;cp = self.add(name+'_capsule',cap)
+        required = subjects+[cp,fp]+([self.scope,self.selection] if context and self.scope and self.selection else [])
+        required = list({p['path']:copy.deepcopy(p) for p in required}.values())
+        ad = dict(schema_version=2,record_type='synthetic_new_I13_Root_Source_adoption',author='/root',created_utc=_ow_time(adopt),verdict='ACCEPT_SOURCE_SYNTHETIC_RECORDED_METADATA_ONLY',subjects=required,different_review=cp,full_proof=fp,target_execution=False,operational_authority=False,native_Parser_executed=False)
+        if extra:ad.update(copy.deepcopy(extra))
+        ap = self.add(name+'_adoption',ad)
+        return cp,ap
+
+    def support(self, name, subject, at, adopt, subjects=None):
+        cp,ap = self.proof(name,subjects or [subject],at,adopt)
+        return dict(subject=subject,different_review=cp,Root_adoption=ap)
+
+    def code(self, name, module, at=12, adopt=13):
+        for suffix,pin,raw in (('Source',module.__source_pin__,module.__source_bytes__),('API',module.__API_pin__,module.__API_bytes__)):
+            if all(r['pin']['path'] != pin['path'] for r in self.b['records']):
+                self.add_raw(name+'_'+suffix,raw,pin['path'],False)
+            else:
+                assert any(r['pin'] == pin and r['body'] == raw for r in self.b['records'])
+        api = _ow_json(module.__API_bytes__)
+        cp,ap = self.proof(name+'_code',[module.__source_pin__,module.__API_pin__],at,adopt)
+        return dict(Source=copy.deepcopy(module.__source_pin__),API=copy.deepcopy(module.__API_pin__),editor=api['author'],different_review=cp,Root_adoption=ap)
+
+    def context(self):
+        if 'outer_owner_capsule' in self.b['labels']:
+            self.scope,self.selection=self.p('owner'),self.p('selection')
+            return (dict(current_owner_scope=self.scope,different_current_owner_scope_Source_review=self.p('outer_owner_capsule'),current_owner_scope_Root_adoption=self.p('outer_owner_adoption')),dict(canonical=self.p('lease'),separate_Root_decision=self.p('outer_lease_decision'),original_publication=self.p('outer_lease_publication'),different_review=self.p('outer_lease_final_capsule'),Root_adoption=self.p('outer_lease_final_adoption')),dict(selection=self.selection,different_review=self.p('outer_selection_capsule'),Root_adoption=self.p('outer_selection_adoption')))
+        instruction = self.add('outer_instruction',dict(author='/root',record_type='synthetic_human_instruction_reference',operational_authority=False))
+        policy = self.add('outer_policy',dict(author='/root',record_type='synthetic_owner_policy_reference',operational_authority=False))
+        owner = self.value('owner')
+        owner.update(schema_version=2,Root_thread=owner.get('Root_thread','11111111-1111-4111-8111-111111111111'),author='/root',record_type='synthetic_recorded_I13_Source_scope_not_actual_issuance',created_utc=_ow_time(-30),interval_start=_ow_time(-60),interval_end=_ow_time(3600),owner_instruction_record=instruction,owner_policy_record=policy,target_execution=False,operational_authority=False,scientific_authority=False)
+        # The author bundle's UUID is the operative root identity.
+        wrapper = self.value('wrapper') if 'wrapper' in self.b['labels'] else None
+        if wrapper:owner['Root_thread'] = wrapper.get('Root_thread',owner['Root_thread'])
+        self.rewrite('owner',owner);self.scope = self.p('owner')
+        rr,ra = self.proof('outer_owner',[self.scope],-29,-28,context=False)
+        owner_support = dict(current_owner_scope=self.scope,different_current_owner_scope_Source_review=rr,current_owner_scope_Root_adoption=ra)
+        anchors = {name:self.add('outer_lease_'+name,dict(record_type='synthetic_unissued_lease_'+name,author='/root',target_execution=False,operational_authority=False)) for name in ('owner_master','owner_review','predecessor_lease','design','native_timestamp_entry')}
+        lease_path = r'D:\Aenv\pro2\resume-2026-10-03-continuation001\EXECUTION_LEASE_GG6_M3_011.json'
+        decision = dict(schema_version=2,record_type='Root_owner_v2_prospective_lease_issuance_decision',author='/root',Root_thread=owner['Root_thread'],created_utc=_ow_time(-20),current_owner_scope=self.scope,decision='SELECT_NEW_PROSPECTIVE_CLOSED12_LEASE_SOURCE_ONLY',future_canonical_path=lease_path,selected_ordinal=11,selected_duration_seconds=43200,lease_is_owner_deadline=False,old_leases_extended=False,source_family_selected=False,operational_authority=False,target_execution=False,**anchors)
+        dp = self.add('outer_lease_decision',decision)
+        lease = dict(schema_version=1,record_type='root_local_private_execution_lease',author='/root',created_utc=_ow_time(0,True),lease_end_utc=_ow_time(43200,True),maximum_lease_seconds=43200,owner_master_sha256=anchors['owner_master']['sha256'],owner_review_sha256=anchors['owner_review']['sha256'],decision='authorize_bounded_selected_unit_metadata_and_copied_tests_once',lease_is_owner_deadline=False,operational_authority=False,scope='COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY')
+        self.rewrite('lease',lease,lease_path);lp = self.p('lease')
+        candidate = self.add('outer_lease_candidate',lease)
+        receipt = dict(schema_version=2,record_type='Root_owner_v2_prospective_lease_candidate_author_receipt',author='/root',physical_Source_editor='/root',metadata_tool_Source_author='/root/phase_frontier',created_utc=_ow_time(0),current_owner_scope=self.scope,candidate=candidate,issuance_decision=dp,predecessor_lease=anchors['predecessor_lease'],owner_master=anchors['owner_master'],owner_review=anchors['owner_review'],native_timestamp_entry=anchors['native_timestamp_entry'],native_created_utc=lease['created_utc'],native_end_utc=lease['lease_end_utc'],future_canonical_path=lease_path,operational_authority=False,lease_is_owner_deadline=False,target_execution=False,source_family_selected=False,old_leases_extended=False,original_functions_or_fixtures_called=False,canonical_publication=False,different_candidate_Source_review_pending=True)
+        rp = self.add('outer_lease_receipt',receipt)
+        cr,ca = self.proof('outer_lease_candidate_review',[candidate,rp],0,0,context=False)
+        publication = dict(schema_version=2,record_type='Root_owner_v2_prospective_lease_original_publication',author='/root',physical_Source_editor='/root',metadata_tool_Source_author='/root/phase_frontier',created_utc=_ow_time(0),current_owner_scope=self.scope,canonical=lp,issuance_decision=dp,predecessor_lease=anchors['predecessor_lease'],continuing_owner=anchors['owner_master'],owner_review=anchors['owner_review'],candidate=candidate,candidate_author_receipt=rp,different_lease_Source_review=cr,candidate_Root_adoption=ca,operational_authority=False,lease_is_owner_deadline=False,target_execution=False,source_family_selected=False,actual_entry006=False,original_fixture_or_case_grant=False,old_leases_extended=False,host_quiet=False,actor_Job_or_science_authority=False,original_closed12_schema_preserved=True,complete_candidate_bytes_exact=True,original_owner_and_timestamp_contracts_preserved=True,selected_duration_seconds=43200,publication_reserve_seconds=60)
+        pp = self.add('outer_lease_publication',publication)
+        lr,la = self.proof('outer_lease_final',[lp,pp],1,2,context=False)
+        lease_support = dict(canonical=lp,separate_Root_decision=dp,original_publication=pp,different_review=lr,Root_adoption=la)
+        self.selection = self.p('selection')
+        sr,sa = self.proof('outer_selection',[self.selection],12,13)
+        selected_support = dict(selection=self.selection,different_review=sr,Root_adoption=sa)
+        return owner_support,lease_support,selected_support
+
+    def recorded_birth(self, pin):
+        row=next(r for r in self.b['records'] if r['pin']==pin)
+        try:value=_ow_json(row['body'])
+        except (ValueError,UnicodeError):return _ow_ns(0)
+        text=value.get('created_utc') if type(value)is dict else None
+        if type(text)is not str:return _ow_ns(17) if pin==self.p('wrapper') else _ow_ns(0)
+        date=datetime.datetime.strptime(text[:19],'%Y-%m-%dT%H:%M:%S').replace(tzinfo=datetime.timezone.utc)
+        delta=date-datetime.datetime(1970,1,1,tzinfo=datetime.timezone.utc)
+        fraction=text[20:].split('+')[0]
+        return (delta.days*86400+delta.seconds)*1000000000+int(fraction.ljust(9,'0'))
+
+    def input_closure(self, required, roots):
+        # Only consumed metadata ABI edges recurse; API descriptive examples/background pins do not.
+        edges=('API', 'Root_adoption', 'Root_facts', 'Root_future_path_selection_support', 'actual_Source_packet', 'actual_canonical_delta_Source_review', 'author_packet', 'author_receipt', 'candidate_Root_adoption', 'candidate_author_receipt', 'canonical', 'canonical_delta_Root_adoption', 'content_decision', 'context', 'current_owner_scope', 'current_owner_scope_Root_adoption', 'current_owner_support', 'decision', 'different_current_owner_scope_Source_review', 'different_lease_Source_review', 'different_review', 'execution_witness', 'facts', 'full_proof', 'generation_purpose_support', 'inverse_evidence', 'late_reconciliation', 'lease', 'lease_record', 'new_lease_support', 'original_publication', 'owner_scope', 'peer_packet', 'prewrite_packet', 'producer_purpose', 'producer_purpose_support', 'proposal', 'publication', 'publication_packet', 'receipt', 'reconciliation', 'reconciliation_Root_adoption', 'reconciliation_review', 'request', 'selection', 'separate_Root_decision', 'serialization_witness', 'source', 'stage_return', 'stage_support', 'subject', 'tool_Root_adoption', 'tool_review')
+        result={p['path']:copy.deepcopy(p) for p in required};seen=set()
+        bypath={r['pin']['path']:r for r in self.b['records']}
+        def walk(value, edge=None):
+            if type(value)is dict:
+                if set(value)=={'path','bytes','sha256'}:
+                    if edge not in edges:return
+                    result[value['path']]=copy.deepcopy(value)
+                    if edge in ('source','canonical','subject','Source') or value['path'] in seen:return
+                    seen.add(value['path'])
+                    row=bypath[value['path']];assert row['pin']==value
+                    decoded=_ow_json(row['body'])
+                    if edge!='API':walk(decoded)
+                    return
+                if set(value)=={'canonical','separate_Root_decision','different_review','Root_adoption','original_publication'}:walk(value['canonical'],'lease_record')
+                for key,child in value.items():walk(child,key)
+            elif type(value)is list:
+                for child in value:walk(child,edge)
+        for root in roots:walk(root)
+        for name in ('common_catalogue','base_catalogue'):
+            if name in self.b['labels']:result[self.p(name)['path']]=self.p(name)
+        return sorted(result.values(),key=lambda p:p['path'])
+
+    def observation(self, pin, cap, seconds, born):
+        raw = [101,abs(int(pin['sha256'][:8],16))+1,pin['bytes'],_ow_ns(seconds),_ow_ns(seconds),32768,1,32,born]
+        return dict(path=pin['path'],bytes=pin['bytes'],sha256=pin['sha256'],cap=cap,path9=raw,descriptor9=copy.deepcopy(raw),raw9=copy.deepcopy(raw),shared_descriptor7=[raw[i] for i in (0,1,2,3,6,7,8)],shared_identity_indexes=[0,1,2,3,6,7,8],two_read_match=True,both_full_API9_independently_stable=True,observed_utc=_ow_time(seconds))
+
+    def envelope(self, kind, role, m3, publisher, peer):
+        owner,lease,selection = self.context()
+        raw_author = self.p('wrapper');author = self.value('wrapper')
+        producer = author['producer_support']
+        if kind == 'selected_peer_receipt27_v2':
+            inner_row = next(r for r in self.b['records'] if r['pin'] == author['peer_packet']);inner = _ow_json(inner_row['body'])
+            draft,receipt,pred = inner['draft'],inner['receipt'],inner['predecessor']
+            draft_subjects = [inner[k] for k in ('draft','receipt','content_decision','serialization_witness','inverse_evidence')]+[producer['Source'],producer['API']]
+        elif kind == 'guard_profile_static_v2':
+            draft,receipt,pred = author['draft'],author['author_receipt'],author['predecessor']
+            r = next(r for r in self.b['records'] if r['pin'] == receipt);r = _ow_json(r['body'])
+            draft_subjects = [draft,receipt,r['diff'],author['producer_purpose_support']['subject'],producer['Source'],producer['API']]
+        else:
+            artifact = next(a for a in author['artifacts'] if a['role'] == role)
+            draft,receipt,pred = artifact['draft'],artifact['author_receipt'],artifact['predecessor']
+            draft_subjects = [draft,receipt,artifact['diff'],author['stage_support']['facts'],producer['Source'],producer['API']]
+        modules = dict(M3=self.code('outer_M3',m3),PEER=self.code('outer_PEER',peer))
+        publisher_support = self.code('outer_publisher',publisher)
+        packet_support = self.support('outer_author_packet',raw_author,18,19)
+        draft_support = self.support('outer_draft',draft,18,19,draft_subjects)
+        selected = self.value('selection');row = next(r for r in selected['rows'] if r['role'] == role)
+        publication_path = _OW_HOME+'\\publication_'+role+'.json'
+        staging_path = row['canonical_path'].rsplit('\\',1)[0]+'\\explicit_staging_'+role+'.data'
+        request = dict(schema_version=2,record_type='Root_owner_v2_selected_role_Source_metadata_publication_request',author='/root',Root_thread=owner and self.value('owner')['Root_thread'],created_utc=_ow_time(20),request_id='synthetic_'+role,author_kind=kind,role=role,author_packet=raw_author,author_receipt=receipt,draft=draft,predecessor=pred,canonical_path=row['canonical_path'],source_cap=row['source_cap'],author_packet_support=packet_support,draft_support=draft_support,current_owner_support=owner,new_lease_support=lease,Root_future_path_selection_support=selection,producer_support=producer,publisher_support=publisher_support,publication_receipt_path=publication_path,source_only=True,target_execution=False,operational_authority=False)
+        request_pin = self.add('outer_request',request)
+        required = _ow_pins(request)+[request_pin]+_ow_pins(modules)+_ow_pins(author)
+        if kind == 'selected_peer_receipt27_v2':required += _ow_pins(inner)
+        if kind == 'M3_stage_receipt22_v2':
+            facts_row=next(r for r in self.b['records'] if r['pin']==author['stage_support']['facts'])
+            required += _ow_pins(_ow_json(facts_row['body']))
+            purpose_row=next(r for r in self.b['records'] if r['pin']==author['generation_purpose_support']['subject'])
+            required += _ow_pins(_ow_json(purpose_row['body']))
+        catalogue_row=next(r for r in self.b['records'] if r['pin']==m3.CATALOGUE_PIN)
+        required += [copy.deepcopy(m3.CATALOGUE_PIN),_ow_json(catalogue_row['body'])['peer_base_catalogue']]
+        inputs = self.input_closure(required,[request,modules,author])
+        purpose = dict(schema_version=2,record_type='Root_owner_v2_selected_role_Source_metadata_publication_purpose',author='/root',Root_thread=request['Root_thread'],created_utc=_ow_time(21),operation='publish_exact_selected_role_Source_metadata',actual_Root_request=request_pin,current_owner_scope=self.scope,selected_roles=[role],inputs=inputs,output_paths=sorted([row['canonical_path'],publication_path,staging_path]),resource_policy=dict(maximum_age_seconds=60,minimum_RAM_bytes=1073741824,minimum_disk_bytes=10737418240,publication_reserve_seconds=60))
+        purpose_pin = self.add('outer_purpose',purpose)
+        subjects = [purpose_pin]+inputs
+        common = dict(schema_version=2,reviewer='/root/i13_outer_independent_review',source_author='/root',created_utc=_ow_time(22),verdict='PASS_ROOT_OWNER_V2_SELECTED_ROLE_SOURCE_PUBLICATION_PURPOSE_ONLY',scope=purpose_pin,subjects=subjects,purpose=purpose,checks_failed=0,checks_passed=4,target_execution=False,operational_authority=False,native_Parser_executed=False)
+        full = copy.deepcopy(common);full.update(record_type='Independent_Root_owner_v2_selected_role_publication_purpose_full_Source_proof',owner_provenance_boundary='METADATA_DECLARATIONS_REQUIRE_CALLER_HUMAN_CODE_AND_PHYSICAL_PROVENANCE',checks=[dict(name=name,passed=True,evidence=[purpose_pin]) for name in ('purpose_whole_bytes_and_exact_operation','finite_input_closure_whole_bytes_and_provenance','request_owner_lease_and_output_bindings','Source_only_time_resource_and_authority_bounds')],subject_reviews=[dict(subject=p,subject_kind='publication_purpose' if i == 0 else 'actual_input',whole_bytes_reviewed=True,provenance_reviewed=True) for i,p in enumerate(subjects)])
+        fp = self.add('outer_purpose_full',full)
+        cap = copy.deepcopy(common);cap.update(record_type='Independent_Root_owner_v2_selected_role_publication_purpose_Source_review',full_proof=fp)
+        cp = self.add('outer_purpose_capsule',cap)
+        ad = self.add('outer_purpose_adoption',dict(schema_version=2,record_type='Root_owner_v2_selected_role_publication_purpose_Root_adoption',author='/root',created_utc=_ow_time(23),verdict='ACCEPT_ROOT_OWNER_V2_SELECTED_ROLE_SOURCE_PUBLICATION_PURPOSE_ONLY',subjects=subjects,different_review=cp,full_proof=fp,purpose=purpose,target_execution=False,operational_authority=False))
+        purpose_support = dict(subject=purpose_pin,different_review=cp,Root_adoption=ad)
+        births = {p['path']:self.recorded_birth(p) for p in inputs};births.update({request_pin['path']:_ow_ns(20),purpose_pin['path']:_ow_ns(21),fp['path']:_ow_ns(22),cp['path']:_ow_ns(22)})
+        prewrite = dict(schema_version=2,record_type='Root_owner_v2_selected_role_prewrite_metadata_packet_with_recorded_evaluation',Root_thread=request['Root_thread'],request=request_pin,author_packet=raw_author,current_owner_support=owner,new_lease_support=lease,Root_future_path_selection_support=selection,publisher_support=publisher_support,validator_supports=modules,publisher_purpose_support=purpose_support,expected_inputs=inputs,recorded_births_ns=births,recorded_evaluation_utc=_ow_time(24),resource=dict(observed_utc=_ow_time(24),available_RAM_bytes=1073741824,free_disk_bytes=10737418240))
+        prewrite_pin = self.add('outer_prewrite',prewrite)
+        draft_raw = next(r['body'] for r in self.b['records'] if r['pin'] == draft)
+        canonical = self.add_raw('outer_canonical',draft_raw,row['canonical_path'])
+        staging = self.add_raw('outer_staging',draft_raw,staging_path)
+        pair = dict(canonical=self.observation(canonical,row['source_cap'],26,_ow_ns(25)),staging=self.observation(staging,row['source_cap'],26,_ow_ns(25)))
+        caps = {r['canonical_path']:r['source_cap'] for r in selected['rows']}
+        caps.update({r['draft_path']:r['source_cap'] for r in selected['rows'] if r['draft_path']})
+        caps.update({r['predecessor']['path']:r['source_cap'] for r in selected['rows']})
+        post = [self.observation(p,caps.get(p['path'],2097152),26,births[p['path']]) for p in inputs]
+        publication = dict(schema_version=2,record_type='Root_owner_v2_selected_role_Source_metadata_canonical_publication_with_prewrite_packet',author='/root',Root_thread=request['Root_thread'],created_utc=_ow_time(26),request_id=request['request_id'],author_kind=kind,role=role,actual_Root_request=request_pin,prewrite_packet=prewrite_pin,publication_purpose_support=purpose_support,current_owner_scope=self.scope,new_canonical_lease=lease['canonical'],Root_future_path_selection=selection['selection'],producer_support=producer,publisher_support=publisher_support,author_packet=raw_author,author_receipt=receipt,predecessor=pred,draft=draft,canonical=canonical,source_cap=row['source_cap'],canonical_physical_actor='/root',actual_publication_metadata_APIs=pair,complete_input_postreads=post,publication_reserve_seconds=60,canonical_publication=True,partial_failure_preserved_no_rollback_no_automatic_retry=True,target_execution=False,operational_authority=False,whole_cohort_or_runtime_acceptance=False,actual_entry006=False)
+        publication_pin = self.add('outer_publication',publication,publication_path)
+        witness_pin = self.add('outer_witness',dict(schema_version=2,record_type='Root_owner_v2_selected_role_publication_recorded_execution_witness',author='/root',Root_thread=request['Root_thread'],created_utc=_ow_time(27),request=request_pin,publication=publication_pin,publisher_Source=publisher_support['Source'],publisher_API=publisher_support['API'],owned_pid=101,started_utc=_ow_time(24),completed_utc=_ow_time(27),exit_code=0,outputs=[canonical,publication_pin],operational_authority=False,physical_custody_authenticated=False))
+        delta = self.support('outer_delta',canonical,28,29,[canonical,draft,publication_pin,witness_pin])
+        recon = dict(schema_version=2,record_type='Root_owner_v2_verified_prior_selected_role_Source_metadata_publication_reconciliation',author='/root',Root_thread=request['Root_thread'],created_utc=_ow_time(30),author_kind=kind,role=role,current_owner_scope=self.scope,new_canonical_lease=lease['canonical'],Root_future_path_selection=selection['selection'],initial_actual_Root_request=request_pin,initial_actual_canonical_publication_receipt=publication_pin,initial_actual_execution_witness=witness_pin,prior_actual_publisher_support=publisher_support,exact_draft_Source=draft,canonical_Source=canonical,canonical_Source_birth_utc=_ow_time(25,True),actual_canonical_delta_Source_review=delta['different_review'],canonical_delta_Root_adoption=delta['Root_adoption'],actual_input_observations=[copy.deepcopy(pair['canonical'])],canonical_publication=True,new_canonical_Source_write_by_reconciliation=False,target_execution=False,operational_authority=False,whole_cohort_or_runtime_or_fixture_acceptance=False)
+        recon_pin = self.add('outer_reconciliation',recon)
+        delta_full = self.value('outer_delta_capsule')['full_proof']
+        recon_support = self.support('outer_recon',recon_pin,31,32,[recon_pin,delta['different_review'],delta_full,delta['Root_adoption']])
+        self.add('outer_packet',dict(schema_version=2,record_type='Root_owner_v2_selected_role_canonical_dependency_metadata_packet',Root_thread=request['Root_thread'],role=role,author_kind=kind,prewrite_packet=prewrite_pin,publication=publication_pin,execution_witness=witness_pin,canonical_delta_support=delta,reconciliation=recon_pin,reconciliation_support=recon_support,canonical=canonical,author_packet=raw_author,source_only=True))
+        self.b['packet'] = self.row('outer_packet')['body']
+        self.b['mutable'] = sorted(self.mutable)
+        self.b['now_utc'] = _ow_time(40)
+        return copy.deepcopy(self.b)

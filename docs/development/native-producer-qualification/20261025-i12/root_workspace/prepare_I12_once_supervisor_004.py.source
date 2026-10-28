@@ -1,0 +1,75 @@
+"""Own stdlib-only Source authoring tool; never imports a target or runs a test."""
+import ast
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+import re
+import sys
+
+BASE = Path(r'D:\Aenv\pro2\WORK\resume-20261025-001\i2_receipt_contract_014\ROOT_I11_ONCE_MEMORY_SUPERVISOR_006.py')
+WORK = Path(r'D:\Aenv\pro2\WORK\resume-20261025-002\receipt_caller_integration_015')
+OUT = WORK / 'ROOT_I12_ONCE_MEMORY_SUPERVISOR_002.py'
+
+
+def fact(path):
+    raw = path.read_bytes()
+    return dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+
+
+def main():
+    assert len(sys.argv) == 5, 'exact formats/single/peer/fixture paths'
+    paths = [Path(x).absolute() for x in sys.argv[1:]]
+    assert all(p.is_relative_to(WORK) and p.is_file() for p in paths)
+    sources = dict(zip(('formats', 'single', 'peer'), map(fact, paths[:3])))
+    fixture = fact(paths[3])
+    catalogue = fact(WORK / 'I12_EXACT_RECEIPT_FORMAT_SCHEMA_AND_FIXED_DATA_CATALOGUE_002.json')
+    assert catalogue['bytes'] == 63218 and catalogue['sha256'] == 'e1521b008e4cb5deac47fcd3586310c052b71635ade957c85ef59749221bc67d'
+    assert all(0 < p['bytes'] <= 65536 for p in sources.values())
+    assert 0 < fixture['bytes'] <= 2097152
+    tree = ast.parse(paths[3].read_bytes(), filename=str(paths[3]))
+    declarations = [n for n in tree.body if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'CASE_CATALOGUE' for t in n.targets)]
+    assert len(declarations) == 1
+    catalogue_literal = ast.literal_eval(declarations[0].value)
+    assert type(catalogue_literal) in (tuple, list)
+    names = [x if type(x) is str else x['name'] for x in catalogue_literal]
+    assert names and all(type(n) is str and n for n in names) and len(names) == len(set(names))
+    names_sha = hashlib.sha256(json.dumps(names, separators=(',', ':'), ensure_ascii=True).encode()).hexdigest()
+    old = BASE.read_bytes()
+    assert len(old) == 21118 and hashlib.sha256(old).hexdigest() == '0022c9092039631dea2f1b82585d46f7e19564d01630027f171286e9927190bd'
+    s = old.decode('utf8').replace('I11', 'I12').replace('i11', 'i12')
+    s = s.replace('It loads exactly new reviewed I12 module and', 'It loads exactly three new reviewed I12 modules and')
+    s, n = re.subn(r'^SOURCE = .*$', lambda _: 'SOURCES = ' + repr(sources) + '\nCATALOGUE = ' + repr(catalogue), s, count=1, flags=re.M)
+    assert n == 1
+    s, n = re.subn(r'^FIXTURE = .*$', lambda _: 'FIXTURE = ' + repr(fixture), s, count=1, flags=re.M)
+    assert n == 1
+    s = re.sub(r'^EXPECTED_CASE_COUNT = .*$', 'EXPECTED_CASE_COUNT = ' + str(len(names)), s, flags=re.M)
+    s = re.sub(r'^EXPECTED_CASE_NAMES_SHA256 = .*$', 'EXPECTED_CASE_NAMES_SHA256 = ' + repr(names_sha), s, flags=re.M)
+    replacements = [
+        ("              'module', 'fixture', 'supervisor', 'runtime', 'outputs'", "              'modules', 'catalogue', 'fixture', 'supervisor', 'runtime', 'outputs'"),
+        ("need(value['module'] == SOURCE and value['fixture'] == FIXTURE, 'exact frozen new module/fixture')", "need(value['modules'] == SOURCES and value['catalogue'] == CATALOGUE and value['fixture'] == FIXTURE, 'exact frozen three new modules/catalogue/fixture')"),
+        ("for key in ('module', 'fixture', 'supervisor', 'runtime', 'source_scope', 'protocol_adoption', 'source_adoption'):\n        read_pin(value[key])", "for key in ('catalogue', 'fixture', 'supervisor', 'runtime', 'source_scope', 'protocol_adoption', 'source_adoption'):\n        read_pin(value[key])\n    for source_pin in SOURCES.values():\n        read_pin(source_pin, cap=65536)"),
+        ("Root_current_I12_source_contract_and_portability_scope", "Root_current_I12_remaining_receipt_and_caller_Source_scope"),
+        ("all(occurs(adoption, value[k]) for k in ('module', 'fixture', 'supervisor'))", "all(occurs(adoption, value[k]) for k in ('catalogue', 'fixture', 'supervisor')) and all(occurs(adoption, p) for p in SOURCES.values())"),
+        ("for q in (value['module'], value['fixture'], value['supervisor'])", "for q in tuple(SOURCES.values()) + (value['catalogue'], value['fixture'], value['supervisor'])"),
+        ("module = load_new('_i12_new_component_003', SOURCE)\n    fixture = load_new('_i12_new_fixture_007', FIXTURE)", "formats = load_new('_i12_new_formats_001', SOURCES['formats'])\n    single = load_new('_i12_new_single_001', SOURCES['single'])\n    peer = load_new('_i12_new_peer_001', SOURCES['peer'])\n    catalogue_bytes = read_pin(CATALOGUE)\n    fixture = load_new('_i12_new_fixture_001', FIXTURE)"),
+        ("    def emit(name):\n        print(json.dumps(dict(event='CASE_PASS', name=name)), flush=True)\n    result = fixture.run_cases(module, emit)", "    result = fixture.run(formats=formats, single=single, peer=peer, catalogue_bytes=catalogue_bytes)"),
+    ]
+    for a, b in replacements:
+        assert s.count(a) == 1, ('unique authoring replacement', a, s.count(a))
+        s = s.replace(a, b)
+    assert 'value[\'module\']' not in s and 'run_cases(' not in s and 'SOURCE =' not in s
+    ast.parse(s, filename=str(OUT))
+    raw = s.encode('utf8')
+    assert len(raw) <= 65536
+    with OUT.open('xb') as h:
+        assert h.write(raw) == len(raw)
+    receipt = dict(schema_version=1, record_type='Root_I12_fresh_once_supervisor_static_Source_author_receipt', author='/root', created_utc=dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds'), author_tool=fact(Path(__file__)), exact_historical_authoring_basis=fact(BASE), Source=fact(OUT), modules=sources, fixture=fixture, catalogue=catalogue, expected_case_count=len(names), expected_case_names_sha256=names_sha, method='Read/hash/AST and deterministic exclusive Source authoring only; no target import/call/test.', original_60_50_10_5_budgets_unchanged=True, original_2MiB_stream_caps_unchanged=True, new_exact_three_module_child_only=True, target_execution=False, tests_executed=False, operational_authority=False, scientific_authority=False, actual_family_publication=False)
+    r = WORK / 'ROOT_I12_SUPERVISOR002_STATIC_SOURCE_AUTHOR_RECEIPT_001.json'
+    with r.open('xb') as h:
+        h.write((json.dumps(receipt, sort_keys=True, indent=2) + '\n').encode())
+    print(json.dumps(dict(Source=fact(OUT), receipt=fact(r), expected_case_count=len(names), expected_case_names_sha256=names_sha)))
+
+
+if __name__ == '__main__':
+    main()

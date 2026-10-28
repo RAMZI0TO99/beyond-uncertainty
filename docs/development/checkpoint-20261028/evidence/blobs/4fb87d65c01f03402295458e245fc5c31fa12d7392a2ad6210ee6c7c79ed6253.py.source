@@ -1,0 +1,17 @@
+"""Own metadata Source successor; no managed publication performed."""
+import ast,hashlib,json
+from pathlib import Path
+R=Path(__file__).parent;p=R/'prepare_I13_managed_candidate_001.py';raw=p.read_bytes()
+assert hashlib.sha256(raw).hexdigest()=='b14d06d598cb25c2055c4aee44fbe9e591c881128000f91c6f519feb23d89c5e'
+text=raw.decode()
+old='    value = json.loads(body(BASELINE))'
+assert text.count(old)==1;text=text.replace(old,'    baseline_raw = body(BASELINE)\n    value = json.loads(baseline_raw)')
+text=text.replace('return dict(baseline=pin(BASELINE),','return dict(baseline=pin(BASELINE, baseline_raw),')
+old='    candidate_pin = pin(candidate)\n    value = json.loads(body(candidate))\n    adopted = json.loads(body(adoption))'
+assert text.count(old)==1
+text=text.replace(old,'    candidate_raw, adoption_raw = body(candidate), body(adoption)\n    candidate_pin, adoption_pin = pin(candidate, candidate_raw), pin(adoption, adoption_raw)\n    value = json.loads(candidate_raw)\n    adopted = json.loads(adoption_raw)')
+text=text.replace('candidate_Root_adoption=pin(adoption)','candidate_Root_adoption=adoption_pin')
+compile(ast.parse(text),'prepare_I13_managed_candidate_002.py','exec')
+out=R/'prepare_I13_managed_candidate_002.py'
+with out.open('xb') as h:h.write(text.encode())
+print(json.dumps(dict(Source=dict(path=str(out),bytes=out.stat().st_size,sha256=hashlib.sha256(out.read_bytes()).hexdigest()),before=dict(path=str(p),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest()),publication_performed=False,target_execution=False)))

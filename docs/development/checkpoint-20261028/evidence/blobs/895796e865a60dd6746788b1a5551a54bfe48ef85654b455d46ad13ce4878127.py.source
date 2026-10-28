@@ -1,0 +1,98 @@
+"""Own additive independent common-protocol metadata review. No target loads."""
+import base64
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+ROOT=Path(__file__).parent
+B=ROOT/'m3_peer_contracts_016'/'m3_protocol_audit_001'
+O=ROOT/'m3_peer_contracts_016'/'canonical_peer_protocol_audit_001'
+OUT=O/'common_protocol_review_002';OUT.mkdir(exist_ok=True)
+rows=[];reads={}
+def read(path):
+    with Path(path).open('rb')as f:raw=f.read(2097153)
+    assert 0<len(raw)<=2097152
+    reads[str(path)]=dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+    return raw
+def pin(path):read(path);return reads[str(path)]
+def pairs(xs):
+    v={}
+    for k,x in xs:
+        assert k not in v
+        v[k]=x
+    return v
+def bad(x):raise ValueError('noninteger JSON')
+def load(path):return json.loads(read(path).decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def ck(name,ok,evidence):rows.append(dict(name=name,passed=ok is True,evidence=evidence))
+ps='I13_PROPOSED_M3_GUARD_AND_SHARED_SELECTED_ROLE_PUBLISHER_PROTOCOL'
+cs='I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE'
+p3,p4=load(B/(ps+'_003.json')),load(B/(ps+'_004.json'))
+c3,c4=load(B/(cs+'_003.json')),load(B/(cs+'_004.json'))
+previous=O/'common_protocol_review_001'/'INDEPENDENT_I13_COMMON_PROTOCOL003_SOURCE_CAPSULE_002.json'
+prev=load(previous);prevfull=load(Path(prev['full_proof']['path']))
+ck('actual_prior430review',prev['checks_passed']==prevfull['checks_passed']==430 and prev['checks_failed']==prevfull['checks_failed']==0 and all(x['passed']is True for x in prevfull['checks']),pin(previous))
+ck('prior430actual_subjects',prev['subjects']==[pin(B/(ps+'_003.json')),pin(B/(cs+'_003.json'))],prev['subjects'])
+ck('prior_fullpin',prev['full_proof']==pin(Path(prev['full_proof']['path'])),prev['full_proof'])
+allowedp={'adoption_subject_policy','catalogue','complete_schema_policy','exact_correction_inventory','finite_required_controls','fixed_data_sweep_basis','fixed_inventory_LF_annex','fixed_inventory_descriptive_LF_policy','predecessor_unadopted_proposal','strict_types_and_counters'}
+allowedc={'fixed_data_sweep_basis','fixed_inventory_LF_annex','fixed_inventory_descriptive_LF_policy','fixed_inventory_descriptive_LF_rule','predecessor_unadopted_catalogue','primitive_types'}
+for k in set(p3)|set(p4):
+    if k not in allowedp:ck('unchanged_common_protocol_'+k,p3.get(k)==p4.get(k),dict(key=k))
+for k in set(c3)|set(c4):
+    if k not in allowedc:ck('unchanged_common_catalogue_'+k,c3.get(k)==c4.get(k),dict(key=k))
+ck('whole_schema_catalogue_unchanged',c3['schemas']==c4['schemas'],dict(schema_count=len(c4['schemas'])))
+ck('counter_mode_unchanged',c4['counter_mode']=='CONSERVATIVE_SUM_PER_INVOCATION_CACHE',c4['counter_mode'])
+ck('exact_final_catalogue_pin',p4['catalogue']==pin(B/(cs+'_004.json')),p4['catalogue'])
+for k in ('fixed_inventory_LF_annex','fixed_data_sweep_basis'):
+    ck('common_shared_'+k,p4[k]==c4[k]==pin(Path(c4[k]['path'])),c4[k])
+annex=load(Path(c4['fixed_inventory_LF_annex']['path']))
+rule=c4['fixed_inventory_descriptive_LF_rule'];arule=annex['exact_exception']
+for k,v in rule.items():ck('compact_rule_exact_annex_'+k,arule[k]==v,dict(key=k,value=v))
+raw=read(Path(rule['record_fact3']['path']))
+ck('actual_fixed_whole_body_pin',pin(Path(rule['record_fact3']['path']))==rule['record_fact3'],rule['record_fact3'])
+v=load(Path(rule['record_fact3']['path']))
+for k in rule['exact_pointer_components']:v=v[k]
+ck('actual_leaf_builtin_str',type(v)is str,{})
+ck('actual_leaf367',len(v.encode('utf8'))==rule['exact_string_utf8_bytes']==367,{})
+ck('actual_leafsha',hashlib.sha256(v.encode()).hexdigest()==rule['exact_string_utf8_sha256'],{})
+ck('actual_leaf_LF10_only',v.count('\n')==rule['exact_LF_count']==10 and {ord(x)for x in v if ord(x)<32}=={10},{})
+ck('annex_base64_exact_leaf',base64.b64decode(arule['exact_descriptive_value_utf8_base64'],validate=True)==v.encode('utf8'),{})
+def c0(x):
+    if type(x)is str:return any(ord(z)<32 for z in x)
+    if type(x)is list:return any(c0(z)for z in x)
+    if type(x)is dict:return any(c0(k)or c0(z)for k,z in x.items())
+    return False
+ck('annex_C0_free',not c0(annex),{})
+ck('common004_C0_free',not c0(c4),{})
+ck('compact_policy_no_raw_LF_value','exact_descriptive_value'not in rule and 'exact_descriptive_value_utf8_base64'not in rule,{})
+ck('single_exact_pointer',rule['exact_pointer_components']==['capture_six_assignment_ABI','actual_template_assignments','BINDINGS','whole_assignment'],rule['JSON_pointer'])
+ck('no_OTHER_C0_waiver',rule['permitted_C0_codepoints']==[10],{})
+ck('complete_leaf_counting','Entireleaf/keys/tree retained andcounted'in c4['fixed_inventory_descriptive_LF_policy'][1],{})
+ck('full_budgets_retained',all(s in c4['fixed_inventory_descriptive_LF_policy'][1]for s in ['depth48','node50000','records256','raw32MiB','perbody2MiB']),{})
+ck('other_pointer_path_controls_retained','otherrecords/pointers/keys stillrefuse'in c4['fixed_inventory_descriptive_LF_policy'][2],{})
+ck('truthful_mutation_first_hash','Mutatedfixedleaf firstfailswholehash/pin'in c4['fixed_inventory_descriptive_LF_policy'][4],{})
+ck('no_API14_schema_expansion','peerAPI14.protocol stayscore004'in c4['fixed_inventory_descriptive_LF_policy'][3],{})
+ck('no_opaque_tree_or_actor_pin_skip','no subtreeopacity or skipped actor/pin/pathchecks'in c4['fixed_inventory_descriptive_LF_policy'][1],{})
+sweep=load(Path(c4['fixed_data_sweep_basis']['path']))
+ck('actual_sweep18',sweep['records']==len(sweep['rows'])==18 and sweep['spent_identity_body_reads']==0,{})
+ck('sweep_no_new_C0_or_surrogate',sweep['new_unaccounted_C0']==[]and sweep['surrogate_records']==[],{})
+for row in sweep['rows']:
+    ck('sweep_pin_'+row['name'],pin(Path(row['pin']['path']))==row['pin'],row['pin'])
+    ck('sweep_individual_bounds_'+row['name'],row['bounds_fit_individually']is True,dict(nodes=row['nodes'],depth=row['maximum_depth']))
+cap=B/'fixed_inventory_LF_annex_different_review_001'/'INDEPENDENT_I13_FIXED_INVENTORY_LF_ANNEX002_SOURCE_CAPSULE_001.json'
+review=load(cap);rfull=load(Path(review['full_proof']['path']))
+ck('genuine_different_annex_reviewer',review['reviewer']=='/root/project_architecture'and annex['author']=='/root/i2_resume_gap',{})
+ck('annex_review48_zero',review['checks_passed']==rfull['checks_passed']==48 and review['checks_failed']==rfull['checks_failed']==0 and all(x['passed']is True for x in rfull['checks']),pin(cap))
+ck('annex_review_actualsubject',pin(Path(c4['fixed_inventory_LF_annex']['path']))in review['subjects'],review['subjects'])
+ck('annex_actual_fullpin',review['full_proof']==pin(Path(review['full_proof']['path'])),review['full_proof'])
+failed=[x for x in rows if not x['passed']]
+full=dict(schema_version=1,record_type='INDEPENDENT_I13_COMMON004_ADDITIVE_LF_PROTOCOL_FULL_SOURCE_REVIEW',reviewer='/root/i2_resume_gap',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),verdict='PASS_I13_COMMON004_WITH_EXACT_FIXED_INVENTORY_LF_ANNEX_METADATA_SOURCE_ONLY'if not failed else'REFUSE_I13_COMMON004_LF_DELTA',subjects=[pin(B/(ps+'_004.json')),pin(B/(cs+'_004.json'))],prior_genuine_common430_review=pin(previous),prior_genuine_common430_fullproof=prev['full_proof'],annex_genuine_different48_review=pin(cap),annex_genuine_different48_fullproof=review['full_proof'],checks_passed=sum(x['passed']for x in rows),checks_failed=len(failed),checks=rows,read_pins=list(reads.values()),review_method='Genuine own bounded stdlib read/hash/strictJSON review of complete004/003 bytes and exact scalar/whole-schema delta. Original430checks are prior evidence, not reexecuted targets; different48annex review covers author-owned narrowLFclause. All record-key/type/shape/Source gates unchanged. No target imports/calls/tests/native/Parser/Job or fixture construction.',scope_limit='This is a protocol Source review, not producer/peer content/physical/currentcanonical authority. Original430review was incomplete on fixedinventoryC0 reachability; this additive exactfix and genuine differentannex review explicitly close that metadata review gap only.',target_execution=False,tests_executed=False,operational_authority=False,scientific_authority=False,actual_family_publication=False,full_original_I2_DAG_closed=False,review_tool=pin(Path(__file__)))
+def save(name,v):
+    raw=(json.dumps(v,sort_keys=True,indent=2)+'\n').encode();assert len(raw)<=2097152
+    path=OUT/name
+    with path.open('xb')as f:f.write(raw)
+    return pin(path)
+fp=save('INDEPENDENT_I13_COMMON004_ADDITIVE_LF_FULL_SOURCE_PROOF_001.json',full)
+capsule={k:full[k]for k in ['schema_version','reviewer','created_utc','verdict','subjects','prior_genuine_common430_review','annex_genuine_different48_review','checks_passed','checks_failed','target_execution','tests_executed','operational_authority','scientific_authority','actual_family_publication','full_original_I2_DAG_closed']}
+capsule.update(record_type='INDEPENDENT_I13_COMMON004_ADDITIVE_LF_SOURCE_CAPSULE',full_proof=fp,findings=failed)
+cp=save('INDEPENDENT_I13_COMMON004_ADDITIVE_LF_SOURCE_CAPSULE_001.json',capsule)
+print(json.dumps(dict(capsule=cp,full_proof=fp,checks_passed=full['checks_passed'],checks_failed=len(failed),failed_names=[x['name']for x in failed]),sort_keys=True))

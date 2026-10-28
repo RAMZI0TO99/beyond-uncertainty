@@ -1,0 +1,169 @@
+"""Independent saved attempt002 review. No validator/fixture import or replay."""
+import ast
+from datetime import datetime, timezone
+import hashlib
+import json
+from pathlib import Path
+
+BASE = Path(r"D:\Aenv\pro2\WORK\resume-20261025-001\i2_receipt_contract_014")
+RUN = BASE / "owned_memory_runs" / "attempt002"
+OUT = BASE / "results_review_attempt002"
+
+
+def raw(path):
+    with path.open("rb") as handle:
+        data = handle.read(2097153)
+    if len(data) > 2097152:
+        raise ValueError("review input cap")
+    return data
+
+
+def pin(path):
+    data = raw(path)
+    return dict(path=str(path), bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+
+
+def pairs(rows):
+    result = {}
+    for key, value in rows:
+        if key in result:
+            raise ValueError("duplicate JSON name")
+        result[key] = value
+    return result
+
+
+def bad_number(value):
+    raise ValueError("float/nonfinite JSON token")
+
+
+def decode(data):
+    return json.loads(data.decode("utf8", "strict"), object_pairs_hook=pairs,
+                      parse_float=bad_number, parse_constant=bad_number)
+
+
+def read(path):
+    return decode(raw(path))
+
+
+def save(path, value):
+    data = (json.dumps(value, sort_keys=True, indent=2, allow_nan=False) + "\n").encode()
+    if len(data) > 2097152:
+        raise ValueError("review output cap")
+    with path.open("xb") as handle:
+        handle.write(data)
+
+
+def main():
+    OUT.mkdir(exist_ok=True)
+    inputs = {}
+    checks = []
+    def include(path):
+        actual = pin(path)
+        inputs[path.name if path.parent == BASE else str(path.relative_to(BASE)) if path.is_relative_to(BASE) else str(path)] = actual
+        return actual
+    def check(name, condition, detail=None):
+        checks.append(dict(name=name, passed=bool(condition), detail=detail))
+    for path in sorted(RUN.iterdir()):
+        include(path)
+    scope_path = BASE / "ROOT_I11_ONCE_SYNTHETIC_MEMORY_SCOPE_002.json"
+    scope_pin = include(scope_path)
+    check("exact_scope002_pin", scope_pin["sha256"] == "d5feac2afaeb41834817b9c9aac12ad38273b11925d37ed6070a399c67471afc" and scope_pin["bytes"] == 3388)
+    scope = read(scope_path)
+    for key in ("module", "fixture", "supervisor", "runtime", "source_scope", "source_adoption", "protocol_adoption"):
+        expected = scope[key]
+        check("exact_scope_input:" + key, include(Path(expected["path"])) == expected)
+    outer = read(RUN / "ROOT_OUTER_EXECUTION_RESULT_001.json")
+    prelaunch = read(RUN / "ROOT_OUTER_PRELAUNCH_001.json")
+    supervisor = read(RUN / "SUPERVISOR_RESULT_001.json")
+    claim = read(RUN / "SCOPE_CLAIM_001.json")
+    entry = read(RUN / "CHILD_ENTRY_001.json")
+    child = read(RUN / "CHILD_RESULT_001.json")
+    final_lines = raw(RUN / "ROOT_SUPERVISOR_STDOUT_001.txt").splitlines()
+    check("one_complete_final_console_line", len(final_lines) == 1)
+    final = decode(final_lines[0])
+    check("exact_outer_witness_pin", pin(RUN / "ROOT_OUTER_EXECUTION_RESULT_001.json")["sha256"] == "25c53843f7c2a013d99c9ebf378f4b5701c7b6fe66fd3b6faa888e28b154144f")
+    for who, value in (("prelaunch",prelaunch),("outer",outer),("claim",claim),("entry",entry),("child",child),("supervisor",supervisor)):
+        check("scope_join:" + who, value["scope"] == scope_pin)
+    for key, leaf in (("prelaunch","ROOT_OUTER_PRELAUNCH_001.json"),("stdout","ROOT_SUPERVISOR_STDOUT_001.txt"),("stderr","ROOT_SUPERVISOR_STDERR_001.txt")):
+        check("outer_exact_output:" + key, outer[key] == pin(RUN / leaf))
+    check("final_console_exact_supervisor_pin", final["supervisor_result"] == pin(RUN / "SUPERVISOR_RESULT_001.json"))
+    for key, leaf in (("claim","SCOPE_CLAIM_001.json"),("stdout","CHILD_STDOUT_001.txt"),("stderr","CHILD_STDERR_001.txt")):
+        check("supervisor_exact_output:" + key, supervisor[key] == pin(RUN / leaf))
+    check("supervisor_exact_child_result", supervisor["child_result"]["pin"] == pin(RUN / "CHILD_RESULT_001.json") and supervisor["child_result"]["value"] == child)
+    check("all_actual_exit_codes_zero", type(outer["actual_parent_exit_code"]) is int and outer["actual_parent_exit_code"] == supervisor["exit_code"] == final["exit_code"] == 0)
+    check("candidate_and_final_both_accept", supervisor["acceptance_at_record_preparation"] is True and final["acceptance_at_record_preparation"] is True and final["accepted"] is True and supervisor["refusal"] is None and final["refusal"] is None)
+    check("actual_two_process_PID_chain", claim["parent_pid"] == outer["owned_supervisor_pid"] == 295848 and entry["pid"] == child["owned_pid"] == supervisor["owned_pid"] == final["owned_pid"] == 287340)
+    check("both_owned_processes_reaped", outer["reaped"] is True and supervisor["reaped"] is True and final["reaped"] is True)
+    check("no_timeout_terminate_kill", outer["outer_timeout"] is False and all(v[k] is False for v in (outer,supervisor) for k in ("terminated","killed")))
+    check("both_actual_child_EOFs_no_errors", supervisor["actual_stream_EOF"] == final["actual_stream_EOF"] == dict(stdout=True,stderr=True) and supervisor["stream_pump_errors"] == final["stream_pump_errors"] == dict(stdout=None,stderr=None) and supervisor["custody_error"] is None and supervisor["child_result_error"] is None)
+    check("all_streams_drained", outer["streams_drained"] is True and supervisor["streams_drained"] is True and final["streams_drained"] is True and supervisor["stream_threads_finished"] is True)
+    check("all_stderr_empty", len(raw(RUN / "CHILD_STDERR_001.txt")) == len(raw(RUN / "ROOT_SUPERVISOR_STDERR_001.txt")) == 0)
+    check("stream_counts_whole_and_bounded", outer["output_cap_refused"] is False and outer["stdout_bytes"] == len(raw(RUN / "ROOT_SUPERVISOR_STDOUT_001.txt")) == 605 and outer["stderr_bytes"] == 0 and supervisor["observed_stream_bytes"] == dict(stdout=len(raw(RUN / "CHILD_STDOUT_001.txt")),stderr=0) and len(raw(RUN / "CHILD_STDOUT_001.txt")) == 45808)
+    budgets = dict(total_seconds=60,wait_seconds=50,cleanup_seconds=10,reap_seconds=5,stdout_maximum_bytes=2097152,stderr_maximum_bytes=2097152)
+    check("unchanged_synthetic60_50_10_5", scope["budgets"] == supervisor["budgets"] == budgets and final["total_budget_nanoseconds"] == 60000000000)
+    check("candidate_and_post_fsync_final_within60", 0 < supervisor["acceptance_elapsed_nanoseconds"] <= final["final_elapsed_nanoseconds"] <= 60000000000 and final["final_elapsed_nanoseconds"] == 15594000000)
+    check("outer_elapsed_within75", outer["elapsed_nanoseconds"] == 15780999999 and outer["elapsed_nanoseconds"] < 75000000000 and prelaunch["outer_wait_seconds"] == 75 and prelaunch["outer_cleanup_seconds"] == 10)
+    check("original_context600_unchanged", prelaunch["original_context_runtime_seconds_unchanged"] == 600 and prelaunch["synthetic_supervisor_total_seconds_unchanged"] == 60)
+    check("single_invocation_consumed", scope["maximum_suite_invocations"] == claim["suite_invocations_maximum"] == prelaunch["maximum_outer_invocations"] == 1)
+    check("fresh_resource_floors", prelaunch["resources"]["available_RAM_bytes"] == 3868098560 >= prelaunch["resources"]["RAM_floor_bytes"] == 1073741824 and prelaunch["resources"]["available_disk_bytes"] == 83840397312 >= prelaunch["resources"]["disk_floor_bytes"] == 10737418240)
+    resource_age = datetime.fromisoformat(entry["created_utc"]) - datetime.fromisoformat(prelaunch["resources"]["sampled_utc"])
+    check("resource_query_to_child_entry_within60", 0 <= resource_age.total_seconds() <= 60, dict(microseconds=resource_age.microseconds,seconds=resource_age.seconds))
+    check("wrapper_exact_source_pin", include(Path(prelaunch["wrapper"]["path"])) == prelaunch["wrapper"])
+    expected_argv = [scope["runtime"]["path"],"-I","-S","-B",scope["supervisor"]["path"],str(scope_path),scope_pin["sha256"]]
+    check("exact_isolated_supervisor_argv", outer["argv"] == prelaunch["argv"] == expected_argv)
+    tree = ast.parse(raw(Path(scope["fixture"]["path"])), filename=scope["fixture"]["path"])
+    catalogue = next(ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign) and isinstance(n.targets[0],ast.Name) and n.targets[0].id == "CASE_CATALOGUE")
+    names = [r[0] for r in catalogue]
+    digest = hashlib.sha256(json.dumps(names,separators=(",",":"),ensure_ascii=True).encode()).hexdigest()
+    check("664_unique_literal_case_names", len(names) == len(set(names)) == 664 and digest == "a89888d006968e3b83f273f68fa175980e26c3c31aacef5f7ed12a0a90be6bb6")
+    cases = child["cases"]
+    check("exact_closed_child_case_rows", type(cases) is list and len(cases) == 664 and all(type(r) is dict and set(r) == {"name","passed"} and type(r["name"]) is str and r["passed"] is True for r in cases))
+    check("child_names_exact_order_and_digest", [r["name"] for r in cases] == names and supervisor["expected_case_count"] == 664 and supervisor["expected_case_names_sha256"] == digest)
+    check("child664_zero_failures", type(child["passed"]) is int and child["passed"] == 664 and type(child["failed"]) is int and child["failed"] == 0 and child["metadata_only"] is True and child["record_type"] == "I11_owned_synthetic_memory_case_results")
+    events = [decode(line) for line in raw(RUN / "CHILD_STDOUT_001.txt").splitlines()]
+    check("complete_exact_stdout_event_sequence", len(events) == 666 and events[0] == dict(event="SUITE_ENTRY",case_count=664) and events[-1] == dict(event="SUITE_COMPLETE",passed=664,failed=0) and events[1:-1] == [dict(event="CASE_PASS",name=n) for n in names])
+    check("supervisor_recognizes_complete_catalogue", supervisor["actual_case_catalogue_valid"] is True and supervisor["known_case_pass_prefix_from_complete_stdout"] == 664 and supervisor["known_suite_entry_from_complete_stdout"] is True and supervisor["progress_unknown_without_complete_streams"] is False and supervisor["child_result_absent"] is False)
+    for i,(expected,actual) in enumerate(zip(catalogue,cases),1):
+        check("actual_case:"+str(i)+":"+expected[0],actual["name"] == expected[0] and actual["passed"] is True,dict(expected_typed_refusal=expected[3],kind=expected[1]))
+    source_review = BASE / "source_review_003" / "INDEPENDENT_I11_FIXTURE007_ISOLATION_SOURCE_CAPSULE_001.json"
+    source_full = BASE / "source_review_003" / "INDEPENDENT_I11_FIXTURE007_ISOLATION_SOURCE_FULL_PROOF_001.json"
+    for path in (source_review,source_full):include(path)
+    check("exact66_check_Source_review", read(source_review)["checks_failed"] == 0 and read(source_review)["check_count"] == 66 and read(source_review)["full_proof"] == pin(source_full))
+    binding_path = BASE / "I11_FIXTURE007_REPAIR_EXACT_SAVED_REFUSAL_BINDING_001.json"
+    include(binding_path);binding=read(binding_path)
+    for expected in binding["saved_attempt001"] + binding["saved_refusal_review_and_Root_adoption"]:
+        check("prior_refusal_history_exact:"+Path(expected["path"]).name, include(Path(expected["path"])) == expected)
+    check("prior_refusal_not_erased_or_requalified", binding["actual_CASE_PASS_events"] == 271 and binding["independent_271_case_qualification_established"] is False and binding["setup_failure_case_number"] == 272 and binding["later_cases_unentered"] == 389)
+    protocol_path = BASE / "ROOT_I11_EXACT_FINITE8_CANONICAL_RECEIPT_ABI_METADATA_QUALIFICATION_PROTOCOL_001.json"
+    include(protocol_path)
+    protocol = read(protocol_path)
+    for name,expected in protocol["pinned_authoritative_evidence"].items():
+        check("old_Source_API_unchanged:"+name, include(Path(expected["path"])) == expected)
+    check("I2_external_ABI_flag_still_false", read(Path(protocol["pinned_authoritative_evidence"]["I2_API003"]["path"]))["external_canonical_receipt_ABI_qualified"] is False)
+    check("I7_real_binding_flag_still_false", read(Path(protocol["pinned_authoritative_evidence"]["I7_API002"]["path"]))["real_bindings_qualified"] is False)
+    for who,value in (("scope",scope),("prelaunch",prelaunch),("outer",outer),("supervisor",supervisor),("child",child)):
+        check("all_authority_flags_false:"+who,all(value[k] is False for k in ("target_execution","operational_authority","scientific_authority")))
+    check("no_family_publication_or_host_absence", all(v["actual_family_publication"] is False for v in (scope,outer,supervisor,child)) and supervisor["physical_host_or_PID_absence_proved"] is False and outer["whole_host_quiet_or_PID_absence_proved"] is False)
+    timeline = [scope["created_utc"],prelaunch["created_utc"],outer["started_utc"],claim["created_utc"],entry["created_utc"],child["created_utc"],supervisor["created_utc"],outer["ended_utc"],outer["created_utc"]]
+    check("saved_complete_chronology", timeline == sorted(timeline) and scope["interval_start"] <= timeline[1] < timeline[-1] < scope["interval_end"])
+    check("fresh_once_reserve_before_launch", (datetime.fromisoformat(scope["interval_end"])-datetime.fromisoformat(outer["started_utc"])).total_seconds() > 60)
+    failures = sum(not c["passed"] for c in checks)
+    observations = [
+        "Independent read/hash/strict-JSON/AST saved-results review only; no target import, call, fixture generation or replay.",
+        "664 ordered named assertions completed, including expected refusals and three new ownership isolation controls. This is finite8 canonical receipt ABI metadata-only qualification for the exact Source003/fixture007 pair, not664 actual family publications or independent physical events.",
+        "Supervisor candidate acceptance, post-fsync final console15.594s and actual outer parent exit0 agree. The outer witness records15.781s, both named owned processes reaped, true EOF/no pump errors, no timeout/kill, zero stderr and original60/50/10/5 bounds.",
+        "Fresh resource sample3,868,098,560 RAM bytes and83,840,397,312 disk bytes exceeds unchanged1GiB/10GiB floors. No whole-host quiet or unowned PID/handle absence is inferred; peer scheduling provenance remains separately owned by Root.",
+        "Attempt001 and its271 emitted events, contaminated case271, case272 setup failure and389 later unentered cases remain exact dated history; this new Root-admitted run does not erase or requalify that failed attempt.",
+        "Both once scopes are consumed. No automatic retry, original helper/test/native/Parser/runtime/science entry or future grant follows these saved results.",
+        "Old I2 external receipt ABI and I7 real binding flags remain false. FullG01, outside8/single29/peer27, producer/caller/physical/human composition and real family publication remain held pending separate contracts and adoption.",
+        "Root reports the outer tool session24407 completed actualexit0; the independently read saved outer witness is pinned here. This review does not poll or rerun a closed process.",
+    ]
+    verdict="PASS_EXACT664_SAVED_NEW_FINITE8_METADATA_RESULTS_AND_CUSTODY_ONLY" if failures==0 else "REFUSED_PENDING_SAVED_REVIEW_CHECKS"
+    full=dict(schema_version=1,record_type="independent_I11_attempt002_saved_results_full_proof",reviewer="/root/project_architecture",created_utc=datetime.now(timezone.utc).isoformat(),verdict=verdict,checks_failed=failures,checks=checks,inputs=inputs,reviewer_tool=pin(Path(__file__)),actual_case_count=664,actual_case_names_sha256=digest,positive_metadata_assertion_count=sum(c[3] is None for c in catalogue),expected_refusal_assertion_count=sum(c[3] is not None for c in catalogue),observations=observations,reviewer_tests_executed=False,reviewer_target_calls=0,new_component_metadata_results_accepted=True,actual_admission=False,full_G01_closed=False,original_target_execution=False,actual_family_publication=False,operational_authority=False,scientific_authority=False)
+    full_path=OUT/"INDEPENDENT_I11_ATTEMPT002_SAVED_RESULTS_FULL_PROOF_001.json";save(full_path,full)
+    capsule=dict(schema_version=1,record_type="independent_I11_attempt002_saved_results_capsule",reviewer=full["reviewer"],created_utc=datetime.now(timezone.utc).isoformat(),verdict=verdict,check_count=len(checks),checks_failed=failures,full_proof=pin(full_path),inputs=inputs,actual_case_count=664,actual_case_names_sha256=digest,positive_metadata_assertion_count=full["positive_metadata_assertion_count"],expected_refusal_assertion_count=full["expected_refusal_assertion_count"],observations=observations,reviewer_tests_executed=False,reviewer_target_calls=0,new_component_metadata_results_accepted=True,actual_admission=False,full_G01_closed=False,original_target_execution=False,actual_family_publication=False,operational_authority=False,scientific_authority=False)
+    capsule_path=OUT/"INDEPENDENT_I11_ATTEMPT002_SAVED_RESULTS_CAPSULE_001.json";save(capsule_path,capsule)
+    print(json.dumps(dict(checks=len(checks),checks_failed=failures,failed_names=[c["name"] for c in checks if not c["passed"]],full_proof=pin(full_path),capsule=pin(capsule_path),positive_assertions=full["positive_metadata_assertion_count"],refusal_assertions=full["expected_refusal_assertion_count"])))
+
+
+if __name__ == "__main__":main()

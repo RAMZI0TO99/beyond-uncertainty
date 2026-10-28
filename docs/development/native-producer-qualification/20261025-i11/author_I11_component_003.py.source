@@ -1,0 +1,69 @@
+"""Own static Source003 author: missing open-proof times refuse through I11Error.
+Preserves all001/002; no validator or fixture import/call/test.
+"""
+import ast
+import base64
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+
+HERE=Path(__file__).parent
+OUT=HERE/'i11'
+def pin(path):
+    raw=path.read_bytes();return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+def create(path,raw):
+    with path.open('xb') as handle:handle.write(raw)
+    return pin(path)
+def assignment(text,name):
+    node=next(n for n in ast.parse(text).body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id==name for t in n.targets))
+    return node,ast.literal_eval(node.value)
+def replace_assignment(text,name,value):
+    node,_=assignment(text,name);lines=text.splitlines(keepends=True)
+    return ''.join(lines[:node.lineno-1])+name+' = '+repr(value)+'\n'+''.join(lines[node.end_lineno:])
+
+old_source=OUT/'validate_finite8_canonical_receipt_metadata_002.py'
+old_fixture=OUT/'test_finite8_canonical_receipt_metadata_memory_only_002.py'
+old_api=OUT/'CURRENT_OWNER_FINITE8_CANONICAL_RECEIPT_METADATA_INERT_API_002.json'
+text=old_source.read_text(encoding='utf8')
+old="_need(_time(full['created_utc']) <= _time(value['created_utc']) <= self.now, 'E_CHRONOLOGY')"
+new="_need(_time(full.get('created_utc')) <= _time(value.get('created_utc')) <= self.now, 'E_CHRONOLOGY')"
+assert text.count(old)==1;text=text.replace(old,new,1)
+old="_need(_time(review[0]['created_utc']) <= _time(value['created_utc']) <= self.now, 'E_CHRONOLOGY')"
+new="_need(_time(review[0]['created_utc']) <= _time(value.get('created_utc')) <= self.now, 'E_CHRONOLOGY')"
+assert text.count(old)==1;text=text.replace(old,new,1)
+fixture=old_fixture.read_text(encoding='utf8')
+_,cases=assignment(fixture,'CASE_CATALOGUE')
+new_cases=[('open_'+mark+'_missing_time','delete',[mark,['created_utc']],'E_CHRONOLOGY') for mark in ('producer_capsule','producer_full','producer_adoption')]
+cases+=new_cases
+fixture=replace_assignment(fixture,'CASE_CATALOGUE',cases)
+_,mapping=assignment(fixture,'PROTOCOL_VARIANT_CASE_MAPPING')
+mapping['N22']['case_names'] += [x[0] for x in new_cases]
+fixture=replace_assignment(fixture,'PROTOCOL_VARIANT_CASE_MAPPING',mapping)
+raw=text.encode();fixture_raw=fixture.encode()
+compile(raw,'<Source003 data compile>','exec');compile(fixture_raw,'<fixture003 data compile>','exec')
+_,literal=assignment(fixture,'CASE_CATALOGUE');assert literal==cases and len({c[0] for c in cases})==len(cases)
+sp=create(OUT/'validate_finite8_canonical_receipt_metadata_003.py',raw)
+fp=create(OUT/'test_finite8_canonical_receipt_metadata_memory_only_003.py',fixture_raw)
+api=json.loads(old_api.read_bytes())
+api.update(Source=sp,fixture_Source=fp,created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),literal_case_catalogue=cases,literal_case_count=len(cases),protocol_variant_case_mapping=mapping,
+           Source002_preserved=pin(old_source),fixture002_preserved=pin(old_fixture),API002_preserved=pin(old_api),correction_author_tool=pin(Path(__file__)),
+           Source003_correction='Open capsule/full/adoption missing created_utc must reach _time(None) and typed E_CHRONOLOGY, never raw KeyError; all other fields/guards unchanged.')
+ap=create(OUT/'CURRENT_OWNER_FINITE8_CANONICAL_RECEIPT_METADATA_INERT_API_003.json',(json.dumps(api,sort_keys=True,indent=2)+'\n').encode())
+regions=[]
+for path,body in ((Path(sp['path']),raw),(Path(fp['path']),fixture_raw)):
+    lines=body.splitlines(keepends=True)
+    for n in ast.parse(body).body:
+        if isinstance(n,(ast.FunctionDef,ast.ClassDef)):
+            part=b''.join(lines[n.lineno-1:n.end_lineno]);regions.append(dict(path=str(path),name=n.name,first_line=n.lineno,last_line=n.end_lineno,bytes=len(part),sha256=hashlib.sha256(part).hexdigest()))
+inv=dict(schema_version=1,record_type='I11_Source003_complete_predecessor_inverse_and_exact_regions',author='/root/i2_resume_gap',Source=sp,fixture=fp,API=ap,
+         complete_predecessors=[dict(pin=pin(p),complete_bytes_base64=base64.b64encode(p.read_bytes()).decode()) for p in (old_source,old_fixture,old_api)],
+         regions=regions,case_catalogue=cases,literal_case_count=len(cases),new_cases=new_cases,author_tool=pin(Path(__file__)),tests_executed=False,target_execution=False,
+         open_field_audit='Capsule/full/adoption required open fields use get/type checks. Their created_utc now uses get before _time. All later open time indexing follows these guards; remaining direct record keys are declared closed schemas or exact hash-pinned immutable historical data.')
+ip=create(OUT/'I11_EXACT_SOURCE_REGION_AND_NO_OLD_TARGET_CHANGE_INVENTORY_003.json',(json.dumps(inv,sort_keys=True,indent=2)+'\n').encode())
+receipt=dict(schema_version=1,record_type='I11_Source003_static_open_proof_time_correction_author_receipt',author='/root/i2_resume_gap',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),
+             Source=sp,fixture=fp,API=ap,inventory=ip,author_tool=pin(Path(__file__)),predecessors=[pin(old_source),pin(old_fixture),pin(old_api)],
+             literal_case_count=len(cases),AST_literal_catalogue_verified=True,target_imports=0,target_calls=0,tests_executed=False,target_execution=False,old_target_changes=False,
+             operational_authority=False,scientific_authority=False,full_G01_closed=False)
+rp=create(OUT/'I11_FINITE8_CANONICAL_RECEIPT_METADATA_SOURCE_AUTHOR_RECEIPT_003.json',(json.dumps(receipt,sort_keys=True,indent=2)+'\n').encode())
+print(json.dumps(dict(Source=sp,fixture=fp,API=ap,inventory=ip,receipt=rp,literal_cases=len(cases),tests_executed=False),sort_keys=True))

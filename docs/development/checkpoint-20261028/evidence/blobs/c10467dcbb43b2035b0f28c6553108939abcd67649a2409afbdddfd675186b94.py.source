@@ -1,0 +1,111 @@
+"""Reviewer read/hash/AST/inverse/virtual-schema audit. No subject execution."""
+import ast,base64,copy,datetime,hashlib,json
+from pathlib import Path
+R=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003');P=R/'m3_peer_contracts_016';O=R/'compact_descriptor_Source_successors_review_001';subjects=[];seen=set();checks=[]
+def sha(b):return hashlib.sha256(b).hexdigest()
+def rd(f):
+    b=Path(f['path']).read_bytes();assert len(b)==f['bytes']and sha(b)==f['sha256']and len(b)<=2097152
+    if f['path']not in seen:subjects.append(f);seen.add(f['path'])
+    return b
+def ck(n,v,e):
+    assert n not in {c['name']for c in checks};checks.append(dict(name=n,passed=bool(v),evidence=e))
+def canon(v):return json.dumps(v,sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False).encode('ascii')
+def nodes(v):return 1+sum(1+nodes(x)for x in v.values())if type(v)is dict else 1+sum(map(nodes,v))if type(v)is list else 1
+def defs(b):
+    t=ast.parse(b.decode('utf8'));d={}
+    for n in t.body:
+        if isinstance(n,(ast.FunctionDef,ast.ClassDef)):
+            d[n.name]=n
+            if isinstance(n,ast.ClassDef):d.update({n.name+'.'+m.name:m for m in n.body if isinstance(m,ast.FunctionDef)})
+    return d
+freeze=dict(path=str(P/'i13/I13_COMPACT_DESCRIPTOR_SOURCESET4_FRAGMENT_INVERSES_AND_AUTHOR_FREEZE_001.json'),bytes=549600,sha256='a7268a51baecf240bc74e270bb91ded3aed98e546c47ec2b7535e31cebcd25a8')
+d=json.loads(rd(freeze));raws={n:rd(f)for n,f in d['products'].items()};before={};byname={};inverse_counts={}
+for c in d['changes']:
+    after=rd(c['after']);old=rd(c['before']);recovered=after;parts=c['exact_new_to_predecessor_fragment_inverse'];last=len(after)+1
+    for part in sorted(parts,key=lambda x:x['after_start'],reverse=True):
+        a,b=part['after_start'],part['after_end'];assert type(a)is type(b)is int and 0<=a<=b<=len(after)and b<=last;last=a
+        assert sha(after[a:b])==part['after_fragment_sha256'];replacement=base64.b64decode(part['predecessor_fragment_base64'],validate=True)
+        assert base64.b64encode(replacement).decode('ascii')==part['predecessor_fragment_base64'];recovered=recovered[:a]+replacement+recovered[b:]
+    n=Path(c['after']['path']).name;before[n]=old;byname[n]=c;inverse_counts[n]=len(parts)
+    ck('inverse_'+n,recovered==old,[c['before'],c['after'],dict(fragment_count=len(parts))])
+class Back(ast.NodeTransformer):
+    def visit_Call(self,n):
+        n=self.generic_visit(n)
+        if isinstance(n.func,ast.Name)and n.func.id in('_descriptor','_ow_descriptor'):return n.args[1]
+        if isinstance(n.func,ast.Name)and n.func.id in('_descriptor_keys','_ow_descriptor_keys'):return ast.Subscript(value=n.args[1],slice=ast.Constant(value='exact_keys'),ctx=ast.Load())
+        return n
+    def visit_Expr(self,n):
+        if isinstance(n.value,ast.Call)and isinstance(n.value.func,ast.Name)and n.value.func.id=='_check_descriptor_encoding':return None
+        return self.generic_visit(n)
+    def visit_Assign(self,n):
+        if isinstance(n.value,ast.Call)and isinstance(n.value.func,ast.Name)and n.value.func.id=='_descriptor'and len(n.targets)==1 and isinstance(n.targets[0],ast.Name)and isinstance(n.value.args[1],ast.Name)and n.targets[0].id==n.value.args[1].id:return None
+        return self.generic_visit(n)
+kernel_summary={}
+for kind in ('m3_source','peer_source','publisher_source'):
+    file=Path(d['products'][kind]['path']).name;b=raws[kind];old=before[file];newdefs=defs(b);olddefs=defs(old);changed=[]
+    for name,node in olddefs.items():
+        if isinstance(node,ast.ClassDef):continue
+        nn=copy.deepcopy(newdefs[name]);original_dump=ast.dump(node,include_attributes=False)
+        if name=='_type':nn.body=nn.body[3:]
+        restored=Back().visit(nn)
+        if name in('_Graph.result','_outer_result'):
+            # Exact new literal-initialization loop is the old comprehension
+            # after its descriptor-only resolution assignment is removed.
+            empty,loop=restored.body[1:3]
+            assert isinstance(empty,ast.Assign)and isinstance(empty.value,ast.Dict)and not empty.value.keys and isinstance(loop,ast.For)and len(loop.body)==1
+            entry=loop.body[0];assert isinstance(entry,ast.Assign)and len(entry.targets)==1 and isinstance(entry.targets[0],ast.Subscript)
+            empty.value=ast.DictComp(key=entry.targets[0].slice,value=entry.value,generators=[ast.comprehension(target=loop.target,iter=loop.iter,ifs=[],is_async=0)])
+            restored.body[1:3]=[empty]
+        ok=ast.dump(restored,include_attributes=False)==original_dump
+        ck(kind+'_'+name+'_old_AST_guard_complement',ok,[name])
+        if ast.dump(newdefs[name],include_attributes=False)!=original_dump:changed.append(name)
+    kernel_summary[kind]=changed
+    ck(kind+'_new_private_definitions_only',set(newdefs)-set(olddefs)=={'_descriptor','_descriptor_keys','_check_descriptor_encoding'},list(set(newdefs)-set(olddefs)))
+    ck(kind+'_Source_cap_and_signatures',len(b)<=65536 and all(ast.dump(newdefs[n].args,include_attributes=False)==ast.dump(v.args,include_attributes=False)for n,v in olddefs.items()if isinstance(v,ast.FunctionDef)),d['products'][kind])
+    checker=ast.get_source_segment(b.decode('utf8'),newdefs['_check_descriptor_encoding'])
+    ck(kind+'_explicit_builtin_type_str_whitelist_present',"type(value['builtin_type'])"in checker or "type(v['builtin_type'])"in checker,'Adopted002 requires recognized builtin-str values; current checker only tests key presence. Whole pin protection does not implement this new private predicate.')
+for kind,oldfixture in [('m3_fixture','exercise_M3_guard_and_publisher_metadata_memory_012.py'),('peer_fixture','exercise_selected_peer_author_metadata_memory_010.py')]:
+    file=Path(d['products'][kind]['path']).name;newt=ast.parse(raws[kind].decode('utf8'));oldt=ast.parse(before[file].decode('utf8'));newdefs=defs(raws[kind]);olddefs=defs(before[file])
+    for name in ('run','run_diagnostic','run_diagnostic_cases','_diagnostic_one'):
+        ck(kind+'_'+name+'_AST_exact',ast.dump(newdefs[name],include_attributes=False)==ast.dump(olddefs[name],include_attributes=False),name)
+    def cases(t):return next(n.value for n in t.body if isinstance(n,ast.Assign)and any(isinstance(x,ast.Name)and x.id=='CASE_CATALOGUE'for x in n.targets))
+    ck(kind+'_all_literal_case_rows_AST_exact',ast.dump(cases(newt),include_attributes=False)==ast.dump(cases(oldt),include_attributes=False),dict(rows=len(ast.literal_eval(cases(newt)))))
+    ck(kind+'_Outer_rewrite_and_seals_class_AST_exact',ast.dump(newdefs['_Outer'],include_attributes=False)==ast.dump(olddefs['_Outer'],include_attributes=False),'Preserves exact bytes bypass, bounded DAG and all helper methods.')
+helper=defs(raws['helper']);oldhelper=defs(before[Path(d['products']['helper']['path']).name])
+ck('helper_all_old_definitions_AST_exact',all(ast.dump(helper[n],include_attributes=False)==ast.dump(v,include_attributes=False)for n,v in oldhelper.items()),list(oldhelper))
+for kind in ('m3_api','peer_api','publisher_api'):
+    new=json.loads(raws[kind]);old=json.loads(before[Path(d['products'][kind]['path']).name])
+    ck(kind+'_closed_keysets_and_false_qualifications',set(new)==set(old)and all(new[k]is False for k,v in old.items()if v is False),dict(keys=list(new)))
+cat=json.loads(raws['catalogue']);oldcat=json.loads(before[Path(d['products']['catalogue']['path']).name]);ds=cat['schema_descriptor_definitions'];prefix='$I13_DESCRIPTOR:'
+def expand(v,stack=()):
+    if type(v)is str and v.startswith(prefix):
+        n=v[16:];assert n in ds and n not in stack;return expand(ds[n],stack+(n,))
+    if type(v)is dict:
+        if set(v)=={'additional_fields_allowed','fields'}:
+            assert v['additional_fields_allowed']is False;fields={k:expand(x,stack)for k,x in v['fields'].items()};return dict(additional_fields_allowed=False,builtin_type='dict',exact_keys=list(fields),field_count=len(fields),fields=fields)
+        if set(v)=={'items_by_ordinal'}:
+            items=[expand(x,stack)for x in v['items_by_ordinal']];return dict(builtin_type='list',exact_length=len(items),items_by_ordinal=items)
+        return {k:expand(x,stack)for k,x in v.items()}
+    if type(v)is list:return [expand(x,stack)for x in v]
+    return v
+expanded={n:expand(v)for n,v in cat['schemas'].items()}
+for n,v in oldcat['schemas'].items():ck('catalogue_schema_'+n+'_canonical_exact',canon(v)==canon(expanded[n]),hashlib.sha256(canon(v)+b'\n').hexdigest())
+ck('catalogue_full5378_nodes_all_defs_header_refs_counted',nodes(cat)==5378 and len(ds)==30,[dict(nodes=nodes(cat),definitions=len(ds))])
+ck('catalogue_nonschema_only_reviewed_Source_metadata_changes',{k for k,v in oldcat.items()if k!='schemas'and canon(cat[k])!=canon(v)}=={'predecessor_unadopted_catalogue','state'} and cat['predecessor_unadopted_catalogue']==byname[Path(d['products']['catalogue']['path']).name]['before']and cat['state']=='FIXED_COMPACT_DESCRIPTOR_DATA_V2_SOURCE_ONLY_ROOT_ADOPTED_PROTOCOL_NO_EXECUTION','Only007 predecessor and truthful Source-state metadata change; no schema/fixed input/guard policy change.')
+mf=raws['m3_fixture'].decode('utf8');mdefs=defs(raws['m3_fixture']);init=ast.get_source_segment(mf,mdefs['_M3Build.__init__'])
+ck('shared_marker_construction_limited_to_adopted_capture_stage',"if stage=='capture':"in init.split("marker=o.add",1)[0][-100:],"Current code uses if required for all manifest/phase_binding/phase_bound stages, beyond adopted002 capture-only group scope.")
+peer_cat=json.loads(raws['peer_literal_catalogue'])
+ck('peer_literal_catalogue_shared_marker_claim_false',peer_cat['shared_complete_prior_reference_marker']is False,'Peer standalone builder has no shared-marker construction; current metadata True is inaccurate.')
+ck('peer_joint_binding_claim_correctly_false',peer_cat['joint_nine_binding_Source_event']is False,'Prior mistaken extra finding retracted on exact212053B/3b1eee... reread.')
+fail=[c['name']for c in checks if not c['passed']]
+print(json.dumps(dict(checks=len(checks),failed=fail,kernel_adapter_deltas=kernel_summary,inverse_fragment_counts=inverse_counts)))
+# A refusal is saved only when remaining AST complement is understood; never auto-approve.
+assert set(fail)=={'m3_source_explicit_builtin_type_str_whitelist_present','peer_source_explicit_builtin_type_str_whitelist_present','publisher_source_explicit_builtin_type_str_whitelist_present','shared_marker_construction_limited_to_adopted_capture_stage','peer_literal_catalogue_shared_marker_claim_false'}
+now=datetime.datetime.now(datetime.timezone.utc).isoformat()
+common=dict(schema_version=1,reviewer='/root/i13_final_review',created_utc=now,verdict='REFUSE_I13_SOURCESET4_THREE_CONSOLIDATED_SOURCE_AND_METADATA_FINDINGS',subjects=subjects,checks_passed=len(checks)-len(fail),checks_failed=len(fail),claim_limit='Source-only consolidated review of exact frozen a726... set. All12 complete predecessor fragment inverses,65 canonical schemas,5378 full catalogue nodes,protected old function guard AST complement (inverse lazy adapters),legacy peer definitions,all936 literal rows/runners and helper rewrite/seals preserved. Refuse three issues: recognized builtin-str whitelist absent in all3 new checkers; shared marker extends beyond adopted capture-only group; peer metadata incorrectly claims shared construction. No target/helper/fixture/kernel/supervisor imports or functions invoked. No Source acceptance, runtime/fit/whole936/physical/operational authority. Corrected successor needs exact separate review.',target_execution=False,tests_executed=False,native_Parser_executed=False,operational_authority=False,scientific_authority=False,actual_family_publication=False)
+full=dict(common,record_type='Independent_I13_SourceSet4_consolidated_Source_refusal_full_proof',checks=checks,independent_inverse_fragment_counts=inverse_counts,kernel_adapter_AST_deltas=kernel_summary,reviewer_interpretation_notes=['Initial AST inverse did not collapse explicit result54 literal loops back to the old equivalent comprehension; after descriptor resolution is removed, exact loop/assignment structure is now independently collapsed and old AST complement matches.','Actual catalogue008 changes state and predecessor Source metadata; all other non-schema leaves and all65 logical schemas are exact. State truthfully refers to adopted protocol and no execution.','A mistaken second peer joint-event flag finding was retracted after exact pin reread: joint_nine_binding_Source_event is already False. Only shared marker True is inaccurate.'])
+def write(p,v):
+    with p.open('xb')as f:f.write((json.dumps(v,sort_keys=True,ensure_ascii=False,indent=2,allow_nan=False)+'\n').encode('utf8'))
+f=O/'INDEPENDENT_I13_SOURCESET4_CONSOLIDATED_SOURCE_REFUSAL_FULL_PROOF_001.json';write(f,full);b=f.read_bytes();ff=dict(path=str(f),bytes=len(b),sha256=sha(b));cap=O/'INDEPENDENT_I13_SOURCESET4_CONSOLIDATED_SOURCE_REFUSAL_CAPSULE_001.json';write(cap,dict(common,record_type='Independent_I13_SourceSet4_consolidated_Source_refusal_capsule',full_proof=ff))
+for p in(f,cap):
+    b=p.read_bytes();print(json.dumps(dict(path=str(p),bytes=len(b),sha256=sha(b),checks_passed=len(checks)-len(fail),checks_failed=len(fail))))

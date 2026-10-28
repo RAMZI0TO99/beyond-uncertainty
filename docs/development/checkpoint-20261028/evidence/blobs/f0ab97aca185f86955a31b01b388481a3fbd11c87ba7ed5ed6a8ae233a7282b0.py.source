@@ -1,0 +1,57 @@
+"""Read/hash/AST-only final input manifest. Does not import subject programs."""
+import ast,hashlib,json,re
+from pathlib import Path
+
+BUFFERS={}
+def body(p):
+ p=Path(p);key=str(p.resolve()).casefold()
+ if key not in BUFFERS:
+  with p.open('rb') as h:raw=h.read(2097153)
+  assert 0<len(raw)<=2097152
+  BUFFERS[key]=raw
+ return BUFFERS[key]
+R=Path(__file__).parent;C=R/'m3_peer_contracts_016'
+selection=json.loads(body(C/'I13_FINAL_SOURCE_SELECTION_INPUT_001.json'))
+def pin(p):
+ p=Path(p);b=body(p);assert p.resolve().is_relative_to(C.resolve())
+ return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+value=dict(schema_version=1,record_type='Root_I13_exact_frozen_new_Source_inputs_for_inert_once_supervisor_authoring',author='/root',modules={},APIs={},fixtures={},case_names_by_fixture={},catalogue=pin(selection['catalogue']),target_execution=False,admission_issued=False)
+assert value['catalogue']['bytes']<=2097152
+assert set(selection['modules'])==set(selection['APIs'])=={'m3','peer','publisher'}
+assert set(selection['fixtures'])=={'m3_publisher','peer'}
+for name in ('m3','peer','publisher'):
+ p=Path(selection['modules'][name]);q=Path(selection['APIs'][name]);s=pin(p);api=pin(q)
+ assert 0<s['bytes']<=65536 and 0<api['bytes']<=2097152
+ tree=ast.parse(body(p),filename=str(p));compile(tree,str(p),'exec')
+ body=json.loads(body(q));assert body['Source']==s
+ if name=='peer':
+  declared=json.loads(body(Path(selection['catalogue'])))['schemas']['held_peer_API14']
+  assert set(body)==set(declared['exact_keys']) and len(body)==declared['field_count']==14
+  catalogue_assign=next(x for x in tree.body if isinstance(x,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='COMMON_CATALOGUE_PIN' for t in x.targets))
+  assert ast.literal_eval(catalogue_assign.value)==value['catalogue']
+  assert all(body[k] is False for k in ('target_execution','operational_authority','actual_producer_issued'))
+ else:
+  assert body['catalogue']==value['catalogue']
+  assert all(body[k] is False for k in ('target_execution','operational_authority','scientific_authority','authentic_loader_qualified'))
+ value['modules'][name]=s;value['APIs'][name]=api
+for name in ('m3_publisher','peer'):
+ p=Path(selection['fixtures'][name]);s=pin(p);assert 0<s['bytes']<=2097152
+ tree=ast.parse(body(p),filename=str(p));compile(tree,str(p),'exec')
+ assigns=[x for x in tree.body if isinstance(x,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='CASE_CATALOGUE' for t in x.targets)]
+ assert len(assigns)==1
+ catalogue=ast.literal_eval(assigns[0].value);assert type(catalogue) in (list,tuple)
+ assert all(type(row) is dict and type(row.get('name')) is str for row in catalogue)
+ names=[row['name'] for row in catalogue]
+ assert 0<len(names)<=10000 and len(names)==len(set(names)) and all(type(n) is str and re.fullmatch('[A-Za-z0-9_.:-]+',n) for n in names)
+ run=next(x for x in tree.body if isinstance(x,ast.FunctionDef) and x.name=='run')
+ assert not run.args.args and not run.args.posonlyargs and not run.args.vararg and not run.args.kwarg
+ assert [x.arg for x in run.args.kwonlyargs]==['m3','publisher','peer','catalogue_bytes'] and all(x is None for x in run.args.kw_defaults)
+ value['fixtures'][name]=s;value['case_names_by_fixture'][name]=names
+names=value['case_names_by_fixture']['m3_publisher']+value['case_names_by_fixture']['peer']
+assert len(names)==len(set(names))
+value['combined_case_count']=len(names);value['combined_case_names_sha256']=hashlib.sha256(json.dumps(names,separators=(',',':'),ensure_ascii=True).encode()).hexdigest()
+value['selection_input']=pin(C/'I13_FINAL_SOURCE_SELECTION_INPUT_001.json')
+value['Root_reader']=pin(__file__) if Path(__file__).resolve().is_relative_to(C.resolve()) else dict(path=str(Path(__file__)),bytes=len(body(Path(__file__))),sha256=hashlib.sha256(body(Path(__file__))).hexdigest())
+out=C/'I13_FINAL_ONCE_SOURCE_INPUT_MANIFEST_001.json';b=(json.dumps(value,sort_keys=True,indent=2)+'\n').encode();assert len(b)<=2097152
+with out.open('xb') as h:h.write(b)
+print(json.dumps(dict(manifest=pin(out),case_count=len(names),names_sha256=value['combined_case_names_sha256'],target_execution=False,admission_issued=False)))

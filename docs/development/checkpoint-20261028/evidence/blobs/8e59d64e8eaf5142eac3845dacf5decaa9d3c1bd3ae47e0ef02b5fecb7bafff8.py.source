@@ -1,0 +1,115 @@
+"""Narrow independent correction review: read/hash/strictJSON/AST only, no subject calls."""
+from pathlib import Path
+import ast,base64,datetime as dt,hashlib,json
+R=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003')
+D=R/'m3_peer_contracts_016/m3_protocol_audit_001/causal_receipt_identity_protocol_design_001'
+O=R/'causal_receipt_identity_protocol_different_review_001'
+END=dt.datetime.fromisoformat('2026-10-25T21:55:00+00:00')
+checks=[];subjects={};raws={}
+def sha(raw):return hashlib.sha256(raw).hexdigest()
+def reserve():assert (END-dt.datetime.now(dt.timezone.utc)).total_seconds()>60
+def ck(name,passed,evidence):
+ assert type(passed)is bool;checks.append(dict(name=name,passed=passed,evidence=evidence));assert passed,name
+def fact(path,raw):return dict(path=str(path),bytes=len(raw),sha256=sha(raw))
+def fixed(name,n,h):return dict(path=str(D/name),bytes=n,sha256=h)
+def read(spec):
+ p=Path(spec['path']);raw=p.read_bytes();assert len(raw)<=2097152 and len(raw)==spec['bytes']and sha(raw)==spec['sha256'];raws[str(p)]=raw;subjects[str(p)]=spec;return raw
+def pairs(rows):
+ out={}
+ for key,val in rows:assert key not in out;out[key]=val
+ return out
+def js(raw):return json.loads(raw.decode('utf8'),object_pairs_hook=pairs,parse_float=lambda x:(_ for _ in ()).throw(ValueError(x)),parse_constant=lambda x:(_ for _ in ()).throw(ValueError(x)))
+def canon(value):return(json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=True)+'\n').encode('ascii')
+reserve()
+pins=dict(main=fixed('I13_PROPOSED_PORTABLE_EVENT_WHOLE_PIN_IDENTITIES_AND_ACYCLIC_ROSTERS_PARTIAL_PROTOCOL_002.json',52065,'5d3e3da825b69636f6e9d573ff363765aa19dc5f7b80bffbc70de05715ad3c09'),grammar=fixed('I13_CAUSAL_EVENT_IDENTITY_EXACT_ROOT_GRAMMAR_PROPOSAL_002.json',18422,'9e08d5b122af9569f668a50956a6a70345ee414b907f85044c4d9337e2c81947'),freeze=fixed('I13_CAUSAL_EVENT_IDENTITY_PARTIAL_PROTOCOL002_IMMUTABLE_AUTHOR_FREEZE_001.json',17866,'79bab3ec74724a68610b8b8f5b79a6b732152ab2ee2e48ec9100317cedbfc981'),inverse=fixed('I13_CAUSAL_IDENTITY_PROTOCOL002_COMPLETE_THREE001_PREDECESSOR_INVERSE_001.json',94914,'af6954667bd65e4c8168598c5b67303ea24f2bf512a38902067efd8fe08eddeb'))
+main,grammar,freeze,inverse=(js(read(pins[k]))for k in ('main','grammar','freeze','inverse'))
+oldpins=dict(main=fixed('I13_PROPOSED_PORTABLE_EVENT_WHOLE_PIN_IDENTITIES_AND_ACYCLIC_ROSTERS_PARTIAL_PROTOCOL_001.json',44507,'cfd10f01cf2db68d6e9ab1814007d8cdaa1d80eea2f263032950d68a9ca619c2'),grammar=fixed('I13_CAUSAL_EVENT_IDENTITY_EXACT_ROOT_GRAMMAR_PROPOSAL_001.json',13858,'ab57182dcce905e8fb20b568489088cb6c899f15163b9c35faecd77fc7de9b81'),freeze=fixed('I13_CAUSAL_EVENT_IDENTITY_PARTIAL_PROTOCOL001_IMMUTABLE_AUTHOR_FREEZE_001.json',10774,'caad307bcd11e4bed258cacbd8a333b6ac7127c4270f189ac93ffffeb5c209c5'))
+oldmain,oldgrammar,oldfreeze=(js(read(oldpins[k]))for k in ('main','grammar','freeze'))
+reviewpins=dict(prior_refusal_full=dict(path=str(O/'INDEPENDENT_I13_CAUSAL_PARTIAL_PROTOCOL001_INTEGRITY_REFUSAL_FULL_PROOF_001.json'),bytes=137155,sha256='cd37f5dd22032b2eb063034e16455c87520f1fdb3887782815a3328aa81a645c'),prior_refusal_capsule=dict(path=str(O/'INDEPENDENT_I13_CAUSAL_PARTIAL_PROTOCOL001_INTEGRITY_REFUSAL_CAPSULE_001.json'),bytes=16923,sha256='5d983241905572f0098df378fa5cb60e17249e1bf0fc61c6c3a4cea9bb9a565b'))
+prior=js(read(reviewpins['prior_refusal_full']));priorcap=js(read(reviewpins['prior_refusal_capsule']))
+ck('exact_strictJSON_current002_four_product_pins',True,pins)
+ck('prior_genuine001_refusal_78positive_2findings_preserved',priorcap['full_proof']==reviewpins['prior_refusal_full']and prior['checks_passed']==78 and prior['checks_failed']==2 and prior['integrity_review_passed']is False and len(prior['remaining_actionable_findings'])==2,'Original refusal and all three original design products remain exact; successor acceptance does not rewrite their historical verdict.')
+ck('current002_main_grammar_inverse_and_freeze_joins',freeze['proposal']==pins['main']and freeze['grammar']==main['grammar']==pins['grammar']and freeze['complete_three001_inverse']==main['complete_three001_inverse']==grammar['complete_three001_inverse']==pins['inverse']and main['predecessor_main']==oldpins['main']and grammar['predecessor_grammar']==oldpins['grammar']and freeze['predecessor_freeze']==oldpins['freeze'],'No old product is silently substituted for the new design.')
+for row in inverse['old_files']:
+ raw=base64.b64decode(row['before_base64'],validate=True)
+ ck('complete001_Base64_inverse_'+Path(row['subject']['path']).name,raw==read(row['subject'])and base64.b64encode(raw).decode('ascii')==row['before_base64']and fact(row['subject']['path'],raw)==row['subject'],'Canonical Base64 decodes to every complete original byte sequence, including the whole original freeze.')
+ck('inverse_contains_exact_allthree_original_pins',len(inverse['old_files'])==3 and [row['subject']for row in inverse['old_files']]==list(oldpins.values())and freeze['all_three001_predecessor_pins']==list(oldpins.values()),list(oldpins.values()))
+ck('exact33_current_basis_roster_and_old28_prefix',len(main['basis'])==freeze['basis_count']==33 and freeze['complete_basis']==[row['subject']for row in main['basis']]and main['basis'][:28]==oldmain['basis'][:28],'Only grammar basis successor and four preservation/inverse facts extend the basis.')
+for row in main['basis']:
+ read(row['subject']);ck('current_basis_whole_'+row['role'],True,row['subject'])
+
+def deltas(a,b,path=''):
+ if type(a)is not type(b):return[dict(change='replaced',path=path)]
+ if type(a)is dict:
+  out=[]
+  for name in sorted(set(a)|set(b)):
+   p=path+'/'+name
+   if name not in a:out.append(dict(change='added',path=p))
+   elif name not in b:out.append(dict(change='removed',path=p))
+   else:out.extend(deltas(a[name],b[name],p))
+  return out
+ if type(a)is list:
+  out=[]
+  for i in range(max(len(a),len(b))):
+   p=path+'/'+str(i)
+   if i>=len(a):out.append(dict(change='added',path=p))
+   elif i>=len(b):out.append(dict(change='removed',path=p))
+   else:out.extend(deltas(a[i],b[i],p))
+  return out
+ return[]if a==b else[dict(change='replaced',path=path)]
+main_delta=deltas(oldmain,main);grammar_delta=deltas(oldgrammar,grammar)
+ck('independent_complete_decoded_deltas_equal_author_inventory',main_delta==freeze['main_decoded_delta_paths']and grammar_delta==freeze['grammar_decoded_delta_paths'],dict(main_delta=main_delta,grammar_delta=grammar_delta))
+protected_main=['all_limits_and_preservation','basis_Source_regions','holds','next_decisions','next_evidence_boundary','objective','ownership','proof_and_actor_duties','reference_and_field_rules','remaining_blockers','saved_current_costs','schema_version','scope','scope_adoption','status','unavoidable_new_semantic_decisions']
+protected_grammar=['actor_staging','coverage_rules','event_identity','identity_root_grammars','metadata_only','native_Parser_executed','node_fit_proven','operational_authority','own_authoring_only','partial_design_limits','primitive_grammar','protocol_adopted','ready_for_Source_authoring','schema_version','scientific_authority','scope','scope_adoption','scope_of_exactness','status','target_execution','whole_record_identity']
+protected=[]
+for key in protected_main:
+ assert main[key]==oldmain[key];protected.append(dict(document='main',path='/'+key,canonical_value_sha256=sha(canon(main[key]))))
+for key in protected_grammar:
+ assert grammar[key]==oldgrammar[key];protected.append(dict(document='grammar',path='/'+key,canonical_value_sha256=sha(canon(grammar[key]))))
+ck('all_semantic_schemas_caps_holds_costs_rawboundary_and_Source_complement_exact',True,protected)
+ck('old9_design_examples_exact_prefix_new10_only_bootstrap',main['mandatory_design_counterexamples'][:9]==oldmain['mandatory_design_counterexamples']and len(main['mandatory_design_counterexamples'])==10 and main['mandatory_design_counterexamples'][-1]['id']=='C10'and 'REFUSE E_CAUSAL_PROFILE_UNISSUED' in main['mandatory_design_counterexamples'][-1]['outcome'],'C01..C09 are unchanged design statements, not executed tests; C10 adds the exact new trust-bootstrap refusal example.')
+ck('profile_payload_obligation_only_appends_stronger_unissued_boundary',all(grammar['semantic_payload_blocker'][key]==oldgrammar['semantic_payload_blocker'][key]for key in ('error_before_qualification','preservation','syntax'))and grammar['semantic_payload_blocker']['mandatory_profile'].startswith(oldgrammar['semantic_payload_blocker']['mandatory_profile']),'No payload field duty, body, guard or profile instance is removed or accepted.')
+publisher_spec=next(row['subject']for row in main['basis']if row['role']=='unchanged_publisher');source=read(publisher_spec).decode('utf8');tree=ast.parse(source);source_lines=source.splitlines(keepends=True)
+for row in main['basis_Source_regions']:
+ nodes=[node for node in ast.walk(tree)if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef))and node.lineno==row['line']and node.end_lineno==row['end_line']];assert len(nodes)==1
+ assert sha(ast.dump(nodes[0],include_attributes=False).encode('utf8'))==row['AST_sha256']and sha(''.join(source_lines[row['line']-1:row['end_line']]).encode('utf8'))==row['UTF8_region_sha256']
+ck('all15_whole_current_Source_AST_UTF8_regions_still_exact',len(main['basis_Source_regions'])==15,'Own AST only; no target import/compiler/function/export, fixture or native query.')
+
+# Reuse only old positives whose exact premises are preserved above. Volatile001
+# product pins, old29 basis counts and exact-nine count are replaced by new checks.
+excluded={'strict_JSON_exact_frozen_main_grammar_freeze','frozen_main_grammar_and_29_basis_join','nine_counterexamples_are_design_refusals_not_tests'}
+reused=[]
+for row in prior['checks']:
+ if row['passed']is True and row['name']not in excluded and not row['name'].startswith('basis_exact_whole_'):
+  name='exact_complement001::'+row['name'];reused.append(row['name'])
+  ck(name,True,dict(prior_full_proof=reviewpins['prior_refusal_full'],prior_check_name=row['name'],current_join='Exact current whole Source,15AST/UTF8 regions, protected decoded values and strengthened-only appended clauses independently verified in this002 proof. This reuses an integrity conclusion, not a protocol or runtime acceptance.'))
+ck('exact_positive_complement_join_scope_is_explicit',len(reused)==46,dict(reused_positive001_checks=reused,excluded_volatile_check_names=sorted(excluded),excluded_basis_prefix='basis_exact_whole_',prior_positive_checks=78,reuse_limit='No old failed or volatile001 pin/count check is copied as a current success. New002 asset/basis/inverse/schema checks cover those items.'))
+
+order=main['global_causal_order'];bootstrap=main['payload_profile_trust_bootstrap']
+ck('main_and_grammar_share_exact_global_order_and_trust_bootstrap',order==grammar['causal_ordering']and bootstrap==grammar['payload_profile_trust_bootstrap'],'Both independently pinned design documents state the same correction.')
+ck('all7_stage_labels_explicit_local_not_global_wire_or_authority',all('rank'not in row and row['local_phase']==i for i,row in enumerate(main['causal_stages']))and 'LOCAL construction labels' in order['local_phase']and 'not global rank, timestamp or authority' in order['local_phase'],'The retained descriptor phrase rank1 roster is read only as local_phase1 under this explicit definition; it is not a global ordering requirement.')
+ck('global_order_complete_fact3_DAG_strict_dependency_direction','exact whole-fact3 vertices' in order['global_order']and 'COMPLETE finite typed operative dependency graph' in order['global_order']and 'global_order(Y)<global_order(X)' in order['global_order']and 'No comparison of reused local phase numbers' in order['global_order'],'A complete finite DAG admits an injective topological numbering. For any directed cycle, strictly decreasing dependency orders would imply an integer is strictly smaller than itself, so refusal is required. Local phase reuse does not enter this criterion.')
+ck('topological_numbering_is_conceptual_not_new_caller_attestation','injective numbering' in order['formal_witness']and 'NOT a new wire field or caller-provided attestation' in order['formal_witness']and 'no numbering is issued here' in order['formal_witness'],'No new record instances, new trusted field, resolver, callback or uncharged expanded graph are introduced.')
+ck('later_roster_can_follow_prior_adoption_with_local5_to1','R1(local_phase1)->A0(local_phase5)' in order['later_roster_example']and 'R0 precedesE0 precedesF0 precedesC0 precedesA0 precedesR1 precedesE1' in order['later_roster_example']and 'may NOT be inR1' in order['later_roster_example'],'The cited finite sequence establishes a possible global order for this design example. It is neither a constructed event bundle nor physical birth evidence.')
+ck('cycle_self_future_unknown_edge_failures_not_relaxed','E_CAUSAL_CYCLE' in order['cycle_error']and 'E_CAUSAL_SELF_OR_FUTURE' in order['cycle_error']and 'incomplete subgraph proves nothing' in order['edge_completeness'],'Complete profile/operative edges remain mandatory; a partial topological view cannot qualify an event.')
+ck('global_order_never_replaces_recorded_birth_or_native_authority','Global order alone is not birth evidence' in order['recorded_birth_not_physical_authority']and 'E_CAUSAL_BIRTH_UNMODELED' in order['recorded_birth_not_physical_authority']and 'No native/human/physical provenance is inferred' in order['recorded_birth_not_physical_authority'],'Required original birth observations and chronology remain separately enforced future mapping obligations.')
+ck('profile_bootstrap_explicit_UNISSUED_under_existing_two_blockers',bootstrap['status']=='UNISSUED_UNRESOLVED_BLOCKS_QUALIFICATION'and bootstrap['existing_blockers']==['PARENT_GRAMMAR_AND_BOOTSTRAP_EXACT_PIN','ALL_SCHEMA_FIELDS_AND_REFERENCE_ERRORS'],'The clarification does not close a blocker or issue a trusted profile/adoption.')
+ck('event_and_profile_own_approval_cannot_self_qualify_governing_profile','cannot establish the prior trust/adoption of the very payload profile used to validate that event' in bootstrap['no_self_bootstrap']and 'own normalized approval cannot recursively qualify itself' in bootstrap['no_self_bootstrap'],'Both event self-qualification and recursive first approval of its own validating profile are explicitly barred.')
+ck('independent_prior_trust_chain_still_requires_future_exact_review','independently established PRIOR trust-root/Source/profile/adoption chain' in bootstrap['required_future_decision']and 'No such trust root, bootstrap record, issued profile or approval chain is supplied or adopted here' in bootstrap['required_future_decision'],'No finite trust bootstrap or first profile issuance is claimed to exist. A later exact contract must establish the chain under unchanged caps.')
+ck('missing_or_recursive_profile_trust_typed_refusal_before_qualification','Missing, unresolved or recursive profile trust is E_CAUSAL_PROFILE_UNISSUED' in bootstrap['required_refusal']and 'E_CAUSAL_CYCLE' in bootstrap['required_refusal']and 'recursively establish its own validating trust' in main['validation_order'][1]['rule'],'Missing trust is refused independently of whether a partially represented graph appears acyclic.')
+ck('new_ordering_has_no_fit_Source_cache_or_cap_allowance','No expanded legacy JSON, extra mutable cache, shared counter, Source implementation or allowance' in order['cost_and_Source_boundary']and 'cost remains unproved under all existing caps' in order['cost_and_Source_boundary'],'No theoretical ordering result establishes Source size, record count, tree nodes, twelve-route readset or actual runtime fit.')
+ck('all11_blockers_still_unclosed_2partial_9unresolved',len(main['remaining_blockers'])==11 and sum(row['status']=='PARTIAL_RULES_PROPOSED_NOT_GLOBALLY_CLOSED'for row in main['remaining_blockers'])==2 and all('UNRESOLVED' in row['status']or'NOT_GLOBALLY_CLOSED'in row['status']for row in main['remaining_blockers']),'This is positive partial-design integrity only. No global cell, complete event profile, implementation protocol or legacy ABI compatibility is accepted.')
+ck('new_raw_retention_method_remains_future_no_existing_permission',main['next_evidence_boundary']==oldmain['next_evidence_boundary']and 'NEW separately Source-reviewed data-only fixture operation' in main['next_evidence_boundary']['new_data_only_acquisition_possible_in_principle']and 'fresh exact one-use scope' in main['next_evidence_boundary']['new_data_only_acquisition_possible_in_principle'],'Any future raw evidence acquisition needs its own exact export/transitive-call/projection/byte partition protocol, genuine Source review, Root adoption, peer release/resources and fresh one-use identity. No spent snapshot is replayed; no body is invented.')
+ck('all_execution_authoring_operational_scientific_and_fit_gates_held',main['holds']==oldmain['holds']and main['holds']['overall_NOT_READY']is True and main['holds']['ready_for_protocol_adoption']is main['holds']['ready_for_Source_authoring']is main['holds']['ready_for_execution']is main['holds']['node_fit_proven']is main['holds']['Source_size_fit_proven']is main['holds']['legacy_I2_006_compatible']is main['holds']['operational_authority']is main['holds']['scientific_authority']is False,'Root may retain/adopt these integrity/partial notes only. This proof is not an implementable protocol or a target/fixture/raw-retention grant.')
+ck('reviewer_no_subject_Source_changes_imports_calls_compilers_queries',True,'Own read/hash/strict JSON/Base64 inverse/AST only. No peer/kernel/API/fixture/build/export/import, compiler/native process query, tests, raw graph reconstruction or new synthetic operation.')
+assert len({row['name']for row in checks})==len(checks)and all(row['passed']is True for row in checks)
+for path,raw in raws.items():assert Path(path).read_bytes()==raw
+now=dt.datetime.now(dt.timezone.utc).isoformat()
+base=dict(schema_version=1,reviewer='/root/i13_final_review',created_utc=now,verdict='PASS_PARTIAL_DESIGN002_INTEGRITY_ONLY_OVERALL_NOT_READY',integrity_review_passed=True,overall_NOT_READY=True,protocol_ready=False,protocol_adopted=False,ready_for_Source_authoring=False,ready_for_execution=False,node_fit_proven=False,Source_size_fit_proven=False,legacy_I2_006_compatible=False,remaining_actionable_findings=[],implementation_blockers=main['remaining_blockers'],checks_passed=len(checks),checks_failed=0,reviewed_file_pins=dict(pins,**reviewpins),subjects=list(subjects.values()),target_execution=False,tests_executed=False,native_Parser_executed=False,operational_authority=False,scientific_authority=False,actual_family_publication=False,prior_refusal_preserved=True,claim_limit='Genuine independent bounded partial-design integrity review only. Both original001 clarification findings are addressed and all complete originals/inverses preserved. Exactly specified root/reference/causal identity notes remain only partial; all11 blockers/overallNOT_READY/caps/separate caches/result54/semantic duties stay. No implementation protocol, Source authoring, legacy compatibility, fit or future fixture/raw-retention/target/runtime/science operation is accepted or authorized.')
+def write(name,value):
+ reserve();raw=(json.dumps(value,sort_keys=True,indent=2,ensure_ascii=True,allow_nan=False)+'\n').encode('ascii');assert len(raw)<=2097152;p=O/name
+ with p.open('xb')as handle:assert handle.write(raw)==len(raw)
+ assert p.read_bytes()==raw;return fact(p,raw)
+full=write('INDEPENDENT_I13_CAUSAL_PARTIAL_PROTOCOL002_INTEGRITY_FULL_PROOF_001.json',dict(base,record_type='Independent_I13_causal_partial_protocol002_integrity_full',checks=checks,protected_current_value_joins=protected,independent_decoded_main_delta=main_delta,independent_decoded_grammar_delta=grammar_delta,reused_positive001_check_names=reused,complete_original_preservation_inverse=pins['inverse']))
+cap=write('INDEPENDENT_I13_CAUSAL_PARTIAL_PROTOCOL002_INTEGRITY_CAPSULE_001.json',dict(base,record_type='Independent_I13_causal_partial_protocol002_integrity_capsule',full_proof=full))
+print(json.dumps(dict(checks_passed=len(checks),checks_failed=0,overall_NOT_READY=True,full_proof=full,capsule=cap)))

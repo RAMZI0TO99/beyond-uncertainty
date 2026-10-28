@@ -1,0 +1,146 @@
+"""Root engineering witness for one separately admitted new synthetic suite.
+
+This wrapper neither imports the validator nor the fixture. It invokes exactly
+the supervisor pinned by a fresh once-scope and retains its console and actual
+process exit. Resource samples describe this query only, not whole-host quiet.
+"""
+from datetime import datetime, timezone
+import ctypes
+import hashlib
+import json
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import time
+
+
+def utc():
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
+
+
+def pin(path, data=None):
+    if data is None:
+        data = Path(path).read_bytes()
+    return {"path": str(path), "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+
+
+def save_new(path, value, raw=False):
+    data = value if raw else (json.dumps(value, indent=2, sort_keys=True, allow_nan=False) + "\n").encode("utf8")
+    if len(data) > 2097152:
+        raise ValueError("owned metadata cap")
+    with Path(path).open("xb") as handle:
+        handle.write(data)
+        handle.flush()
+        import os
+        os.fsync(handle.fileno())
+    return pin(path)
+
+
+def main():
+    if len(sys.argv) != 3:
+        raise ValueError("exact once-scope path and hash required")
+    scope_path = Path(sys.argv[1])
+    with scope_path.open("rb") as handle:
+        scope_raw = handle.read(2097153)
+    if not 0 < len(scope_raw) <= 2097152:
+        raise ValueError("bounded exact once-scope buffer")
+    scope_pin = pin(scope_path, scope_raw)
+    if scope_pin["sha256"] != sys.argv[2]:
+        raise ValueError("scope hash")
+    value = json.loads(scope_raw)
+    supervisor = value["supervisor"]
+    if pin(supervisor["path"]) != supervisor or pin(sys.executable) != value["runtime"]:
+        raise ValueError("exact supervisor and general-host runtime")
+    owned = Path(value["outputs"]["claim"]).parent
+    paths = {key: owned / leaf for key, leaf in {
+        "prelaunch": "ROOT_OUTER_PRELAUNCH_001.json",
+        "stdout": "ROOT_SUPERVISOR_STDOUT_001.txt",
+        "stderr": "ROOT_SUPERVISOR_STDERR_001.txt",
+        "result": "ROOT_OUTER_EXECUTION_RESULT_001.json",
+    }.items()}
+    if any(path.exists() for path in paths.values()):
+        raise ValueError("fresh exclusive outer witness identities required")
+
+    class MemoryStatus(ctypes.Structure):
+        _fields_ = [("length", ctypes.c_ulong), ("load", ctypes.c_ulong)] + [
+            (name, ctypes.c_ulonglong) for name in (
+                "total_phys", "available_phys", "total_page", "available_page",
+                "total_virtual", "available_virtual", "available_extended")]
+    memory = MemoryStatus()
+    memory.length = ctypes.sizeof(memory)
+    if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(memory)):
+        raise OSError("resource metadata query failed")
+    resources = {"sampled_utc": utc(), "available_RAM_bytes": memory.available_phys,
+                 "available_disk_bytes": shutil.disk_usage(owned).free,
+                 "RAM_floor_bytes": 1073741824, "disk_floor_bytes": 10737418240,
+                 "whole_host_quiet_or_PID_absence_proved": False}
+    if resources["available_RAM_bytes"] < resources["RAM_floor_bytes"] or resources["available_disk_bytes"] < resources["disk_floor_bytes"]:
+        raise ValueError("original resource floors refused")
+    argv = [sys.executable, "-I", "-S", "-B", supervisor["path"], str(scope_path), sys.argv[2]]
+    prelaunch = save_new(paths["prelaunch"], {"record_type": "Root_I12_once_outer_prelaunch",
+        "author": "/root", "created_utc": utc(), "scope": scope_pin, "supervisor": supervisor,
+        "wrapper": pin(Path(__file__)), "runtime": value["runtime"], "argv": argv,
+        "resources": resources, "maximum_outer_invocations": 1,
+        "outer_wait_seconds": 75, "outer_cleanup_seconds": 10,
+        "synthetic_supervisor_total_seconds_unchanged": 60,
+        "original_context_runtime_seconds_unchanged": 600,
+        "target_execution": False, "operational_authority": False, "scientific_authority": False})
+    started = utc()
+    clock = time.monotonic()
+    proc = None
+    launch_error = None
+    timeout = terminated = killed = False
+    drained = True
+    try:
+        proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except OSError as exc:
+        launch_error = type(exc).__name__
+        stdout = stderr = b""
+    if proc is not None:
+        try:
+            stdout, stderr = proc.communicate(timeout=75)
+        except subprocess.TimeoutExpired:
+            timeout = True
+            proc.terminate()
+            terminated = True
+            try:
+                stdout, stderr = proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                killed = True
+                try:
+                    stdout, stderr = proc.communicate(timeout=5)
+                except subprocess.TimeoutExpired as exc:
+                    stdout, stderr = exc.output or b"", exc.stderr or b""
+                    drained = False
+                    proc.poll()
+    ended = utc()
+    elapsed = int((time.monotonic() - clock) * 1000000000)
+    output_cap_refused = len(stdout) > 2097152 or len(stderr) > 2097152
+    stdout_pin = save_new(paths["stdout"], stdout[:2097152], True)
+    stderr_pin = save_new(paths["stderr"], stderr[:2097152], True)
+    exit_code = None if proc is None else proc.returncode
+    result = {"record_type": "Root_I12_once_outer_execution_witness", "author": "/root",
+        "created_utc": utc(), "scope": scope_pin, "prelaunch": prelaunch,
+        "supervisor": supervisor, "argv": argv, "owned_supervisor_pid": None if proc is None else proc.pid,
+        "started_utc": started, "ended_utc": ended, "elapsed_nanoseconds": elapsed,
+        "actual_parent_exit_code": exit_code, "reaped": exit_code is not None,
+        "launch_error": launch_error, "streams_drained": drained,
+        "output_cap_refused": output_cap_refused,
+        "outer_timeout": timeout, "terminated": terminated, "killed": killed,
+        "stdout": stdout_pin, "stderr": stderr_pin,
+        "stdout_bytes": len(stdout), "stderr_bytes": len(stderr),
+        "suite_acceptance_requires_different_saved_results_review": True,
+        "target_execution": False, "actual_family_publication": False,
+        "operational_authority": False, "scientific_authority": False,
+        "whole_host_quiet_or_PID_absence_proved": False}
+    result_pin = save_new(paths["result"], result)
+    print(json.dumps({"execution_witness": result_pin, "actual_parent_exit_code": exit_code,
+        "outer_timeout": timeout, "stdout_bytes": len(stdout), "stderr_bytes": len(stderr)}))
+    return 0 if exit_code == 0 and not timeout and drained and not output_cap_refused else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

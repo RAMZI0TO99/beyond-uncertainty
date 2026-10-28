@@ -1,0 +1,72 @@
+
+class _Single(_Graph):
+    def validate(self):
+        p,c=self.p,self.c
+        request=self.record(p['request'])
+        publication=self.record(p['publication'])
+        for value,schema in ((request,'single_request14_v2'),(publication,'single_publication29_v2')):
+            _need(value.get('record_type')==c['schemas'][schema]['record_type'], 'E_UNSUPPORTED_PUBLICATION_ABI')
+            _schema(value,schema,c)
+        generation=self.record(p['generation_receipt'],'generic_stage_receipt29_v2')
+        gf=self.record(p['generation_facts'],'generic_late_facts26_v2')
+        pf=self.record(p['publication_facts'],'generic_late_facts26_v2')
+        gd=self.record(p['generation_stage_decision'],'generic_stage_decision14_v2')
+        pd=self.record(p['publication_stage_decision'],'generic_stage_decision14_v2')
+        recon=self.record(p['reconciliation'],'single_reconciliation26_v2')
+        self.add_actors(request,publication,generation,gf,pf,gd,pd,recon)
+        stage='binding' if self.role=='binding' else 'config' if self.role=='checker_config' else 'render'
+        support=_schema(pf['stage_support'],'publication_stage_support6',c)
+        self._proof_author_slots([support[k] for k in ('draft_Source_review','draft_Root_adoption','generation_receipt_review','generation_receipt_Root_adoption')])
+        earliest=self.prepare_proofs()
+        emitter=p['emitter_support']
+        for value,expected_stage in ((gf,stage),(pf,'publish'),(gd,stage),(pd,'publish'),(generation,stage),(publication,'publish')):
+            _need(value['role']==self.role and value['stage']==expected_stage and _same(value['current_owner_scope'],self.scope) and _same(value['Root_selection'],self.selection_pin) and _same(value['tool_source'],emitter['Source']), 'E_SINGLE_JOIN')
+        for value in (gf,pf,generation,publication):
+            _need(value['metadata_Source_worker']==self.row['preparation_Source_author'], 'E_ACTOR_JOIN')
+            _need(_same(value['predecessor'],p['predecessor']), 'E_SINGLE_JOIN')
+            if 'retained_semantic_Source_author' in value:
+                _need(value['retained_semantic_Source_author']==self.row['retained_semantic_Source_author'], 'E_ACTOR_JOIN')
+            lease_support=_schema(value['lawful_lease_support'],'I5_closed9_lease_support',c)
+            _need(_same(lease_support['canonical'],self.lease) and _same(lease_support,gf['lawful_lease_support']), 'E_SINGLE_JOIN')
+            for pin in lease_support.values():self.s.raw(pin)
+        for value in (gf,pf):
+            _need(_same(value['tool_review'],emitter['different_review']) and _same(value['tool_Root_adoption'],emitter['Root_adoption']) and _same(value['selection_review'],p['selection_support']['different_review']) and _same(value['selection_Root_adoption'],p['selection_support']['Root_adoption']), 'E_SINGLE_JOIN')
+        for value in (generation,publication):
+            _need(_same(value['tool_Source_review'],emitter['different_review']) and _same(value['tool_Root_adoption'],emitter['Root_adoption']) and _same(value['draft'],p['draft']), 'E_SINGLE_JOIN')
+        for value in (gd,pd):_need(_same(value['lawful_lease'],self.lease), 'E_SINGLE_JOIN')
+        _need(_same(gf['stage_decision'],p['generation_stage_decision']) and _same(pf['stage_decision'],p['publication_stage_decision']) and _same(generation['actual_Root_late_facts'],p['generation_facts']) and _same(publication['actual_Root_late_facts'],p['publication_facts']), 'E_SINGLE_JOIN')
+        _need(gf['publication_request'] is None and _same(pf['publication_request'],p['request']) and generation['original_request'] is None and generation['canonical'] is None, 'E_SINGLE_JOIN')
+        _need(_same(request['current_owner_scope'],self.scope) and _same(request['Root_selection'],self.selection_pin) and request['role']==self.role and _same(request['draft'],p['draft']) and request['canonical_path']==self.row['canonical_path'], 'E_SINGLE_JOIN')
+        _need(_same(request['Source_review'],support['draft_Source_review']) and _same(request['Root_adoption'],support['draft_Root_adoption']) and _same(publication['original_request'],p['request']), 'E_SINGLE_JOIN')
+        _need(_same(support['draft'],p['draft']) and _same(support['generation_receipt'],p['generation_receipt']), 'E_SINGLE_JOIN')
+        details=_schema(publication['details'],'publication_details5',c)
+        for key,pin in (('generation_receipt',p['generation_receipt']),('different_draft_Source_review',support['draft_Source_review']),('Root_draft_adoption',support['draft_Root_adoption']),('original_request',p['request'])):
+            _need(_same(details[key],pin), 'E_SINGLE_JOIN')
+        canonical=_pin(p['canonical'],self.cap)
+        _need(canonical['path']==self.row['canonical_path'] and _same(publication['canonical'],canonical) and canonical['path']!=p['draft']['path'] and canonical['path']!=p['predecessor']['path'] and self.s.raw(canonical,self.cap)==self.s.raw(p['draft'],self.cap), 'E_SELECTED_MATERIAL')
+        self.observations(generation['actual_paired_metadata_inputs'],[(p['draft'],self.cap)],spent='optional',before=_time(generation['created_utc']))
+        self.observations(publication['actual_paired_metadata_inputs'],[(p['draft'],self.cap),(canonical,self.cap)],spent=True,before=_time(publication['created_utc']))
+        draft_review,draft_time=self.support(dict(different_review=support['draft_Source_review'],Root_adoption=support['draft_Root_adoption']),[p['draft']])
+        gen_review,gen_time=self.support(dict(different_review=support['generation_receipt_review'],Root_adoption=support['generation_receipt_Root_adoption']),[p['generation_receipt']])
+        gd_t,gf_t,gen_t=(_time(v['created_utc']) for v in (gd,gf,generation))
+        pd_t,pf_t,req_t,pub_t=(_time(v['created_utc']) for v in (pd,pf,request,publication))
+        _need(earliest<=gd_t<=gf_t<=gen_t<=min(draft_review['full_time'],gen_review['full_time']) and max(draft_time,gen_time)<=pd_t<=pf_t<=req_t<=pub_t<=self.now, 'E_CHRONOLOGY')
+        for key,pin in (('canonical_Source',canonical),('exact_draft_Source',p['draft']),('initial_actual_Root_request',p['request']),('initial_actual_canonical_publication_receipt',p['publication']),('initial_actual_execution_witness',p['execution_witness']),('current_owner_scope',self.scope),('Root_future_path_selection',self.selection_pin),('new_canonical_lease',self.lease),('prior_actual_publisher_Source',emitter['Source']),('actual_canonical_delta_Source_review',p['canonical_support']['different_review']),('canonical_delta_Root_adoption',p['canonical_support']['Root_adoption'])):
+            _need(_same(recon[key],pin), 'E_RECONCILIATION_JOIN')
+        _need(recon['prior_publication_created_utc']==publication['created_utc'], 'E_RECONCILIATION_JOIN')
+        self.observations(recon['actual_input_observations'],[],before=_time(recon['created_utc']))
+        subjects=[canonical,p['draft'],p['generation_receipt'],p['request'],p['publication'],p['execution_witness'],self.scope,self.selection_pin]
+        canonical_review,canonical_time=self.support(p['canonical_support'],subjects)
+        birth=_time(recon['canonical_Source_birth_utc']);recon_time=_time(recon['created_utc'])
+        _need(req_t<=birth<=pub_t<=canonical_review['full_time']<=canonical_time<=recon_time, 'E_CHRONOLOGY')
+        recon_review,recon_adopt=self.support(p['reconciliation_support'],[p['reconciliation'],canonical,p['publication'],self.scope,self.selection_pin])
+        _need(recon_time<=recon_review['full_time']<=recon_adopt<=self.now, 'E_CHRONOLOGY')
+        return self.result(False)
+
+
+def validate_generic_single_dependency_metadata(*, packet, records, catalogue_bytes, expected_root_thread, source_editor, now_utc):
+    return _Single(packet=packet,records=records,catalogue_bytes=catalogue_bytes,expected_root_thread=expected_root_thread,source_editor=source_editor,now_utc=now_utc,peer=False).validate()
+
+
+def execute_stage(*args, **kwargs):
+    raise I12Error('E_ACTUAL_ENTRY_UNWIRED')

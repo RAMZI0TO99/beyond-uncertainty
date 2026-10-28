@@ -1,0 +1,44 @@
+"""Own metadata amendments and saved-review packaging only."""
+from pathlib import Path
+import json, hashlib, os
+O=Path('D:/Aenv/pro2/WORK/docs-publication-20261028-001')
+C=O/'candidate'; B='docs/development/checkpoint-20261028'
+def read(p):
+    assert p.is_file() and not p.is_symlink() and p.stat().st_size<=2097152,str(p)
+    return p.read_bytes()
+def pin(b):return {'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()}
+def js(x):return (json.dumps(x,sort_keys=True,indent=2)+'\n').encode()
+def write(p,b):
+    p.parent.mkdir(parents=True,exist_ok=True)
+    with p.open('xb') as f:f.write(b);f.flush();os.fsync(f.fileno())
+    assert read(p)==b
+
+old=read(C/B/'CURRENT_CHECKPOINT.md')
+write(O/'amendments/CURRENT_CHECKPOINT_before_package_clarification.md',old)
+new=old.replace(b'The [evidence index](evidence-index.json) maps',
+ b'This documentation publication uses four independently bounded evidence packages, each with at most384 file rows and less than64MiB of logical content. The aggregate documentation archive does not invoke, replace or widen any original I13 target/export/retention cap. All original caps remain unchanged.\n\nThe [evidence index](evidence-index.json) maps')
+assert new!=old
+(C/B/'CURRENT_CHECKPOINT.md').write_bytes(new)
+assert read(C/B/'CURRENT_CHECKPOINT.md')==new
+write(C/B/'audit/CURRENT_CHECKPOINT_before_package_clarification.md',old)
+write(C/B/'audit/CANDIDATE_before_clarification.json',read(O/'CANDIDATE.json'))
+write(C/B/'audit/BEFORE.json',read(O/'BEFORE.json'))
+write(C/B/'publish_checkpoint.py.source',read(O/'publish_checkpoint.py'))
+write(C/B/'audit/publish_checkpoint001_unrun.py.source',read(O/'publish_checkpoint001_unrun.py.source'))
+write(C/B/'finalize_candidate.py.source',read(Path(__file__)))
+copied=[]
+for folder in ('review-docs','review-evidence'):
+    for p in sorted((O/folder).iterdir()):
+        if not p.is_file():continue
+        if p.stat().st_size>2097152:continue
+        name=p.name+('.source' if p.suffix=='.py' else '')
+        rel=B+'/audit/'+folder+'/'+name
+        b=read(p);write(C/rel,b)
+        copied.append({'path':str(p),'archive_path':rel,**pin(b)})
+write(C/B/'audit/review-packaging.json',js({'records':copied,'oversized_proof':'Original complete oversized review proof is preserved in byte-exact bounded parts and reassembly manifest; no original evidence was edited.'}))
+files=[{'path':str(p.relative_to(C)).replace('\\','/'),**pin(read(p))} for p in sorted(C.rglob('*')) if p.is_file()]
+write(O/'CANDIDATE_FINAL.json',js({'record_type':'final_reviewable_documentation_candidate','files':files,
+ 'changes_from_first_candidate':[{'path':B+'/CURRENT_CHECKPOINT.md','before':pin(old),'after':pin(new),'reason':'Clarify independently bounded documentation packages; preserve all original I13 caps.'}],
+ 'new_metadata':'Independent reviews, original candidate manifest, original report, previous status, and final publisher Source.',
+ 'subject_execution':False}))
+print(json.dumps({'files':len(files),'review_files_copied':len(copied),'report':pin(new)}))

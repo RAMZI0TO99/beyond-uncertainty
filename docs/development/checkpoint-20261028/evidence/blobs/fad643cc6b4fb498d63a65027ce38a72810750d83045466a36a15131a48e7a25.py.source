@@ -1,0 +1,55 @@
+"""Root handoff of exact diagnostics and NOT_READY contract design analysis."""
+import datetime as dt,hashlib,json,os,re,sys
+from pathlib import Path
+R=Path(__file__).parent
+def raw(p):
+ p=Path(p);s=p.stat();assert p.is_file()and not p.is_symlink()and s.st_nlink==1 and s.st_size<=2097152
+ for q in(p,*p.parents):assert not getattr(q.lstat(),'st_file_attributes',0)&1024
+ b=p.read_bytes();z=p.stat();assert b==p.read_bytes()and len(b)==s.st_size==z.st_size and s.st_mtime_ns==z.st_mtime_ns
+ return b
+def pin(p):
+ b=raw(p);return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def read(p):return json.loads(raw(p))
+def occurs(v,p):
+ if type(v)is dict:return v==p or any(occurs(x,p)for x in v.values())
+ return type(v)is list and any(occurs(x,p)for x in v)
+assert len(sys.argv)==5
+proposal=Path(sys.argv[1]);cp=Path(sys.argv[3]);assert proposal.is_relative_to(R)and cp.is_relative_to(R)
+assert all(re.fullmatch('[0-9a-f]{64}',x)for x in(sys.argv[2],sys.argv[4]))
+assert pin(proposal)['sha256']==sys.argv[2]and pin(cp)['sha256']==sys.argv[4]
+cap=read(cp);fp=cap['full_proof'];assert pin(fp['path'])==fp;full=read(fp['path']);checks=full['checks']
+assert cap['reviewer']==full['reviewer']=='/root/i13_final_review'and cap['verdict']==full['verdict']and cap['verdict'].startswith('PASS_')
+assert cap['checks_failed']==full['checks_failed']==0 and len(checks)==len({x['name']for x in checks})==cap['checks_passed']==full['checks_passed']
+assert all(x['passed']is True for x in checks)and occurs(cap,pin(proposal))and occurs(full,pin(proposal))
+sp=R/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_004_002.json';s=read(sp)
+assert pin(sp)['sha256']=='6c662ad8498106d08811121e3d848919a3c60cca15510556cc8033f9a13bb4ee'
+sa=R/'ROOT_I13_CURRENT_SOURCE_SCOPE004_CANDIDATE002_DIFFERENT_REVIEW_ADOPTION_001.json'
+assert pin(sa)['sha256']=='e7262ea0f90bd16b4de9aebed5fdb37278ee3c6ecf8010966adac7e78a41a947'
+now=dt.datetime.now(dt.timezone.utc)
+def reserve():assert(dt.datetime.fromisoformat(s['interval_end'])-dt.datetime.now(dt.timezone.utc)).total_seconds()>60
+reserve()
+oldp=R/'ROOT_I13_FIXED6_NODE_LEDGER_AND_NEXT_CONTRACT_DECISION_HANDOFF_001.json'
+assert pin(oldp)['sha256']=='03906092044befff962e509b279462ce0584b6cc0380e6a126364e8e24a974db'
+v=read(oldp);preserve=R/'ROOT_I13_CURRENT_WORKSPACE_AND_OLD_SOURCE_PRESERVATION_004.json'
+assert pin(preserve)['sha256']=='a08b5b6d4d4d793ef334b739cec6308f151c6f0ea85a6617642de95608419747'
+peer=R/'coordination/ROOT_RETAINED_PRO3_015_FAILED_ATTEMPT_AND_FULL_CUSTODY_RELEASE_REPORT_001.json'
+assert pin(peer)['sha256']=='896fbee1c45382ade02eaddc2778e7e3ee73d092edd733c83c655defc7e9eaf0'
+v.update(schema_version=2,record_type='Root_I13_current_fixed6_diagnostic_and_NOT_READY_new_contract_design_handoff',created_utc=now.isoformat(),
+ previous_dated_diagnostic_handoff=pin(oldp),Source_scope=pin(sp),Source_scope_adoption=pin(sa),Source_window_end_utc=s['interval_end'],
+ current_workspace_and_old_Source_preservation=pin(preserve),reported_peer015_closed_custody=pin(peer),
+ new_parent_design_assessment=pin(proposal),genuine_different_design_analysis_review=dict(capsule=pin(cp),full_proof=fp,checks_passed=len(checks)),
+ Root_design_analysis_decision='Accept exact NOT_READY design analysis for resumption only. Current counts rule out frontier-only and simple fused-child variants. A compact indexed-subject format is a new unqualified ABI. Causal registries, portable full/capsule/adoption identities, complete semantic-duty transfer and a complete charged cost/readset model remain mandatory unresolved design work. This is not adoption of a new implementation protocol or permission to author a target successor.',
+ new_compact_protocol_ready=False,new_compact_protocol_adopted=False,new_compact_ABI_compatible_with_old_I2_006=False,
+ new_target_Source_authoring_authorized_by_this_handoff=False,new_synthetic_calls_authorized_by_this_handoff=False,
+ compact_design_Source_fit_established=False,legacy_operative_raw_receipts_may_be_treated_as_valid_by_hash_alone=False,
+ next_step='Resolve an acyclic compact receipt ABI with complete whole-pin review/adoption identities and explicit native reference predicates, retaining all raw inputs and all semantic provenance/context/actor/chronology/inverse/stability duties. Prove a complete cost/readset model under original50000 combined nodes and all other caps. Then obtain genuine different protocol review and separate Root adoption before Source implementation; qualification requires a separately reviewed fresh once-only scope. Do not rerun spent scopes or original targets.',
+ original_render_codec_inverse_gate_and_IO_algorithms_preserved=True,source_scope_expiry_requires_fresh_reviewed_scope_for_later_gated_work=True,
+ remote_main_readonly_refresh=dict(observed_tool='184203',observed_utc='2026-10-25T18:00:19+00:00',command='git ls-remote origin refs/heads/main',HEAD_and_origin_main='c6e9173c82190db9f077f3251ba99ac90c834355'),
+ design_step_completed_as_reviewed_analysis_only=True)
+assert v['saved_evidence_checks_passed']==7675 and v['current_main936']['passed']==20 and v['current_main936']['failed']==12
+assert v['current_main936']['remaining_current_cases_unestablished']==904
+out=R/'ROOT_I13_FIXED6_NODE_LEDGER_AND_NEXT_CONTRACT_DECISION_HANDOFF_002.json'
+b=(json.dumps(v,sort_keys=True,indent=2,allow_nan=False)+'\n').encode();assert len(b)<=2097152 and not os.path.lexists(out);reserve()
+with out.open('xb')as h:assert h.write(b)==len(b);h.flush();os.fsync(h.fileno())
+assert raw(out)==b
+print(json.dumps(dict(handoff=pin(out),diagnostic_and_analysis_only=True,new_protocol_ready=False,execution_gates_held=True)))

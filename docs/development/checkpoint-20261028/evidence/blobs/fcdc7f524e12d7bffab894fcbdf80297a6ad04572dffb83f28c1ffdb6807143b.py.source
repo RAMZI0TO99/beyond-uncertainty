@@ -1,0 +1,121 @@
+"""Reviewer-owned read/hash/AST evidence only; never imports or calls subject code."""
+import ast
+import datetime
+import hashlib
+import json
+from pathlib import Path
+
+R = Path(r'D:\Aenv\pro2\WORK\resume-20261025-003')
+P = R / 'm3_peer_contracts_016'
+I = P / 'i13'
+OUT = R / 'saved_once006_partition_failure_review_001'
+facts = []
+checks = []
+snippets = []
+
+def fact(path, expected_bytes=None, expected_sha=None):
+    body = path.read_bytes()
+    result = dict(path=str(path), bytes=len(body), sha256=hashlib.sha256(body).hexdigest())
+    if expected_bytes is not None:
+        assert result['bytes'] == expected_bytes and result['sha256'] == expected_sha
+    facts.append(result)
+    return body
+
+def check(name, passed, evidence):
+    assert name not in {c['name'] for c in checks}
+    checks.append(dict(name=name, passed=bool(passed), evidence=evidence))
+
+def source(path, size, sha):
+    raw = fact(path, size, sha)
+    text = raw.decode('utf8')
+    return text, ast.parse(text)
+
+def find(tree, cls, name):
+    return next(n for n in ast.walk(tree) if isinstance(n, cls) and getattr(n, 'name', None) == name)
+
+def segment(path, text, start, end, purpose):
+    lines = text.splitlines()
+    snippets.append(dict(path=str(path), start_line=start, end_line=end, purpose=purpose,
+                         exact_UTF8_lines='\n'.join(lines[start-1:end])))
+
+pubpath = I / 'validate_selected_role_publisher_metadata_004.py'
+pub, pubast = source(pubpath,65507,'f1df1975bee9c7fcd546f4c94f9d09a6371165aea83b6dcaa783f0ad7d7dd6bc')
+m3path = I / 'validate_M3_guard_contract_metadata_009.py'
+m3,m3ast = source(m3path,63213,'b91eefd28fb8d120addd510949e2cca82b310379da7fa81ec3ddd435285d49f2')
+fixturepath = I / 'exercise_M3_guard_and_publisher_metadata_memory_012.py'
+fixture,fixtureast = source(fixturepath,535712,'6095dd20159a172e1ab2585d9d5d515ce1f64ed16dd5b5f480f5a2e4a15d6ea0')
+helperpath = I / 'I13_NEW_OUTER_ENVELOPE_FIXTURE_HELPER_009.py.source'
+helper,helperast = source(helperpath,32098,'ff7f5bd066262d05ea17e519ca2cc53dcd581b63c8f5e52b50d121fe4e2b0d93')
+savedpath = P / 'owned_memory_runs' / 'attempt006' / 'CHILD_RESULT_001.json'
+saved = json.loads(fact(savedpath,6312,'6efe3e3a2da271bf4c5f9b3a6826db214523ae1dc34c0d99349dfbd02583dbad'))
+fact(OUT/'INDEPENDENT_I13_ONCE006_SAVED_PARTITION_FAILURE_CAPSULE_001.json',8400,'35b964998edb1bedb9c6bc33a49816fd98891e7be956ef2e4c665c9189901864')
+fact(OUT/'INDEPENDENT_I13_ONCE006_SAVED_PARTITION_FAILURE_FULL_PROOF_001.json',79774,'370c0678ec601b58ec473c1e7e3f86ec07087bbae563bd9f80e383fd658162c7')
+catpath = P / 'm3_protocol_audit_001' / 'I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_007.json'
+catraw = fact(catpath,219028,'d565de0ef802629303403570437e951247c0bc6b16d2a9c8276d56aa2aa3b9ea')
+cat = json.loads(catraw)
+
+prime = next(n for n in find(pubast,ast.ClassDef,'_Graph').body if isinstance(n,ast.FunctionDef) and n.name=='prime')
+mp = next(n for n in find(m3ast,ast.ClassDef,'_Graph').body if isinstance(n,ast.FunctionDef) and n.name=='prime')
+prior = next(n for n in find(fixtureast,ast.ClassDef,'_M3Build').body if isinstance(n,ast.FunctionDef) and n.name=='prior')
+pt = ast.get_source_segment(pub,prime)
+mt = ast.get_source_segment(m3,mp)
+pr = ast.get_source_segment(fixture,prior)
+prewrite = find(pubast,ast.FunctionDef,'_prewrite')
+pre = ast.get_source_segment(pub,prewrite)
+canonical = find(pubast,ast.FunctionDef,'validate_selected_role_canonical_dependency_metadata')
+can = ast.get_source_segment(pub,canonical)
+direct = ast.get_source_segment(pub,find(pubast,ast.FunctionDef,'_direct'))
+check('whole_current_Source_and_saved_result_pins_verified',len(facts)==8,facts)
+check('marker_exact_three_fields_and_no_subjects',"dict(record_type='synthetic_prior_reference_'+role,target_execution=False,operational_authority=False)" in pr and 'subjects=' not in pr, [str(fixturepath),435,452])
+check('marker_is_not_a_generic_PASS_review_or_adoption',all(s not in pr.split('dummy=o.add',1)[1].split('\n',1)[0] for s in ('verdict','reviewer','full_proof','checks_passed','subjects')), [str(fixturepath),437])
+check('raw_canonical_and_draft_created_before_marker',pr.index("canonical=o.add_raw")<pr.index("dummy=o.add"),[str(fixturepath),436,437])
+check('dependency_reuses_marker_for_all_four_review_adoption_edges',all(s in pr for s in ('reconciliation_review=dummy','reconciliation_Root_adoption=dummy','different_review=dummy','Root_adoption=dummy')),[str(fixturepath),451])
+check('all_prior_variants_share_marker_and_dependency_construction',pr.index('dummy=o.add')<pr.index("if role in")<pr.index('dep=dict'),[str(fixturepath),435,452])
+check('publisher_pin_priming_requires_first_eligible_edge_per_path',"q1['path'] not in q2.primed" in pt and "q2.primed.add(q1['path'])" in pt,[str(pubpath),350,372])
+check('publisher_review_adoption_edges_require_nonempty_subjects_list',"for q4 in _list(raw.get('subjects'), 2003, 1):" in pt and all("'"+key+"'" in pt for key in ('Root_adoption','different_review','reconciliation_review','reconciliation_Root_adoption')),[str(pubpath),360,362])
+check('publisher_list_missing_subjects_is_E_SCHEMA',"_need(type(q1) is list and minimum <= len(q1) <= maximum, 'E_SCHEMA')" in pub,[str(pubpath),165,167])
+check('priming_validates_each_declared_subject_as_whole_raw_input',"q2.s.body(_pin(q4))" in pt,[str(pubpath),361,362])
+check('prewrite_primes_before_child_direct_call',pre.index('g.prime(p)')<pre.index('g.prime(req)')<pre.index('g.prime(author)')<pre.index('view = _direct('),[str(pubpath),673,718])
+check('canonical_primes_before_private_prewrite',can.index('g.prime(p)')<can.index('req, view, purpose, staging = _prewrite('),[str(pubpath),777,783])
+check('standalone_M3_prime_has_no_subject_list_obligation',"raw.get('subjects')" not in mt and 'self.collect(raw, value' in mt,[str(m3path),351,370])
+directast=find(pubast,ast.FunctionDef,'_direct')
+schema_mapping=next(n for n in directast.body if isinstance(n,ast.Try) and any(isinstance(h.type,ast.Name) and h.type.id=='I13MetadataError' for h in n.handlers))
+check('child_result_schema_mismatch_is_mapped_to_E_LAYER_RESULT',"_schema(view, 'result54', g.c)" in direct and any(isinstance(n,ast.Raise) and isinstance(n.exc,ast.Call) and isinstance(n.exc.func,ast.Name) and n.exc.func.id=='I13MetadataError' and ast.literal_eval(n.exc.args[0])=='E_LAYER_RESULT' for h in schema_mapping.handlers for n in h.body),[str(pubpath),533,552])
+check('child_typed_errors_can_propagate_and_do_not_prove_parent_guard',"raise I13MetadataError(code) from None" in direct,[str(pubpath),536,541])
+check('helper_wire_orders_object_keys_without_reviewer_running_it','json.dumps(value,sort_keys=True' in helper,[str(helperpath),17,18])
+depkeys = ['role','canonical','author_receipt','original_publication','late_reconciliation','reconciliation_review','reconciliation_Root_adoption','different_review','Root_adoption']
+check('Root_adoption_is_first_sorted_dependency_key',sorted(depkeys)[0]=='Root_adoption',[str(fixturepath),451,dict(sorted_dependency_keys=sorted(depkeys))])
+check('stage_facts_carry_dependency_roster_and_wrapper_carries_descriptors',"dependencies=[d['dependency']for d in descriptors]" in fixture and 'prior_dependencies=descriptors' in fixture,[str(fixturepath),413,434])
+check('helper_input_closure_does_not_supply_missing_marker_subjects',"decoded.get('subjects',[])" in helper and "for subject in (decoded.get('subjects',[])" in helper,[str(helperpath),253,255])
+check('templates_required_prior_roster_is_empty',cat['original_required_dependencies']['templates']==[],[catpath.as_posix(),'original_required_dependencies.templates'])
+check('manifest_capture_phase_binding_prior_rosters_are_nonempty',all(len(cat['original_required_dependencies'][k])>0 for k in ('manifest','capture','phase_binding')),[str(catpath),'original_required_dependencies'])
+caseassign = next(n for n in fixtureast.body if isinstance(n,ast.Assign) and any(isinstance(x,ast.Name)and x.id=='CASE_CATALOGUE' for x in n.targets))
+cases=ast.literal_eval(caseassign.value)
+check('literal_case_catalogue_has_247_rows',len(cases)==247,[str(fixturepath),caseassign.lineno])
+names=['i13_m3_'+route+'_'+role for role in ('metadata_manifest','plan','capture_bound','metadata_binding','phase_binding') for route in ('prewrite','canonical')]
+matched=[r for r in cases if r['name'] in names]
+check('exact_ten_composition_cases_are_positive',len(matched)==10 and all(r['handler']=='positive' and r.get('expected_error') is None for r in matched),matched)
+stage_by_role={'metadata_manifest':'manifest','plan':'capture','capture_bound':'capture','metadata_binding':'capture','phase_binding':'phase_binding'}
+check('ten_cases_use_nonempty_prior_stages',all(r.get('stage','templates')==stage_by_role[r['selected_role']] for r in matched),matched)
+failure_by_name={r['name']:r for r in saved['failures']}
+check('saved_sixth_attempt_preserves_twelve_failures',saved['passed']==20 and saved['failed']==12 and len(saved['cases'])==32 and len(failure_by_name)==12,[str(savedpath)])
+check('saved_ten_E_SCHEMA_failure_messages_are_literal',all(n in failure_by_name and "'E_SCHEMA'" in failure_by_name[n]['message'] for n in names),[failure_by_name[n] for n in names])
+check('saved_capture_template_pair_is_separate_node_budget_outcome',all("'E_NODE_BUDGET'" in failure_by_name['i13_m3_'+r+'_capture_template']['message'] for r in ('prewrite','canonical')),[failure_by_name['i13_m3_'+r+'_capture_template'] for r in ('prewrite','canonical')])
+
+for path,text,a,b,purpose in [(fixturepath,fixture,435,452,'shared prior marker and dependency construction'),(fixturepath,fixture,413,419,'facts and shared synthetic stage proof'),(pubpath,pub,165,167,'strict list predicate'),(pubpath,pub,350,372,'consumed metadata prime path and subject-body obligation'),(pubpath,pub,664,678,'prewrite order before child call'),(pubpath,pub,713,718,'child direct call occurs after prime'),(pubpath,pub,765,783,'canonical outer entry prime order'),(pubpath,pub,533,552,'typed child propagation and result mapping'),(m3path,m3,351,370,'standalone M3 prime distinction'),(helperpath,helper,239,265,'helper input closure does not repair marker shape')]:
+    segment(path,text,a,b,purpose)
+
+assert all(c['passed'] for c in checks),[c['name']for c in checks if not c['passed']]
+claim = ('Source-only obligation mismatch: a synthetic prior-reference marker with no subjects is reused under consumed review/adoption edges, while publisher004 prime requires a nonempty subjects list when that path is first primed at such an edge. This supplies an explanatory pre-child E_SCHEMA path for the ten nonempty-prior composition cases. The saved attempt006 only reports the typed code inside AssertionError and has no original guard traceback; the review does not establish the observed first failing guard, exclude an earlier guard, or prove that this is the only repair needed. Templates have no prior marker dependency and their two observed E_NODE_BUDGET failures remain a separate unresolved node-cost question. Proposed fixture-only repair is subjects=[canonical] on the opaque reference marker, with exact supplied canonical fact3/body; preserve reference-only tag, false authority flags, all kernel guards and all expected case outcomes. Proposal only, no subject edit, target call, new scope, or qualification.')
+now=datetime.datetime.now(datetime.timezone.utc).isoformat()
+common=dict(schema_version=1,reviewer='/root/i13_final_review',created_utc=now,verdict='PASS_I13_SOURCE_ONLY_PUBLISHER_PRIOR_MARKER_OBLIGATION_TRACE_ONLY',subjects=facts,checks_passed=len(checks),checks_failed=0,claim_limit=claim,target_execution=False,tests_executed=False,native_Parser_executed=False,operational_authority=False,scientific_authority=False,actual_family_publication=False)
+full=dict(common,record_type='Independent_I13_publisher_prior_marker_Source_trace_full_proof',checks=checks,Source_evidence=snippets,conditional_trace=['outer prewrite packet / canonical outer packet','author_packet or artifact author_receipt actual_Source_packet','stage facts dependencies list / wrapper prior_dependencies list','dependency Root_adoption (first sorted dependency key) references dep_reference_<role>','if unprimed at the eligible review/adoption edge: publisher prime record+collect then _list(raw.get(subjects),2003,1)','marker has no subjects: strict list predicate rejects None with E_SCHEMA before child _direct'],runtime_guard_evidence_absent=True,proposed_change_not_implemented=True,reviewer_metadata_correction=dict(first_own_reader_refusal='Anonymous reviewer Source string check assumed three spaces before raise, while the compact Source has two; assertion refused before any proof write. Replaced only reviewer whitespace assertion with exact AST Raise/Call/constant check. Subject Sources and all saved files were unchanged.',target_calls=0))
+def write(path,obj):
+    with path.open('xb') as f:f.write((json.dumps(obj,ensure_ascii=False,sort_keys=True,indent=2,allow_nan=False)+'\n').encode('utf8'))
+fp=OUT/'INDEPENDENT_I13_PUBLISHER_PRIOR_MARKER_SOURCE_TRACE_FULL_PROOF_001.json'
+write(fp,full)
+raw=fp.read_bytes();pin=dict(path=str(fp),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+cp=OUT/'INDEPENDENT_I13_PUBLISHER_PRIOR_MARKER_SOURCE_TRACE_CAPSULE_001.json'
+write(cp,dict(common,record_type='Independent_I13_publisher_prior_marker_Source_trace_capsule',full_proof=pin))
+for path in (fp,cp):
+    raw=path.read_bytes();print(json.dumps(dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest(),checks_passed=len(checks))))

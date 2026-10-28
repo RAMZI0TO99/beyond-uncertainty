@@ -1,0 +1,95 @@
+"""Review proposal JSON/Source AST/captured-byte inverses only. No subject call."""
+import ast,base64,datetime,hashlib,json,zlib
+from pathlib import Path
+R=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003');P=R/'m3_peer_contracts_016';O=R/'input_node_readset_ledger_protocol_different_Source_review_001';checks=[];subjects=[];seen=set()
+def sha(b):return hashlib.sha256(b).hexdigest()
+def fact(p):
+ b=Path(p).read_bytes();return dict(path=str(p),bytes=len(b),sha256=sha(b))
+def ck(n,v,e):
+ assert n not in {c['name']for c in checks};checks.append(dict(name=n,passed=bool(v),evidence=e))
+def pairs(ps):
+ d={}
+ for k,v in ps:assert k not in d;d[k]=v
+ return d
+def bad(v):raise ValueError(v)
+def js(b):return json.loads(b.decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def rd(f,label):
+ b=Path(f['path']).read_bytes();ck(label+'_whole_pin',set(f)=={'path','bytes','sha256'}and type(f['bytes'])is int and len(b)==f['bytes']and sha(b)==f['sha256']and len(b)<=2097152,f)
+ if f['path']not in seen:subjects.append(f);seen.add(f['path'])
+ return b
+def defs(b):
+ t=ast.parse(b.decode('utf8'));d={}
+ for n in t.body:
+  if isinstance(n,ast.FunctionDef):d[n.name]=n
+  elif isinstance(n,ast.ClassDef):d.update({n.name+'.'+x.name:x for x in n.body if isinstance(x,ast.FunctionDef)})
+ return t,d
+pf=dict(path=str(P/'m3_protocol_audit_001/input_node_readset_ledger_protocol_proposal_001/I13_PROPOSED_FIXED_M3_INPUT_NODE_AND_SOURCE_READSET_LEDGER_PROTOCOL_001.json'),bytes=66073,sha256='deb07af94e9f07c58dcfb4674a54b76426d9cff3b012f01d7bc3277ac53b5565')
+d=js(rd(pf,'proposal001'));basis={k:rd(f,'basis_'+k)for k,f in d['exact_basis'].items()};ft,fd=defs(basis['fixture']);mt,md=defs(basis['M3_Source']);pt,pd=defs(basis['publisher_Source']);parsed={d['exact_basis'][k]['path']:defs(basis[k])[1]for k in ('fixture','M3_Source','publisher_Source')}
+sites=d['reference_Source_sites'];ck('48_unique_fixed_Source_symbol_regions',len(sites)==len({x['id']for x in sites})==48,dict(count=len(sites)))
+for x in sites:
+ n=parsed[x['Source']['path']][x['symbol']];ck('Source_site_'+x['id'],n.lineno==x['line']and n.end_lineno==x['end_line']and sha(ast.dump(n,include_attributes=False).encode('utf8'))==x['AST_sha256'],x)
+actual_readsites={}
+for kind,ds in [('m3',md),('publisher',pd)]:
+ for name,n in ds.items():
+  hits=[dict(line=x.lineno,operation=x.func.attr,expression=ast.unparse(x))for x in ast.walk(n)if isinstance(x,ast.Call)and isinstance(x.func,ast.Attribute)and x.func.attr in ('record','body','prime')]
+  if hits and not(kind=='m3'and name=='validate_guard_profile_static_descriptor_metadata'):actual_readsites[kind+':'+name]=hits
+missing={k:v for k,v in actual_readsites.items()if k not in {x['id']for x in sites}}
+ck('all_mandatory_fixed6_record_body_prime_source_regions_covered',not missing,missing)
+ck('precise_missing_three_mandatory_publisher_regions',set(missing)=={'publisher:_lease_link','publisher:_publisher_code','publisher:_observe'},missing)
+for name,needle in [('_lease_link',"_lease_link(q2,lease,q3,decision,owner['current_owner_scope'])"),('_publisher_code',"_publisher_code(g,p['publisher_support'])"),('_observe',"_observe(g,observation,pin,cap)")]:
+ ck('omitted_'+name+'_is_consumed_fixed_route',needle in basis['publisher_Source'].decode('utf8'),dict(symbol=name,reads=missing['publisher:'+name]))
+fixed=ast.literal_eval(next(n.value for n in ft.body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='FIXED'for t in n.targets)));cases=ast.literal_eval(next(n.value for n in ft.body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='CASE_CATALOGUE'for t in n.targets)));caseby={x['name']:x for x in cases};capture_rows={x['label']:x for x in d['stale_alias_audit']['captures']}
+ck('38_captured_fixed_rows_exact_namespace',len(fixed)==len(capture_rows)==38 and set(fixed)==set(capture_rows),list(fixed))
+for label,x in fixed.items():
+ encoded=base64.b64decode(x['compressed_base64'],validate=True);zz=zlib.decompressobj();raw=zz.decompress(encoded,2097153)
+ ck('fixed_capture_inverse_'+label,zz.eof and not zz.unused_data and not zz.unconsumed_tail and len(raw)==x['pin']['bytes']and sha(raw)==x['pin']['sha256']and capture_rows[label]['subject']==x['pin']and capture_rows[label]['old_common007']is False and raw==rd(x['pin'],'fixed_original_'+label),x['pin'])
+oldcat='I13_PROPOSED_M3_AND_SELECTED_ROLE_PUBLISHER_CLOSED_SCHEMA_CATALOGUE_007.json'
+ck('no_stale007_whole_capture_or_current_I13_kernel_capture',all(oldcat not in x['pin']['path']and 'validate_M3_guard_contract_metadata_'not in x['pin']['path']and 'validate_selected_role_publisher_metadata_'not in x['pin']['path']for x in fixed.values()),'Historical fixed inputs stay byte-exact; catalogue008 is added separately by _new_base.')
+ex=d['proposed_export'];rows=ex['fixed_roles'];expected=[('capture_template','templates'),('metadata_manifest','manifest'),('plan','capture'),('capture_bound','capture'),('metadata_binding','capture'),('phase_binding','phase_binding')]
+ck('fixed_six_roles_and_stage_order',[(x['role'],x['stage'])for x in rows]==expected,expected)
+for x in rows:
+ for route in ('prewrite','canonical'):
+  row=caseby[x[route+'_literal_case']]
+  ck('fixed_literal_'+route+'_'+x['role'],row['route']==route and row['selected_role']==x['role']and row['stage']==x['stage']and row['expected_error']is None,row)
+ ck('fixed_build_spec_'+x['role'],x['fixed_fixture_spec']==dict(route='canonical',selected_role=x['role'],stage=x['stage']),x['fixed_fixture_spec'])
+src=lambda name:ast.get_source_segment(basis['fixture'].decode('utf8'),fd[name])
+make=src('_fixture_make');env=src('_Outer.envelope');newbase=src('_new_base');code=src('_Outer.code')
+ck('one_canonical_build_reuses_exact_prewrite_roster',"b=_Outer(b).envelope(kind,role,m3,publisher,peer)"in make and "if spec['route']=='prewrite':b['packet']="in make and "b['now_utc']=_ow_time(24)"in make and "self.b['now_utc'] = _ow_time(40)"in env,'Full envelope/record list always constructed before prewrite packet/clock switch.')
+ck('data_projection_only_module_data_needed',set(x.attr for x in ast.walk(fd['_Outer.code'])if isinstance(x,ast.Attribute)and isinstance(x.value,ast.Name)and x.value.id=='module')=={'__source_pin__','__source_bytes__','__API_pin__','__API_bytes__'}and not any(isinstance(x,ast.Call)and isinstance(x.func,ast.Attribute)and isinstance(x.func.value,ast.Name)and x.func.value.id=='module'for x in ast.walk(fd['_Outer.code'])),dict(module_fields=['__source_pin__','__source_bytes__','__API_pin__','__API_bytes__']))
+moduleattrs=[x for name in ('_new_base','_M3Build.__init__','_Outer.envelope','_fixture_make')for x in ast.walk(fd[name])if isinstance(x,ast.Attribute)and isinstance(x.value,ast.Name)and x.value.id in ('m3','publisher','peer')]
+ck('builder_direct_kernel_attribute_accesses_are_pins_only',all(x.attr in ('CATALOGUE_PIN','I2_SOURCE')for x in moduleattrs),[ast.unparse(x)for x in moduleattrs])
+ck('projection_explicit_no_functions_callbacks_getattr',all(s in d['builder_boundary']['data_only_projection']for s in ('fresh ModuleType','only those raw fields','Never copy a function/error class/callback/module __getattr__')),d['builder_boundary']['data_only_projection'])
+ck('builder_roster_untrimmed_no_rewrite_to_lower_count','Do not omit unused records'in d['builder_boundary']['records']and 'No record/body/path/label rewrite'in d['builder_boundary']['records'],d['builder_boundary']['records'])
+ck('roles_strict1to2_unique_order_fixed6',ex['arguments']['roles']=='exact builtin tuple or list; 1..2 unique builtin ASCII strings, exact subset of fixed6 in original order; every other value refuses before graph construction',ex['arguments']['roles'])
+never=d['builder_boundary']['never_called'];ck('all_validator_constructor_encoder_runner_actual_exports_explicitly_excluded',all(x in never for x in ('run','run_diagnostic','run_diagnostic_cases','_diagnostic_one','_fixture_edit','encode_I13_contract_record','validate_M3_complete_stage_output_metadata','validate_selected_role_prewrite_metadata','validate_selected_role_canonical_dependency_metadata','any peer export','any I0-I12 export','any actual entry')),never)
+ck('no_kernel_compile_or_exec_new_control','does not compile/exec kernel Source at all'in d['separate_controls']['Root_control'],d['separate_controls']['Root_control'])
+ck('all_old936_AST_functions_values_protected','exact AST and values'in ex['location']and 'No kernel/peer-fixture/API/catalogue/result54 changes'in ex['location']and ex['legacy_936_invoked']is False,ex['location'])
+ck('seals_failclosed_MemoryError_BaseException_abort',all(x in d['builder_boundary']['fixture_globals']for x in ('before/after each graph and finally','MemoryError/BaseException aborts','Do not alter any global')),d['builder_boundary']['fixture_globals'])
+counter=d['exact_counter_model'];prior=js(basis['different_counter_skeleton_full']);pc=js(basis['different_counter_skeleton_capsule'])
+ck('prior31_counter_proof_exact_join',pc['full_proof']==d['exact_basis']['different_counter_skeleton_full']and prior['checks_passed']==pc['checks_passed']==31 and prior['checks_failed']==pc['checks_failed']==0 and all(x['passed']is True for x in prior['checks']),d['exact_basis']['different_counter_skeleton_capsule'])
+ck('eager_counter_components_exact',counter['eager_components']==dict(context_root_editor_now_tree=7,fact3_tree_per_record=7,record_snapshot_overhead_per_record=4,store_initial=1),counter['eager_components'])
+ck('current_fixed_tree_and_two_cache_floor_exact',counter['fixed_data_nodes']==dict(I12_base=2259,common008=5378)and counter['fixed_two_cache_floor']=='2*(8+11*N+5378+2259)=15290+22*N before packet/other metadata/results',counter['fixed_data_nodes'])
+ck('cache_separation_no_reset_sharedmutable_counter','independent Store/count'in counter['child']and 'no count reset or shared mutable cache'in counter['child']and counter['cache_mode']=='CONSERVATIVE_SUM_PER_INVOCATION_CACHE',counter['child'])
+ck('result54_projection_no_constructor_call_and_scalar_count_stable','Do not call a kernel result/encode/constructor function'in counter['child_result']and 'Numeric counter value replacement is one scalar'in counter['child_result'],counter['child_result'])
+ck('result_order_child_tree_parent_decode_then_childsum_then_final',len(counter['return_order'])==5 and 'includes child result54 tree'in counter['return_order'][1]and 'FIRST'in counter['return_order'][2]and 'Only after result schema/expected joins'in counter['return_order'][3]and 'Final parent result54 full tree'in counter['return_order'][4],counter['return_order'])
+ck('hypothetical_child_failed_return_not_assumed','no assumed actual return'in counter['return_order'][1],counter['return_order'][1])
+rc=d['readset_plan_contract'];ck('readset_explicit_hypothetical_not_actualtrace',rc['mode']=='SOURCE_DERIVED_HYPOTHETICAL_SUCCESSFUL_ROUTE_NOT_TARGET_TRACE'and 'actual tripwire remains unknown'in rc['guard_boundary'],rc['guard_boundary'])
+ck('designation_consuming_ABI_not_extension_parse_or_attestation','never .json suffix'in rc['designation']and 'successful json.loads alone'in rc['designation'],rc['designation'])
+ck('complete_or_typed_refuse_no_allJSON_superset','unmodeled Source site'in rc['required_completeness']and 'never silently classify body-only'in rc['required_completeness']and 'broad allJSON superset as exact'in rc['required_completeness'],rc['required_completeness'])
+ck('planned_cache_path_dedupe_separate_parent_child','Parent and child plan sets are separate'in rc['local_cache_algorithm']and 'first planned JSON_PARSE'in rc['local_cache_algorithm'],rc['local_cache_algorithm'])
+ck('full_keys_values_count_not_opaque_substitution','EVERY key'in d['count_definition']['dict']and 'All supplied raw record bytes are retained until counted'in d['count_definition']['whole_inventory']and 'does not validate semantic C0/actor/schema constraints'in d['count_definition']['JSON'],d['count_definition'])
+out=d['output_schemas'];ck('all_output_record_exact_keys_unique',all(type(v['exact_keys'])is list and len(v['exact_keys'])==len(set(v['exact_keys']))for v in out.values()if type(v)is dict and 'exact_keys'in v),'Top result/graph/record/use/phase/route closed schemas.')
+ck('bounded_output_no_body_Source_base64_payload','<=2MiB'in out['common_rule']and 'no source/body/diff plaintext or Base64 payloads'in out['common_rule'],out['common_rule'])
+ck('planned_totals_not_acceptance_or_observation',out['result']['fixed']['plan_is_actual_target_trace']is False and out['result']['fixed']['validator_exports_called']==0 and 'no acceptance boolean'in out['route_ledger']['planned_totals']and 'planned only'in out['route_ledger']['first_planned_50000_crossing'],out['route_ledger']['first_planned_50000_crossing'])
+bud=d['separate_controls']['budgets'];ck('unchanged60_50_10_5_RAM_disk_stream_caps',bud==dict(cleanup_seconds=10,minimum_RAM_bytes=1073741824,minimum_disk_bytes=10737418240,reap_seconds=5,stderr_maximum_bytes=2097152,stdout_maximum_bytes=2097152,total_seconds=60,wait_seconds=50),bud)
+ck('no_execution_admission_freshonce_and_peer_release_separate','fresh one-use scope'in d['separate_controls']['once']and 'resource/peer scheduling'in d['separate_controls']['once']and d['acceptance_and_holds']['proposal_admits_calls']==0,d['separate_controls']['once'])
+ck('proposal_actual_flags_false',all(v is False for k,v in d['acceptance_and_holds'].items()if k in ('actual_family_publication','authentic_loader_qualified','full_original_I2_DAG_closed','native_Parser_executed','new_source_implementation_authored','operational_authority','positive_fit_claimed','scientific_authority','target_execution'))and d['acceptance_and_holds']['actual_builder_calls_by_author']==d['acceptance_and_holds']['actual_kernel_calls_by_author']==0,d['acceptance_and_holds'])
+ck('inventory_only_fallback_honest_if_plan_impractical',any('INVENTORY_ONLY'in s and 'route totals unavailable'in s for s in d['questions_for_independent_review']),d['questions_for_independent_review'][-1])
+failed=[x['name']for x in checks if not x['passed']];print(json.dumps(dict(checks=len(checks),failed=failed,missing=missing)));assert failed==['all_mandatory_fixed6_record_body_prime_source_regions_covered'],failed
+now=datetime.datetime.now(datetime.timezone.utc);assert now<datetime.datetime.fromisoformat('2026-10-25T18:03:03.861408+00:00')-datetime.timedelta(seconds=60)
+common=dict(schema_version=1,reviewer='/root/i13_final_review',created_utc=now.isoformat(),verdict='REFUSE_I13_INPUT_NODE_READSET_LEDGER_PROTOCOL001_MISSING_THREE_MANDATORY_PUBLISHER_READSITE_REGIONS',subjects=subjects,checks_passed=len(checks)-1,checks_failed=1,target_execution=False,tests_executed=False,native_Parser_executed=False,operational_authority=False,scientific_authority=False,actual_family_publication=False,claim_limit='Independent proposal-only Source/AST/strict JSON/captured whole-byte inverse review. Fixed6 M3 roles×2routes/canonical roster reuse,31-check counter skeleton,strict whole-key/value inventory,closed caps/projection/no-export boundary and planned-versus-observed honesty are coherent. Refuse incomplete48-region inventory: mandatory publisher _lease_link/_publisher_code/_observe record/body reads absent, preventing claimed complete consuming-ABI reconciliation. No implementation/builder/target/helper/kernel/test calls, no new process/admission/positivefit/actualfailuretripwire/whole936/physicalhost or operational authority. Narrow successor needs exact separate review; future implementation and each fresh once remain separately gated.')
+full=dict(common,record_type='Independent_I13_input_node_readset_ledger_protocol001_Source_refusal_full_proof',checks=checks,missing_mandatory_regions=missing,proposal=pf,all_actual_record_body_prime_sites=actual_readsites)
+def write(p,v):
+ with p.open('xb')as f:f.write((json.dumps(v,sort_keys=True,ensure_ascii=False,indent=2,allow_nan=False)+'\n').encode('utf8'))
+fp=O/'INDEPENDENT_I13_INPUT_NODE_READSET_LEDGER_PROTOCOL001_SOURCE_REFUSAL_FULL_PROOF_001.json';write(fp,full);cp=O/'INDEPENDENT_I13_INPUT_NODE_READSET_LEDGER_PROTOCOL001_SOURCE_REFUSAL_CAPSULE_001.json';write(cp,dict(common,record_type='Independent_I13_input_node_readset_ledger_protocol001_Source_refusal_capsule',full_proof=fact(fp)))
+for p in (fp,cp):print(json.dumps(dict(**fact(p),checks_passed=len(checks)-1,checks_failed=1)))

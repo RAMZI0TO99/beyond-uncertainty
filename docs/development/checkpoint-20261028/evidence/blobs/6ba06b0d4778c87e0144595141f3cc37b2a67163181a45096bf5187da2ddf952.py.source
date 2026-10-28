@@ -1,0 +1,33 @@
+"""Retain peer-reported prelaunch-refusal/full-custody release for scheduling only."""
+import datetime as dt,hashlib,json,os
+from pathlib import Path
+Q=Path(__file__).parent;P=Path(r'D:\Aenv\pro3\runs\coordination\cho51_canonical_boundary_20261025_v2')
+def read(p,sha):
+ a=p.stat();assert p.is_file()and not p.is_symlink()and a.st_nlink==1 and a.st_size<=2097152
+ for q in(p,*p.parents):assert not getattr(q.lstat(),'st_file_attributes',0)&1024
+ b=p.read_bytes();assert b==p.read_bytes()and len(b)==a.st_size and hashlib.sha256(b).hexdigest()==sha
+ return json.loads(b,parse_float=str),dict(path=str(p),bytes=len(b),sha256=sha)
+lease,lp=read(P/'lease-closeout_001.json','5f5e945d9f6666bd8a9ff47d1abafa253bd5d0dafd5d4a9422c3ad23afd3eb4a')
+refusal,rp=read(P/'refusal-closeout_001.json','446970114a95d10aa0635284b5ee3a2b72ca83433c3952a623fbb7a62b6ed07f')
+sup,sp=read(P/'refusal-closeout-supervision_001.json','4113f9882d882549d72cd549ee51d84ac0e1e33760b7da306ace11b6c0485f45')
+grant,gp=read(Q/'PRO2_PRO3_COMPUTE_RELEASE_20261025_014.json','a2af0fd74703bdb043e8712544b11b718179e718357e8d82e4a6d79c02a68c7c')
+assert lease['peer_release_sha256']==refusal['peer_release_sha256']==gp['sha256']
+assert lease['guard_attempts_consumed']==1 and lease['jobs_created']==lease['jobs_executed']==0
+for k in('fresh_named_job_absent','external_owned_tree_reaped','external_stdout_eof','external_stderr_eof','launcher_session_reaped','full_compute_custody_released','used_sources_outputs_and_receipts_preserved'):assert lease[k]is True
+for k in('validation_passed','automatic_retry_permitted','scientific_admission'):assert lease[k]is False
+assert sup['timed_out']is sup['candidate_imported']is sup['job_created']is sup['validation_passed']is sup['scientific_admission']is False
+assert sup['exit_code']==0 and sup['owned_tree_reaped']is sup['stdout_eof']is sup['stderr_eof']is True
+assert lease['external_elapsed_seconds']==sup['elapsed_seconds']=='55.4155619'
+assert refusal['cleanup_verified']is True and refusal['job_created']is refusal['successful_test_evidence']is refusal['validation_passed']is False
+v=dict(schema_version=1,record_type='Root_retained_peer014_reported_full_custody_release_only',author='/root',
+ created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),grant=14,grant_consumed_closed=True,reported_full_compute_custody_released=True,
+ peer_explicit_released_utc=lease['released_utc'],peer_lease_closeout=lp,peer_refusal_closeout=rp,peer_external_supervision=sp,compute_grant=gp,
+ peer_reported_jobs_created=0,peer_reported_validation_passed=False,peer_reported_owned_tree_reaped=True,peer_reported_external_exit_code=0,
+ peer_reported_external_elapsed_seconds_decimal=sup['elapsed_seconds'],peer_reported_full_release=True,
+ Root_acceptance=dict(peer_result_accepted=False,whole_host_quiet_proved=False,physical_handle_absence_proved=False,scientific_acceptance=False),
+ closed_created_Job_inferred=False,target_execution=False,operational_authority=False,scientific_authority=False,new_peer_grant_issued=False,old_grant_reuse_authorized=False)
+out=Q/'ROOT_RETAINED_PRO3_014_PRELAUNCH_REFUSAL_AND_FULL_CUSTODY_RELEASE_REPORT_001.json'
+b=(json.dumps(v,sort_keys=True,indent=2,allow_nan=False)+'\n').encode();assert len(b)<=2097152 and not os.path.lexists(out)
+with out.open('xb')as h:assert h.write(b)==len(b);h.flush();os.fsync(h.fileno())
+assert out.read_bytes()==b
+print(json.dumps(dict(report=dict(path=str(out),bytes=len(b),sha256=hashlib.sha256(b).hexdigest()),peer_result_accepted=False)))

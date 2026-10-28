@@ -1,0 +1,40 @@
+"""Own narrow additive Source metadata repair; no target imports/calls."""
+import ast
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+ROOT=Path(__file__).parent
+BASE=ROOT/'receipt_caller_integration_015'
+OUT=BASE/'i12'
+def pin(path,raw=None):
+    raw=path.read_bytes() if raw is None else raw
+    return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+def save(path,v):
+    raw=(json.dumps(v,sort_keys=True,indent=2)+'\n').encode();assert len(raw)<=2097152
+    with path.open('xb') as f:f.write(raw)
+    return pin(path,raw)
+prior=OUT/'validate_selected_peer_receipt_metadata_003.py';old=prior.read_bytes()
+removed=" and receipt['original_peer_source_author_nominal']==self.row['retained_semantic_Source_author']"
+assert old.decode().count(removed)==1
+raw=old.decode().replace(removed,'').encode();assert len(raw)<=65536
+path=OUT/'validate_selected_peer_receipt_metadata_004.py';tree=ast.parse(raw);compile(raw,str(path),'exec',dont_inherit=True)
+with path.open('xb') as f:f.write(raw)
+source=pin(path,raw)
+api_old=OUT/'CURRENT_OWNER_SELECTED_PEER_RECEIPT_METADATA_GRAPH_INERT_API_003.json'
+api=json.loads(api_old.read_text(encoding='utf8'));api['Source']=source
+ap=save(OUT/'CURRENT_OWNER_SELECTED_PEER_RECEIPT_METADATA_GRAPH_INERT_API_004.json',api)
+inventory=json.loads((OUT/'I12_FROZEN_KERNEL_SOURCE_REGIONS_AND_GENESIS_INVENTORY_003.json').read_text(encoding='utf8'))
+sources=inventory['sources'];sources['peer']=source
+apis=inventory['APIs'];apis['peer']=ap
+regions=[row for row in inventory['regions'] if not row['Source']['path'].endswith('validate_selected_peer_receipt_metadata_003.py')]
+lines=raw.splitlines(keepends=True)
+for node in tree.body:
+    if isinstance(node,(ast.FunctionDef,ast.ClassDef)):
+        part=b''.join(lines[node.lineno-1:node.end_lineno]);regions.append(dict(Source=source,name=node.name,first_line=node.lineno,last_line=node.end_lineno,bytes=len(part),sha256=hashlib.sha256(part).hexdigest()))
+inventory.update(record_type='I12_frozen_peer004_with_format_single003_Source_region_inventory',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),sources=sources,APIs=apis,regions=regions,prior_inventory=pin(OUT/'I12_FROZEN_KERNEL_SOURCE_REGIONS_AND_GENESIS_INVENTORY_003.json'),peer003_complete_preserved=pin(prior,old),peer_API003_preserved=pin(api_old),narrow_delta='Remove only nonnormative equality between original_peer_source_author_nominal and selected retained_semantic_Source_author. Keep exact nominal==pinned predecessor.source_author; retained receipt actor still separately equals selected retained actor. Both actors excluded independently. Actual retained phase_peer/pipeline_peer metadata demonstrate they differ.')
+ip=save(OUT/'I12_FROZEN_KERNEL_SOURCE_REGIONS_AND_GENESIS_INVENTORY_004.json',inventory)
+receipt=json.loads((OUT/'I12_ACTUAL_STATIC_KERNEL_SOURCE_AUTHOR_RECEIPT_003.json').read_text(encoding='utf8'))
+receipt.update(record_type='I12_actual_static_peer004_distinct_historical_nominal_Source_author_receipt',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),sources=sources,APIs=apis,inventory=ip,prior_author_receipt=pin(OUT/'I12_ACTUAL_STATIC_KERNEL_SOURCE_AUTHOR_RECEIPT_003.json'),narrow_distinct_nominal_repair=inventory['narrow_delta'],actual_metadata_read_author=pin(ROOT/'inspect_I12_fixture_predecessor_actor_metadata_001.py'),author_tool=pin(Path(__file__)))
+rp=save(OUT/'I12_ACTUAL_STATIC_KERNEL_SOURCE_AUTHOR_RECEIPT_004.json',receipt)
+print(json.dumps(dict(peer=source,peer_API=ap,inventory=ip,author_receipt=rp),sort_keys=True))

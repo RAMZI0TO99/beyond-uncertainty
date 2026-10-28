@@ -1,0 +1,47 @@
+"""Correct own review output filename labels only; preserve every prior review byte."""
+import datetime as dt,hashlib,json,os
+from pathlib import Path
+R=Path(__file__).parent
+Q=R.parent.parent/'pro3_bootstrap002_source_review_001'
+S=Q/'ROOT_PRO3_NEW_FINITE_SOURCE_ONLY_COEXISTENCE_SCOPE_011_001.json'
+A=Q/'ROOT_PRO3_SOURCE_ONLY_COEXISTENCE011_DIFFERENT_REVIEW_ADOPTION_001.json'
+def fact(p,b):return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def pairs(xs):
+ d={}
+ for k,v in xs:
+  if k in d:raise ValueError('duplicateJSON')
+  d[k]=v
+ return d
+def bad(_):raise ValueError('noninteger/nonfiniteJSON')
+def shape(v):
+ todo=[(v,0)];n=0
+ while todo:
+  x,d=todo.pop();n+=1;assert n<=50000 and d<=48 and (x is None or type(x) in (bool,int,str,list,dict))
+  if type(x) is str:assert not any(55296<=ord(c)<=57343 for c in x)
+  elif type(x) is list:todo.extend((y,d+1) for y in x)
+  elif type(x) is dict:
+   assert all(type(k) is str for k in x)
+   for k,y in x.items():todo.extend(((k,d+1),(y,d+1)))
+def load(p,sha):
+ b=p.read_bytes();assert len(b)<=2097152 and hashlib.sha256(b).hexdigest()==sha
+ v=json.loads(b.decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad);shape(v);return v,fact(p,b)
+s,sp=load(S,'c52dbbfc4a5202bc5476e6b41071d72a1163b339e8bcaad29acf2a6dae70a540')
+a,ap=load(A,'6994cedd8c25318563d4aa398d6681c00e61e91f61bccd8d5ca67c75b554e378')
+assert a['Source_only_scope']==sp and a['Source_only_coexistence_adopted'] is True
+def fresh():
+ n=dt.datetime.now(dt.timezone.utc);assert dt.datetime.fromisoformat(s['interval_start'])<=n and (dt.datetime.fromisoformat(s['interval_end'])-n).total_seconds()>60
+def save(name,v):
+ shape(v);b=(json.dumps(v,sort_keys=True,indent=2,ensure_ascii=False,allow_nan=False)+'\n').encode('utf8');assert len(b)<=2097152;fresh();p=R/name
+ with p.open('xb') as h:assert h.write(b)==len(b);h.flush();os.fsync(h.fileno())
+ assert p.read_bytes()==b;return fact(p,b)
+f,fp=load(R/'INDEPENDENT_PRO3_BOOTSTRAP003_HELPER_PROTOCOL_SOURCE_FULL_PROOF_001.json','c639a5e9e0a5830e4ea13279fc675e30f41240ed50266506818eff802ea8df05')
+c,cp=load(R/'INDEPENDENT_PRO3_BOOTSTRAP003_HELPER_PROTOCOL_SOURCE_CAPSULE_001.json','924924074637f57b34cce9b77e05c26ad867b418a31a89a02d906843726a7668')
+assert c['full_proof']==fp and c['scope']==f['scope']==sp and c['reviewed_artifacts']==f['reviewed_artifacts']
+assert c['checks_passed']==f['checks_passed']==len(f['checks'])==67 and c['checks_failed']==f['checks_failed']==0
+assert all(x['passed'] is True for x in f['checks']) and len({x['name'] for x in f['checks']})==67
+assert all('_004.' in x['path'] for x in f['reviewed_artifacts']) and c['remaining_actionable_findings']==f['remaining_actionable_findings']==[]
+f=dict(f,prior_review_metadata=[fp,cp],metadata_naming_author_Source=fact(Path(__file__),Path(__file__).read_bytes()),metadata_successor_reason='The own first output pair used BOOTSTRAP003 in filenames inside the new bootstrap004 review directory. Its actual record_type, scope, exact three reviewed subject pins, complete Source regions,67 allpass checks and all no-execution/deferred limitations already identify bootstrap004 truthfully. This additive pair corrects the filenames only and retains both predecessor bytes. No peer/Root Source finding, guard, check result or operational authority changed.')
+newfp=save('INDEPENDENT_PRO3_BOOTSTRAP004_HELPER_PROTOCOL_SOURCE_FULL_PROOF_001.json',f)
+cap={k:v for k,v in f.items() if k!='checks'};cap['full_proof']=newfp
+newcp=save('INDEPENDENT_PRO3_BOOTSTRAP004_HELPER_PROTOCOL_SOURCE_CAPSULE_001.json',cap)
+print(json.dumps(dict(full_proof=newfp,capsule=newcp,prior_label_pair=[fp,cp],checks_passed=67,checks_failed=0,no_subject_calls=True),ensure_ascii=True))

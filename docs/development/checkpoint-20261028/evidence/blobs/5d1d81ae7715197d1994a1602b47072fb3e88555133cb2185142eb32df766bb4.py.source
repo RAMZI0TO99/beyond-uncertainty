@@ -1,0 +1,119 @@
+"""Bounded genuine publisher/fixture Source review; no subject evaluated."""
+import ast
+import base64
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+import zlib
+
+ROOT=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003');P=ROOT/'m3_peer_contracts_016';I=P/'i13';OUT=ROOT/'publisher_repair_Source_review_002'
+REVIEWER='/root/i13_final_review';CHECKS=[]
+def sha(b):return hashlib.sha256(b).hexdigest()
+def fact(p):
+ b=Path(p).read_bytes();return dict(path=str(p),bytes=len(b),sha256=sha(b))
+def ck(n,v,e):
+ if any(x['name']==n for x in CHECKS):raise ValueError('duplicate check')
+ CHECKS.append(dict(name=n,passed=v is True,evidence=e))
+def pairs(items):
+ d={}
+ for k,v in items:
+  if k in d:raise ValueError('duplicate key')
+  d[k]=v
+ return d
+def bad(v):raise ValueError('number')
+def strict(b):
+ s=b.decode('utf-8','strict')
+ if s.startswith('\ufeff'):raise ValueError('BOM')
+ v=json.loads(s,object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+ def tree(x):
+  if type(x)is str:
+   if any(55296<=ord(c)<=57343 for c in x):raise ValueError('surrogate')
+  elif type(x)is dict:
+   for k,w in x.items():tree(k);tree(w)
+  elif type(x)is list:
+   for w in x:tree(w)
+  elif x is not None and type(x)not in(bool,int):raise ValueError('type')
+ tree(v);return v
+def pinread(pin,label):
+ b=Path(pin['path']).read_bytes();ck(label,fact(pin['path'])==pin,pin);return b
+def source(pin,label):
+ b=pinread(pin,label+'.whole_pin');s=b.decode('utf-8');t=ast.parse(s,filename=pin['path']);compile(t,pin['path'],'exec');ck(label+'.AST_compile_only',True,'No code object evaluated.');return b,s,t
+def defs(t):return {n.name:n for n in t.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+def method(t,c,n):return next(x for x in defs(t)[c].body if isinstance(x,ast.FunctionDef)and x.name==n)
+def txt(n):return ast.unparse(n)
+def lit(t,name):return ast.literal_eval(next(n.value for n in t.body if isinstance(n,ast.Assign)and any(isinstance(a,ast.Name)and a.id==name for a in n.targets)))
+def frag(n,label,items):
+ for k,v in items:ck(label+'.'+k,v in txt(n),v)
+def nodes(v):
+ if type(v)is dict:return 1+sum(nodes(k)+nodes(x)for k,x in v.items())
+ if type(v)is list:return 1+sum(nodes(x)for x in v)
+ return 1
+def encode_case(v):
+ if type(v)is bytes:return dict(AST_builtin_type='bytes',canonical_base64=base64.b64encode(v).decode('ascii'))
+ if type(v)is dict:return {k:encode_case(x)for k,x in v.items()}
+ if type(v)is list:return [encode_case(x)for x in v]
+ return v
+def save(p,v):
+ b=(json.dumps(v,sort_keys=True,indent=2,ensure_ascii=False,allow_nan=False)+'\n').encode('utf-8')
+ if len(b)>2097152:raise ValueError('cap')
+ with p.open('xb')as h:h.write(b)
+
+
+OUT.mkdir(exist_ok=False)
+import copy
+scope_pin=fact(ROOT/'ROOT_CURRENT_I13_M3_PEER_CONTRACT_SOURCE_SCOPE_001.json');scope=strict(pinread(scope_pin,'scope'))
+ck('scope.original_strict60_reserve',(dt.datetime.fromisoformat(scope['interval_end'])-dt.datetime.now(dt.timezone.utc)).total_seconds()>60,scope['interval_end'])
+adopt_pin=fact(ROOT/'ROOT_I13_FINAL_PROTOCOL007_RECORDED_CONTEXT_DIFFERENT_REVIEW_ADOPTION_004.json');adopt=strict(pinread(adopt_pin,'protocol.Root_adoption'));data={}
+for name,p in adopt['subjects'].items():data[name]=strict(pinread(p,'protocol.'+name))
+pubpin=fact(I/'validate_selected_role_publisher_metadata_003.py');apipin=fact(I/'CURRENT_OWNER_SELECTED_ROLE_PUBLISHER_METADATA_INERT_API_003.json');rp=fact(I/'I13_PUBLISHER_SOURCE003_TWO_CLOSURE_REPAIRS_AND_WHOLE_INVERSE_AUTHOR_RECEIPT_001.json')
+pubb,pubs,pubt=source(pubpin,'publisher003');api=strict(pinread(apipin,'publisher.API003'));receipt=strict(pinread(rp,'publisher.author_receipt003'))
+ck('publisher003.exact_expected_pin',pubpin['bytes']==65327 and pubpin['sha256']=='415a2498b094c02250e61dc5c711a129856d573d98a5809a65f0e8b09f952fc1',pubpin)
+ck('publisher003.Source_cap65536',pubpin['bytes']<=65536,dict(bytes=pubpin['bytes'],margin=65536-pubpin['bytes']))
+ck('publisher003.API_join_editor',api['Source']==pubpin and api['author']==api['actual_Source_editor']=='/root/project_architecture'and receipt['Source']==pubpin and receipt['API']==apipin,apipin)
+for key in('target_execution','operational_authority','scientific_authority','actual_family_publication','actual_I7_IO_qualified','actual_I8_eligibility_qualified','actual_I9_render_semantics_qualified','authentic_loader_qualified','physical_origin_authenticated','human_origin_authenticated','full_original_I2_DAG_closed','caller_qualified','publisher_qualified','producer_qualified'):
+ ck('publisher003.held.'+key,api[key]is False,key)
+for key,field in(('original_frozen_Source','complete_original_Source_base64'),('previous_frozen_Source','complete_previous_Source_base64'),('original_API','complete_original_API_base64')):
+ raw=base64.b64decode(receipt[field],validate=True);p=receipt[key];ck('publisher003.whole_inverse.'+key,raw==Path(p['path']).read_bytes()and len(raw)==p['bytes']and sha(raw)==p['sha256'],p)
+orig=ast.parse(Path(receipt['original_frozen_Source']['path']).read_bytes());mapping=receipt['cosmetic_alpha_map'];ck('publisher003.bijective_alpha_names',len(mapping)==len(set(mapping.values()))and set(mapping)=={'q0','q1','q2','q3','q4'},mapping)
+class AlphaInverse(ast.NodeTransformer):
+ def visit_Name(self,n):
+  n.id=mapping.get(n.id,n.id);return n
+ def visit_arg(self,n):
+  n.arg=mapping.get(n.arg,n.arg);return n
+norm=AlphaInverse().visit(copy.deepcopy(pubt));nd=defs(norm);od=defs(orig)
+for name in receipt['AST_unchanged_after_bijective_alpha_inverse']:
+ if '.'in name:
+  c,n=name.split('.');left=method(norm,c,n);right=method(orig,c,n)
+ else:left=nd[name];right=od[name]
+ ck('publisher003.unchanged_AST.'+name,ast.dump(left,include_attributes=False)==ast.dump(right,include_attributes=False),'Exact complete AST under declared bijective private alpha inverse only.')
+ck('publisher003.unused_assignment_only_removed',lit(orig,'CONSTRUCTOR_KINDS')and not any(isinstance(n,ast.Name)and n.id=='CONSTRUCTOR_KINDS'for n in ast.walk(pubt)),'Unused format assignment removed; no constructor entry existed here.')
+ck('publisher003.literal_actual_false',lit(pubt,'ACTUAL_ENTRY_QUALIFIED')is False,'No actual entry admitted.')
+held=nd['publish_selected_role_current_owner'];ck('publisher003.unconditional_second_hold',len(held.body)==2 and isinstance(held.body[0],ast.If)and isinstance(held.body[1],ast.Raise)and'E_ACTUAL_ENTRY_UNWIRED'in txt(held.body[1]),dict(line=held.lineno,end=held.end_lineno))
+ck('publisher003.no_IO_or_old_imports',all(not isinstance(n,ast.ImportFrom)and(not isinstance(n,ast.Import)or all(a.name in('base64','datetime','hashlib','json','re','types')for a in n.names))for n in pubt.body)and not any(isinstance(n,ast.Call)and isinstance(n.func,ast.Name)and n.func.id in('open','eval','exec','compile','__import__')for n in ast.walk(pubt)),'Only direct fixed new metadata ports.')
+ports=lit(pubt,'FIXED_PORTS');ck('publisher003.fixed_M3_PEER_only',ports==api['fixed_ports']and set(ports)=={'M3','PEER'},ports)
+for name,support in ports.items():
+ for k in('Source','API'):pinread(support[k],'publisher003.port.'+name+'.'+k)
+pre=nd['_prewrite'];ci=nd['_child_inputs'];prime=method(norm,'_Graph','prime');direct=nd['_direct'];store=nd['_Store']
+frag(pre,'P01_roster',[('child_readset_before_proofs','_child_inputs(g,'),('actual_parent_usedset','required += list(g.s.used.values())'),('required_exact_expected_fact3','any((_same(pin, x) for x in expected_inputs))'),('required_births_builtin_int',"type(births.get(pin['path'])) is int"),('required_births_positive',"births[pin['path']] > 0"),('all_expected_input_body_reads','for pin in expected_inputs:'),('purpose_exact_roster','_purpose(g,')])
+frag(ci,'P01_child_consumption',[('peer_fixed_role_data',"g.s.record(g.c['peer_role_data'])"),('peer_inventory_pin',"g.base['M3_inventory17_pin']"),('peer_current_history_pin',"selected['current_selection']"),('peer_full_history_pin',"selected['current_complete45_inventory']"),('peer_inner_closed20',"_closed(inner, g.base['schemas']['peer_packet20']['fields'])"),('peer_role_valid_before_cap',"role in g.c['enums']['peer_selected_roles']"),('peer_selection_support_shape',"_schema(inner['selection_support'], 'support3', g.c)"),('peer_selection13',"_schema(selected, 'selection13', g.c)"),('peer_declared_inputs_wholebytes','for pin in _declared(inner):'),('phase_context_closed21',"g.base['schemas']['phase_context21_v2']['fields']"),('phase_context_declared_inputs','for pin in _declared(context):'),('phase_context_primed','g.prime(context)'),('M3_author_closed16',"_schema(author, 'm3_packet16', g.c)"),('M3_observation_receipt22',"_schema(receipt, 'receipt22', g.c)"),('M3_observation_whole_pins',"receipt['finite_actual_Source_observations']"),('M3_explicit_carried_payload_bytes',"if i not in (0, 2, 3, 4, 5):"),('M3_prior_packet_declared','for d in author[\'prior_dependencies\']:'),('M3_purpose_inputs_declared',"g.s.record(author['generation_purpose_support']['subject'])")])
+frag(prime,'P01_proof_subject_readset',[('proof_root_subjects_typed',"for subject in _list(raw.get('subjects'), 2003, 1):"),('subject_wholepin_and_body','self.s.body(_pin(subject))'),('API_examples_not_traversed',"if edge != 'API':"),('raw_Source_not_JSON',"edge not in ('source', 'canonical', 'subject')")])
+frag(ci,'P02_operative_body_actors',[('peer_exact_original_keys',"data['original_output_contracts'][role]['closed_keys']"),('peer_draft_and_predecessor',"for key in ('draft', 'predecessor'):"),('peer_body_collect','g.collect(body, pin)'),('peer_original_reviewer_is_actor',"g.excluded.add(_actor(body['reviewer']).casefold())"),('peer_context_collect',"g.collect(context, inner['context'])"),('guard_closed14',"_schema(author, 'guard_packet14', g.c)"),('guard_exact_profile_static',"'profile_body57' if author['role'] == 'profile' else 'static_body20'"),('M3_exact_four_JSON_roles',"role in ('metadata_manifest', 'plan', 'metadata_binding', 'phase_binding')"),('M3_body_schema_first','_schema(body, shape, g.c)'),('M3_body_actor_union','g.collect(body, a[key])')])
+ci_index=next(i for i,n in enumerate(pre.body)if isinstance(n,ast.Expr)and isinstance(n.value,ast.Call)and isinstance(n.value.func,ast.Name)and n.value.func.id=='_child_inputs');common_index=next(i for i,n in enumerate(pre.body)if'g.common('in txt(n));ck('P02_child_actors_before_ANY_parent_proof',ci_index<common_index and all(not any(isinstance(q,ast.Call)and isinstance(q.func,ast.Attribute)and q.func.attr in('proof','adoption','common','code','support')for q in ast.walk(n))for n in pre.body[:ci_index]),dict(child_closure_statement=ci_index,first_common_statement=common_index))
+frag(method(norm,'_Graph','collect'),'P02_actor_context_rules',[('casefold_union','self.excluded.add(_actor(child).casefold())'),('proof_root_author_not_operative',"not (review_root and key == 'author')"),('declared_lists_additive',"'source_and_harness_authors_excluded_from_review'"),('typed_nested_operative_context',"'Source_provenance'"),('exact_opaque_exception','if _opaque(pin, parts):')])
+frag(direct,'publisher003.conservative_nodes',[('actual_child_return_nodes',"g.s.count[0] += view['charged_metadata_nodes']"),('combined_unchanged50000','g.s.count[0] <= 50000'),('strict_closed54',"_schema(view, 'result54', g.c)"),('no_mutable_cache_result','type(result) is bytes')])
+ck('publisher003.result54_and_counter_no_changes',receipt['counters_or_result54_changed']is False and ast.dump(od['_direct'],include_attributes=False)==ast.dump(nd['_direct'],include_attributes=False)and ast.dump(od['_Store'],include_attributes=False)==ast.dump(nd['_Store'],include_attributes=False),'Local per-invocation cache plus own and actual child charged nodes; no result field/counter waiver.')
+comp=fact(I/'current_owner_M3_peer_held_composition_003.py');capi=fact(I/'CURRENT_OWNER_M3_PEER_SEPARATE_HELD_COMPOSITION_INERT_API_003.json');crp=fact(C/'ROOT_I13_HELD_COMPOSITION003_PUBLISHER_SUCCESSOR_PIN_REPAIR_RECEIPT_001.json')
+cb,cs,ct=source(comp,'composition003');cv=strict(pinread(capi,'composition.API003'));cr=strict(pinread(crp,'composition.Root_receipt003'));before=ast.parse((I/'current_owner_M3_peer_held_composition_002.py').read_bytes())
+ck('composition003.exact_expected_pin',comp['bytes']==5104 and comp['sha256']=='1f3d403e7175402a7d8f43ded6de57af0ae29421100f5b149c29e91c2b2113d9',comp)
+ck('composition003.Source_API_join',cv['Source']==comp and cv['author']==cv['actual_Source_editor']=='/root',capi)
+fixed=lit(ct,'FIXED_SOURCES');ck('composition003.publisher003_exact_pin',fixed['publisher']==dict(Source=pubpin,API=apipin),fixed['publisher'])
+for name,node in defs(ct).items():ck('composition003.unchanged_function.'+name,ast.dump(node,include_attributes=False)==ast.dump(defs(before)[name],include_attributes=False),'Only fixed Source/API binding changes.')
+for flag in('target_execution','operational_authority','scientific_authority','actual_family_publication','caller_qualified','authentic_loader_qualified'):ck('composition003.held.'+flag,cv[flag]is False,flag)
+ck('composition003.literal_actual_hold',lit(ct,'ACTUAL_ENTRY_QUALIFIED')is False,'All actual entries keep two distinct holds.')
+for name in('generate_M3_current_owner_with_receipts','publish_selected_role_current_owner_with_receipts','emit_selected_peer_current_owner_with_receipts'):
+ n=defs(ct)[name];ck('composition003.double_hold.'+name,len(n.body)==2 and isinstance(n.body[0],ast.If)and isinstance(n.body[1],ast.Raise)and'E_ACTUAL_ENTRY_UNWIRED'in txt(n.body[1]),dict(line=n.lineno,end=n.end_lineno))
+ck('review.all_subjects_still_exact',all(fact(p['path'])==p for p in(pubpin,apipin,rp,comp,capi,crp)),'No target/helper/fixture functions invoked; no subject edits.')
+failed=[x for x in CHECKS if not x['passed']];common=dict(schema_version=1,reviewer=REVIEWER,created_utc=dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds'),verdict=('PASS'if not failed else'REFUSE')+'_I13_PUBLISHER003_P01_P02_SOURCE_REPAIR_AND_COMPOSITION003_ONLY',checks_passed=len(CHECKS)-len(failed),checks_failed=len(failed),subjects=[pubpin,apipin,rp,comp,capi,crp,*adopt['subjects'].values()],target_execution=False,tests_executed=False,native_Parser_executed=False,operational_authority=False,scientific_authority=False,actual_family_publication=False)
+limit='Genuine independent Source repair review only; no module import, target/helper/builder/fixture/test/main call, no concrete graph construction, no measured feasibility or first-error execution, no execution admission. Publisher001 REFUSE P01/P02 remains immutable. Source003 closes identified readset/early actor gaps through fixed consuming contracts; complete integration, fixtures and custody require separate exact Source review/admission/results. All actual family publication, Native8, Parser, runtime/science, human/physical/loader and full DAG authority remain held.'
+fp=OUT/'INDEPENDENT_I13_PUBLISHER003_COMPOSITION003_SOURCE_FULL_PROOF_001.json';save(fp,dict(common,record_type='Independent_I13_publisher003_composition003_Source_full_proof',checks=CHECKS,review_script=fact(Path(__file__)),claim_limit=limit));cp=OUT/'INDEPENDENT_I13_PUBLISHER003_COMPOSITION003_SOURCE_CAPSULE_001.json';save(cp,dict(common,record_type='Independent_I13_publisher003_composition003_Source_capsule',full_proof=fact(fp),review_script=fact(Path(__file__)),claim_limit=limit));print(json.dumps(dict(verdict=common['verdict'],checks_passed=common['checks_passed'],checks_failed=len(failed),failed_checks=failed,capsule=fact(cp),full_proof=fact(fp)),sort_keys=True))

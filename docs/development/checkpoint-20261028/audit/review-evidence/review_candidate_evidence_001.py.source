@@ -1,0 +1,208 @@
+"""Independent content-only review; no project import, execution, or native queries."""
+from pathlib import Path
+import datetime as dt
+import hashlib
+import json
+import os
+import stat
+from decimal import Decimal
+
+HOME = Path('D:/Aenv/pro2/WORK/docs-publication-20261028-001')
+CAND = HOME / 'candidate'
+REVIEW = HOME / 'review-evidence'
+ROOT = Path('D:/Aenv/pro2')
+REPO = ROOT / 'github-portable-20261012-001'
+BASE = Path('docs/development/checkpoint-20261028')
+LIMIT = 2 * 1024 * 1024
+checks = []
+source_rows = []
+
+def need(ok, label, detail=None):
+    checks.append({'id': label, 'passed': bool(ok), 'detail': detail})
+
+def read(p):
+    s = p.lstat()
+    if not stat.S_ISREG(s.st_mode) or p.is_symlink() or s.st_size > LIMIT:
+        raise ValueError(('read boundary', str(p), s.st_size))
+    b = p.read_bytes()
+    if len(b) != s.st_size or p.read_bytes() != b:
+        raise ValueError(('ordinary content read changed', str(p)))
+    return b
+
+def pin(b):
+    return {'bytes': len(b), 'sha256': hashlib.sha256(b).hexdigest()}
+
+def pairs(items):
+    out = {}
+    for key, val in items:
+        if key in out:
+            raise ValueError(('duplicate key', key))
+        out[key] = val
+    return out
+
+def parse(p):
+    return json.loads(read(p), object_pairs_hook=pairs, parse_float=Decimal,
+                      parse_constant=lambda x: (_ for _ in ()).throw(ValueError(x)))
+
+def save(name, value):
+    b = (json.dumps(value, sort_keys=True, indent=2, ensure_ascii=True) + '\n').encode()
+    if len(b) > LIMIT:
+        raise ValueError(('review output cap', len(b)))
+    p = REVIEW / name
+    with p.open('xb') as f:
+        f.write(b)
+        f.flush()
+        os.fsync(f.fileno())
+    if read(p) != b:
+        raise ValueError('proof readback')
+    return {'path': str(p), **pin(b)}
+
+scope = parse(HOME / 'PUBLICATION_SCOPE.json')
+need(dt.datetime.now(dt.timezone.utc) < dt.datetime.fromisoformat(scope['end_utc']) - dt.timedelta(seconds=60), 'fresh documentation scope reserve')
+need(scope['user_request'] == 'push to the repo after you update the docs and the handoff', 'exact current human publication request')
+need(scope['Root_max_agents'] == 3 and scope['peer_reserved'] == 2 and scope['shared_max'] == 5, 'unchanged agent allocation')
+need(scope['subject_execution_or_test_or_capture_or_native_or_science_authorized'] is False and scope['Source015_adopted'] is False and scope['old_Source_windows_extended'] is False, 'scope remains publication only')
+
+manifest = parse(HOME / 'CANDIDATE.json')
+listed = {r['path']: r for r in manifest['files']}
+need(len(listed) == len(manifest['files']), 'unique candidate manifest paths')
+actual = {p.relative_to(CAND).as_posix() for p in CAND.rglob('*') if p.is_file()}
+need(actual == set(listed), 'complete candidate manifest roster')
+for rel, row in listed.items():
+    p = (CAND / rel).resolve()
+    need(p.is_relative_to(CAND.resolve()), 'candidate path containment ' + rel)
+    need(pin(read(p)) == {k:row[k] for k in ('bytes','sha256')}, 'candidate byte pin ' + rel)
+
+idxpath = CAND / BASE / 'evidence-index.json'
+idx = parse(idxpath)
+need(idx['source_file_count'] == 1516 and idx['source_logical_bytes'] == 92732786, 'declared evidence total')
+need(idx['execution_authority'] is False and idx['Source005_packet_included_or_Root_qualified'] is False and idx['programs_inert'] is True, 'index held and inert flags')
+need('not a complete transitive dependency closure' in idx['scope'] and 'Empty directories and filesystem identities are not reproduced' in idx['scope'], 'index portability limits disclosed')
+allrows = []
+for partno, part in enumerate(idx['parts'], 1):
+    b = read(CAND / part['path'])
+    need(pin(b) == {k:part[k] for k in ('bytes','sha256')}, 'part exact pin ' + str(partno))
+    pobj = parse(CAND / part['path'])
+    rows = pobj['files']
+    need(pobj['part'] == partno and pobj['execution_authority'] is False, 'part identity and authority ' + str(partno))
+    need(len(rows) == part['file_count'] and len(rows) <= 384, 'part record cap ' + str(partno))
+    need(sum(r['bytes'] for r in rows) == part['logical_bytes'] <= 64*1024*1024, 'part byte cap ' + str(partno))
+    allrows.extend(rows)
+need(len(allrows) == idx['source_file_count'] and sum(r['bytes'] for r in allrows) == idx['source_logical_bytes'], 'part totals join')
+origins = {str(Path(r['original_path'])).casefold():r for r in allrows}
+need(len(origins) == len(allrows), 'unique original evidence identities')
+expected = set()
+tree_counts = []
+for tree in idx['complete_selected_work_trees']:
+    p = ROOT / 'WORK' / tree
+    paths = [q for q in p.rglob('*') if q.is_file()]
+    expected.update(str(q).casefold() for q in paths)
+    tree_counts.append({'tree':tree,'file_count':len(paths),'logical_bytes':sum(q.stat().st_size for q in paths)})
+    need(all(str(q).casefold() in origins for q in paths), 'complete selected tree ' + tree)
+extra = [
+ 'resume-20261025-001/ROOT_MANAGED146_ACTUAL_CREATION_DIFFERENT_REVIEW_FINAL_ADOPTION_001.json',
+ 'resume-20261025-001/publication_review_001/INDEPENDENT_ACTUAL_MANAGED146_CREATION_CAPSULE_001.json',
+ 'resume-20261025-001/publication_review_001/INDEPENDENT_ACTUAL_MANAGED146_CREATION_FULL_PROOF_001.json',
+ 'resume-20261025-002/ROOT_I12_MANAGED260_ACTUAL_CREATION_DIFFERENT_REVIEW_FINAL_ADOPTION_001.json',
+ 'resume-20261025-002/final_actual_creation_review_001/INDEPENDENT_I12_SAVED_ACTUAL_CREATION_CAPSULE_001.json',
+ 'resume-20261025-002/final_actual_creation_review_001/INDEPENDENT_I12_SAVED_ACTUAL_CREATION_FULL_PROOF_001.json',
+ 'resume-20261025-002/publication_001/ROOT_I12_ACTUAL_MANAGED_CREATION_RECEIPT_001.json']
+expected.update(str(ROOT / 'WORK' / x).casefold() for x in extra)
+adoption = parse(ROOT / 'WORK/resume-20261028-001/ROOT_BOOTSTRAP004_ACTUAL_FAILURE_REVIEW_ADOPTION_AND_NATIVE_REQUEST_HOLD_001.json')
+external = [r for r in adoption['all_saved_input_F3'] if r['path'].lower().startswith('d:\\aenv\\pro3\\')]
+need(len(external) == 15, 'exact fifteen external bootstrap004 originals')
+expected.update(str(Path(r['path'])).casefold() for r in external)
+need(expected == set(origins), 'no omitted or extra evidence originals')
+for n, row in enumerate(allrows, 1):
+    src = Path(row['original_path'])
+    dst = (CAND / row['archive_path']).resolve()
+    need(dst.is_relative_to((CAND / BASE / 'evidence/blobs').resolve()), 'blob containment ' + str(n))
+    a, b = read(src), read(dst)
+    wanted = {k:row[k] for k in ('bytes','sha256')}
+    good = a == b and pin(a) == wanted and pin(b) == wanted
+    need(good, 'exact source copy ' + str(n))
+    if src.suffix.lower() in ('.py','.ps1','.bat','.cmd','.sh','.exe','.dll','.pyc'):
+        need(dst.name.endswith(src.suffix.lower() + '.source'), 'inert executable suffix ' + str(n))
+    source_rows.append({'original_path':str(src),'archive_path':row['archive_path'],**wanted,'exact_copy':good})
+for row in external:
+    r = origins[str(Path(row['path'])).casefold()]
+    need(all(r[k] == row[k] for k in ('bytes','sha256')), 'original adopted external pin ' + Path(row['path']).name)
+
+records = CAND / BASE / 'records'
+i11 = parse(records / 'i11-managed-creation-adoption.json')
+i12 = parse(records / 'i12-managed-creation-adoption.json')
+i13 = parse(records / 'i13-handoff003.json')
+h5 = parse(records / 'retention-handoff005.json')
+h6 = parse(records / 'capture-handoff006.json')
+h6a = parse(records / 'capture-handoff006-creation-adoption.json')
+fail = parse(records / 'bootstrap004-failure-adoption.json')
+failh = parse(records / 'bootstrap004-failure-handoff.json')
+s15 = parse(records / 'source015-unadopted-disposition.json')
+for p in records.iterdir():
+    need(any(pin(read(p)) == {k:r[k] for k in ('bytes','sha256')} for r in allrows), 'record alias exact indexed copy ' + p.name)
+need(i11['accepted_I11_synthetic_cases'] == {'expected_refusals':642,'failed':0,'passed':664,'positive':22}, 'I11 synthetic counts')
+need(i11['accepted_verifier_engineering_suite'] == {'failed':0,'passed':36,'skipped_preexisting_symlink_privilege_cases':2,'tests':38}, 'verifier engineering counts')
+need(i11['accepted_current_workspace_files'] == 129915 and i11['accepted_current_canonical_Source_checks'] == 740, 'workspace dated verification counts')
+need(i12['accepted_I12_pure_metadata_cases'] == {'expected_refusals':912,'failed':0,'passed':1089,'positive':177}, 'I12 synthetic counts')
+need(i12['actual_producer_caller_composition_qualified'] is False and i12['full_I2_G01_closed'] is False, 'I12 integration remains held')
+need(i13['current_I13_main_result']['completed'] == 32 and i13['current_I13_main_result']['passed'] == 20 and i13['current_I13_main_result']['failed'] == 12 and i13['current_I13_main_result']['remaining_current_cases_unestablished'] == 904 and i13['current_I13_main_result']['failure_code'] == 'E_NODE_BUDGET', 'I13 current result and missing coverage')
+need(i13['compact_receipt_ABI']['status'] == 'NOT_READY' and len(i13['compact_receipt_ABI']['remaining_blockers']) == 11, 'eleven unclosed compact ABI blockers')
+contract = parse(ROOT / 'WORK/resume-20261027-001/ROOT_I13_RAW_INPUT_RETENTION_CONTRACT_DIFFERENT_REVIEW_ADOPTION_001.json')
+qualification = parse(ROOT / 'WORK/resume-20261027-002/ROOT_I13_RETENTION_EXPORTER_API_SUPERVISOR_STATIC_SOURCE_QUALIFICATION_ADOPTION_001.json')
+need(contract['checks_passed'] == 175 and contract['checks_failed'] == 0, 'retention contract static counts')
+need(qualification['checks_passed'] == 255 and qualification['checks_failed'] == 0, 'retention Source static counts')
+need(h6['checks_passed'] == 130 and h6['checks_failed'] == 0 and h6a['checks_passed'] == 635 and h6a['checks_failed'] == 0, 'capture design and later creation counts')
+need(h5['subject_execution_performed'] is False and h5['raw_capture_admitted'] is False and h6['ready_for_execution'] is False and h6['exact_admission_issued'] is False and h6['subject_Source_activation_issued'] is False, 'retention and request execution holds')
+need(h6a['creation_review_adopted'] is True and h6['creation_review_pending'] is True, 'dated pending wording closed externally')
+need(fail['actual_disposition'] == 'FAILED_UNRELEASED_CONSUMED' and fail['actual_bootstrap_accepted'] is False and fail['native_preparation_request_prepared'] is False, 'bootstrap004 actual refusal and native request hold')
+need(failh['bootstrap004_identity_consumed'] is True and failh['automatic_retry_permitted'] is False and failh['physical_custody_release_claimed'] is False, 'consumed identity and custody limit')
+need(s15['Source015_adopted'] is False and s15['Source005_launch_ready'] is False and s15['Source005_qualified_by_Root'] is False and s15['custody_resolution_contract_accepted'] is False, 'Source005 and Source015 remain held')
+need(s15['peer_stop_report']['not_independently_reobserved_by_Root'] is True and s15['peer_stop_report']['reported_by_peer'] is True, 'Source005 report provenance')
+need(s15['adopter_attempt001']['cause'] == 'UNKNOWN' and s15['separate_decision_preflight']['Source015_adopter_second_invocation_performed'] is False, 'metadata refusals remain unknown and no second invocation')
+need(all(r['differing_fields_in_this_new_sample'] == ['ctime_ns'] for r in s15['new_current_diagnostic_samples']), 'later samples ctime only without causal claim')
+retention = parse(ROOT / 'WORK/resume-20261027-001/ROOT_I13_CURRENT_RAW_INPUT_RETENTION_CONTRACT_AND_EVIDENCE_HANDOFF_004.json')
+need(retention['retention_design_summary']['logical_records'] == 973 and retention['retention_design_summary']['logical_raw_bytes'] == 17399459 and retention['retention_design_summary']['whole_record_partitions'] == 23 and retention['retention_design_summary']['raw_bytes_actually_retained'] is False, 'planned raw records bytes and partitions not capture')
+reportpath = CAND / BASE / 'CURRENT_CHECKPOINT.md'
+text = read(reportpath).decode('utf-8')
+phrases = [
+ '664 synthetic metadata cases: 22 positive and 642 expected refusals',
+ '1,089 synthetic metadata cases: 177 positive and 912 expected refusals',
+ '32 complete, comprising 20 PASS and 12 E_NODE_BUDGET failures; 904 unestablished',
+ 'Eleven compact-ABI blockers remain', 'REQUEST_ONLY', 'FAILED_UNRELEASED_CONSUMED',
+ 'Root has not qualified Source005', 'No custody-resolution contract is accepted',
+ 'not a complete transitive dependency closure', 'Source005 itself is not packaged',
+ 'Source015 was never adopted', 'do not establish the cause of the original refusals',
+ 'Never replay004', 'The existing three-key request payload is not that admission',
+ 'No actual family publication, Native8, Parser, actual6, runtime, capture, training, numerical or scientific authority is created',
+ 'Frozen STEP080 remains35/45', 'later dated Source inventory remains36/45',
+ 'without recount', 'All75 spent identities']
+for phrase in phrases:
+    need(phrase in text, 'report factual boundary: ' + phrase)
+need('Current instruction authorizes' not in text or 'execution only' not in text, 'no invented operational authorization')
+navigation = parse(CAND / 'CONTINUE_CURRENT_20261028.json')
+need(navigation['capture_and_project_execution_gates_held'] is True and navigation['Source005_Root_qualified'] is False and navigation['Source015_adopted'] is False and navigation['new_frozen_checkpoint'] is False, 'navigation current holds')
+need(read(CAND / BASE / 'prepare_checkpoint.py.source') == read(HOME / 'prepare_checkpoint.py'), 'publisher Source copied exact and inert')
+need(read(CAND / BASE / 'publication-scope.json') == read(HOME / 'PUBLICATION_SCOPE.json'), 'publication scope copy exact')
+need(dt.datetime.now(dt.timezone.utc) < dt.datetime.fromisoformat(scope['end_utc']) - dt.timedelta(seconds=60), 'completion before scope reserve')
+bad = [c for c in checks if not c['passed']]
+proof = {'record_type':'independent_documentation_evidence_copy_and_claim_review',
+ 'reviewer':'/root/current_evidence_inventory','created_utc':dt.datetime.now(dt.timezone.utc).isoformat(),
+ 'candidate_manifest':{'path':str(HOME/'CANDIDATE.json'),**pin(read(HOME/'CANDIDATE.json'))},
+ 'report':{'path':str(reportpath),**pin(read(reportpath))},
+ 'reviewer_Source':{'path':str(Path(__file__)),**pin(read(Path(__file__)))},
+ 'method':'Independent ordinary bounded content read/hash/exact comparison; no original metadata stability/native/custody qualification. No subject imports, compilation, execution or tests.',
+ 'tree_counts':tree_counts,'checks_passed':len(checks)-len(bad),'checks_failed':len(bad),
+ 'checks':checks,'source_copy_rows':source_rows,'operational_authority':False,
+ 'complete_transitive_dependency_closure_claimed':False,'Source005_qualified':False,
+ 'verdict':'PASS' if not bad else 'FAIL'}
+p = save('INDEPENDENT_EVIDENCE_COPY_AND_FACT_REVIEW_FULL_PROOF_001.json', proof)
+capsule = {'record_type':'independent_documentation_evidence_copy_and_claim_review_capsule',
+ 'reviewer':'/root/current_evidence_inventory','created_utc':dt.datetime.now(dt.timezone.utc).isoformat(),
+ 'verdict':proof['verdict'],'checks_passed':proof['checks_passed'],'checks_failed':proof['checks_failed'],
+ 'candidate_manifest':proof['candidate_manifest'],'report':proof['report'],'reviewer_Source':proof['reviewer_Source'],
+ 'source_file_records':len(allrows),'logical_bytes':sum(r['bytes'] for r in allrows),
+ 'candidate_files':len(listed),'failed_checks':bad,'full_proof':p,
+ 'scope':'Exact content copies and current documentation claims only; no operational acceptance, target execution or replay.',
+ 'operational_authority':False,'Source005_qualified':False,'bootstrap004_accepted':False}
+c = save('INDEPENDENT_EVIDENCE_COPY_AND_FACT_REVIEW_CAPSULE_001.json', capsule)
+print(json.dumps({'verdict':proof['verdict'],'passed':proof['checks_passed'],'failed':proof['checks_failed'],'capsule':c,'proof':p}))

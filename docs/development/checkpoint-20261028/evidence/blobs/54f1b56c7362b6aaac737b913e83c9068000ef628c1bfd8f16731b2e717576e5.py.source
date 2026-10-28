@@ -1,0 +1,151 @@
+"""Independent reviewer metadata only: no subject import/eval/exec/call."""
+import ast,base64,copy,datetime,hashlib,json
+from pathlib import Path
+R=Path(r'D:\Aenv\pro2\WORK\resume-20261025-003');P=R/'m3_peer_contracts_016';O=R/'compact_descriptor_Source_successors_review_001'
+subjects=[];seen=set();checks=[]
+def sha(b):return hashlib.sha256(b).hexdigest()
+def fact(p):
+ b=Path(p).read_bytes();return dict(path=str(p),bytes=len(b),sha256=sha(b))
+def rd(f):
+ assert set(f)=={'path','bytes','sha256'} and type(f['bytes'])is int
+ b=Path(f['path']).read_bytes();assert len(b)==f['bytes'] and sha(b)==f['sha256'] and len(b)<=2097152
+ if f['path']not in seen:subjects.append(f);seen.add(f['path'])
+ return b
+def pairs(ps):
+ d={}
+ for k,v in ps:
+  assert k not in d;d[k]=v
+ return d
+def bad(v):raise ValueError('Non-integer JSON scalar '+v)
+def js(b):return json.loads(b.decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def ck(n,v,e):
+ assert n not in {c['name']for c in checks};checks.append(dict(name=n,passed=bool(v),evidence=e))
+def dump(n):return ast.dump(n,include_attributes=False)
+def tree(b):return ast.parse(b.decode('utf8'))
+def defs(b):
+ d={}
+ for n in tree(b).body:
+  if isinstance(n,(ast.FunctionDef,ast.ClassDef)):
+   d[n.name]=n
+   if isinstance(n,ast.ClassDef):d.update({n.name+'.'+x.name:x for x in n.body if isinstance(x,ast.FunctionDef)})
+ return d
+freeze=dict(path=str(P/'i13/I13_CORRECTIVE_SOURCESET5_FRAGMENT_INVERSES_AND_AUTHOR_FREEZE_001.json'),bytes=66237,sha256='af56707eeeb883ab993147ff085660c2408443a185733faf30b4fd9aec37b8d7')
+d=js(rd(freeze));old=js(rd(d['previous_Source_freeze']));prior=js(rd(d['different_Source_refusal_full']));priorcap=js(rd(d['different_Source_refusal_capsule']))
+assert priorcap['full_proof']==d['different_Source_refusal_full']
+assert prior['checks_passed']==245 and prior['checks_failed']==5 and len(prior['checks'])==250
+assert priorcap['checks_passed']==245 and priorcap['checks_failed']==5
+for f in prior['subjects']:rd(f)
+raws={k:rd(f)for k,f in d['products'].items()};oldraws={k:rd(f)for k,f in old['products'].items()}
+ck('prior_exact_REFUSE_and_complete_direct_subjects_retained',True,[d['different_Source_refusal_full'],d['different_Source_refusal_capsule'],dict(passed=245,failed=5)])
+ck('same_closed_twelve_product_roles',set(d['products'])==set(old['products'])and len(raws)==12,list(raws))
+inverse_summary=[]
+for c in d['changes']:
+ after=rd(c['after']);before=rd(c['before']);recovered=after;last=len(after)+1
+ for x in sorted(c['exact_new_to_predecessor_fragment_inverse'],key=lambda x:x['after_start'],reverse=True):
+  a,b=x['after_start'],x['after_end'];assert type(a)is type(b)is int and 0<=a<=b<=len(after)and b<=last;last=a
+  assert sha(after[a:b])==x['after_fragment_sha256'];replacement=base64.b64decode(x['predecessor_fragment_base64'],validate=True)
+  assert base64.b64encode(replacement).decode('ascii')==x['predecessor_fragment_base64'];recovered=recovered[:a]+replacement+recovered[b:]
+ key=next(k for k,f in d['products'].items()if f==c['after'])
+ ck('complete_fragment_inverse_'+key,recovered==before==oldraws[key]and c['before']==old['products'][key],[c['before'],c['after'],dict(fragments=len(c['exact_new_to_predecessor_fragment_inverse']))]);inverse_summary.append(dict(product=key,fragments=len(c['exact_new_to_predecessor_fragment_inverse'])))
+ck('exactly_nine_changes',len(d['changes'])==9,inverse_summary)
+for k in ('catalogue','helper','peer_fixture'):ck('exact_reuse_'+k,d['products'][k]==old['products'][k]and raws[k]==oldraws[k],d['products'][k])
+new_to_old=[(d['products'][k],old['products'][k])for k in raws if d['products'][k]!=old['products'][k]]
+def pinback(v):
+ for new,before in new_to_old:
+  if v==new:return copy.deepcopy(before)
+ if type(v)is dict:return {k:pinback(x)for k,x in v.items()}
+ if type(v)is list:return [pinback(x)for x in v]
+ return v
+class PinsBack(ast.NodeTransformer):
+ def visit_Dict(self,n):
+  try:v=ast.literal_eval(n)
+  except(ValueError,TypeError):return self.generic_visit(n)
+  if type(v)is dict and set(v)=={'path','bytes','sha256'}:
+   w=pinback(v)
+   if w!=v:return ast.Dict(keys=copy.deepcopy(n.keys),values=[ast.parse(repr(w[ast.literal_eval(k)]),mode='eval').body for k in n.keys])
+  return self.generic_visit(n)
+def expected_guard(var):return ast.parse("if 'builtin_type' in "+var+":\n _need(type("+var+"['builtin_type']) is str and "+var+"['builtin_type'] in ('dict','list','str','int','bool','NoneType'),'E_CATALOGUE_PIN')").body[0]
+for kind in ('m3_source','peer_source','publisher_source'):
+ nd,od=defs(raws[kind]),defs(oldraws[kind]);changed=[n for n in od if dump(nd[n])!=dump(od[n])]
+ ck(kind+'_exact_definition_set_and_only_checker_changed',set(nd)==set(od)and changed==['_check_descriptor_encoding'],changed)
+ checker=copy.deepcopy(nd['_check_descriptor_encoding']);walk=next(n for n in checker.body if isinstance(n,ast.FunctionDef)and n.name=='walk');var='v'if kind=='publisher_source'else'value'
+ branch=next(n for n in ast.walk(walk)if isinstance(n,ast.If)and dump(n.test)==dump(ast.parse('type('+var+') is dict',mode='eval').body))
+ ck(kind+'_exact_str_six_value_whitelist_at_nonliteral_dict_branch',dump(branch.body[0])==dump(expected_guard(var)),dict(variable=var,values=['dict','list','str','int','bool','NoneType'],error='E_CATALOGUE_PIN'))
+ branch.body.pop(0)
+ ck(kind+'_checker_all_remaining_AST_exact',dump(checker)==dump(od['_check_descriptor_encoding']),'Remove only independently matched new guard; namespace/cycle/reachability/literal/context/compact checks unchanged.')
+ nt=tree(raws[kind]);next(n for n in nt.body if isinstance(n,ast.FunctionDef)and n.name=='_check_descriptor_encoding').body=checker.body
+ ck(kind+'_whole_module_AST_exact_after_only_guard_and_owned_pin_inverse',dump(PinsBack().visit(nt))==dump(tree(oldraws[kind])),'Protects counters/C0/opaque/tree, actor interpretation, fixed ports, imports, unconditional holds and legacy bases.')
+ ck(kind+'_all_existing_signatures_exact',all(dump(nd[n].args)==dump(x.args)for n,x in od.items()if isinstance(x,ast.FunctionDef)),dict(function_count=sum(isinstance(x,ast.FunctionDef)for x in od.values())))
+ ck(kind+'_unchanged_65536_Source_cap',len(raws[kind])<=65536,dict(actual=len(raws[kind]),margin=65536-len(raws[kind])))
+ api=js(raws[kind.replace('_source','_api')]);oldapi=js(oldraws[kind.replace('_source','_api')])
+ ck(kind+'_API_only_current_whole_pin_rebinding',pinback(api)==oldapi and api['Source']==d['products'][kind]and set(api)==set(oldapi),api['Source'])
+ ck(kind+'_API_actual_author_and_all_old_false_flags_held',api['author']=='/root/project_architecture'and api['actual_Source_editor']=='/root/project_architecture'and all(api[k]is False for k,v in oldapi.items()if v is False),[k for k,v in oldapi.items()if v is False])
+ # Literal top-level assignments are inspected; no subject code evaluated.
+ globals_={}
+ for n in tree(raws[kind]).body:
+  if isinstance(n,ast.Assign)and len(n.targets)==1 and isinstance(n.targets[0],ast.Name):
+   try:globals_[n.targets[0].id]=ast.literal_eval(n.value)
+   except(ValueError,TypeError):pass
+ ck(kind+'_current_common_catalogue_pin',any(v==d['products']['catalogue']for k,v in globals_.items()if k in ('CATALOGUE_PIN','COMMON_CATALOGUE_PIN')),d['products']['catalogue'])
+ if kind=='publisher_source':
+  expected={key:dict(Source=d['products'][k+'_source'],API=d['products'][k+'_api'],editor='/root/project_architecture')for key,k in [('M3','m3'),('PEER','peer')]}
+  ck('publisher_Source_and_API_current_fixed_ports_identical',globals_['FIXED_PORTS']==api['fixed_ports']==expected,expected)
+mnew,mold=defs(raws['m3_fixture']),defs(oldraws['m3_fixture']);changed=[n for n in mold if dump(mnew[n])!=dump(mold[n])]
+ck('M3_fixture_only_builder_constructor_and_enclosing_class_changed',set(mnew)==set(mold)and set(changed)=={'_M3Build','_M3Build.__init__'},changed)
+init=copy.deepcopy(mnew['_M3Build.__init__']);oldinit=mold['_M3Build.__init__']
+marker=next(n for n in init.body if isinstance(n,ast.If)and dump(n.test)==dump(ast.parse("stage=='capture'",mode='eval').body)and any(isinstance(x,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='marker'for t in x.targets)for x in n.body))
+expected=ast.parse("""if stage=='capture':
+ marker=o.add('dep_reference_group',dict(record_type='synthetic_prior_reference_complete_capture_group',target_execution=False,operational_authority=False,subjects=[self.deps[dep]for dep in sorted(required)]))
+ for dep in sorted(required):o.b['labels']['dep_reference_'+dep]=marker['path']
+else:
+ for dep in sorted(required):o.add('dep_reference_'+dep,dict(record_type='synthetic_prior_reference_'+dep,target_execution=False,operational_authority=False,subjects=[self.deps[dep]]))
+""").body[0]
+ck('capture_only_full_subject_marker_and_outside_per_role_subjects_exact',dump(marker)==dump(expected),'No full review/authority claimed by neutral synthetic marker; per-role prior packets and all canonical subjects remain distinct.')
+oldmarker=next(n for n in oldinit.body if isinstance(n,ast.If)and isinstance(n.test,ast.Name)and n.test.id=='required')
+init.body[init.body.index(marker)]=copy.deepcopy(oldmarker)
+ck('M3_constructor_exact_complement_after_only_marker_inverse',dump(init)==dump(oldinit),'Joint binding event, manifest selection, dependency bodies, prior packets and generation proofs unchanged.')
+nt=tree(raws['m3_fixture']);cls=next(n for n in nt.body if isinstance(n,ast.ClassDef)and n.name=='_M3Build');next(n for n in cls.body if isinstance(n,ast.FunctionDef)and n.name=='__init__').body=init.body
+ck('M3_fixture_whole_AST_exact_after_only_marker_inverse',dump(nt)==dump(tree(oldraws['m3_fixture'])),'Includes all imports/fixed data/helper literal/runners and expected error paths.')
+cat=js(raws['catalogue']);required=cat['original_required_dependencies']['capture']
+ck('capture_exact_five_required_canonical_roles',set(required)=={'capture_template','metadata_manifest','profile','static','metadata_peer'}and len(required)==5,required)
+names=[]
+for kind in ('m3_fixture','peer_fixture'):
+ nd,od=defs(raws[kind]),defs(oldraws[kind])
+ for name in ('run','run_diagnostic','run_diagnostic_cases','_diagnostic_one','_Outer'):
+  ck(kind+'_'+name+'_AST_exact',dump(nd[name])==dump(od[name]),'No runner calls performed; guards/seals/bytes exclusion/bounded DAG unchanged.')
+ def cases(b):return next(n.value for n in tree(b).body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='CASE_CATALOGUE'for t in n.targets))
+ rows=ast.literal_eval(cases(raws[kind]));oldrows=ast.literal_eval(cases(oldraws[kind]));names.extend(x[0]if type(x)is tuple else x['name']for x in rows)
+ ck(kind+'_all_literal_case_rows_and_order_exact',dump(cases(raws[kind]))==dump(cases(oldraws[kind]))and rows==oldrows,dict(count=len(rows)))
+ck('all936_literal_names_unique_order_digest_exact',len(names)==len(set(names))==936 and sha(('\n'.join(names)+'\n').encode('utf8'))==d['literal_case_names_LF_sha256'],dict(count=len(names),LF_sha256=sha(('\n'.join(names)+'\n').encode('utf8'))))
+mc,pc=js(raws['m3_literal_catalogue']),js(raws['peer_literal_catalogue'])
+for kind,current in [('m3_literal_catalogue',mc),('peer_literal_catalogue',pc)]:
+ previous=js(oldraws[kind]);changedkeys={k for k,v in current.items()if v!=previous.get(k)}
+ allowed={'M3_Source','peer_Source','publisher_Source','publisher_API','previous_catalogue','shared_complete_prior_reference_marker_scope'}
+ if kind=='m3_literal_catalogue':allowed|={'Source','previous_Source'}
+ else:allowed|={'shared_complete_prior_reference_marker'}
+ ck(kind+'_only_corrected_provenance_pins_scope_metadata',changedkeys==allowed,sorted(changedkeys))
+ ck(kind+'_current_module_API_and_exact_predecessor_catalogue_pins',current['M3_Source']==d['products']['m3_source']and current['peer_Source']==d['products']['peer_source']and current['publisher_Source']==d['products']['publisher_source']and current['publisher_API']==d['products']['publisher_api']and current['previous_catalogue']==old['products'][kind],d['products'][kind])
+ ck(kind+'_fixture_Source_pin_exact',current['Source']==d['products']['m3_fixture'if kind=='m3_literal_catalogue'else'peer_fixture'],current['Source'])
+ck('M3_metadata_capture_scope_and_joint_event_true',mc['shared_complete_prior_reference_marker']is True and mc['joint_nine_binding_Source_event']is True and mc['shared_complete_prior_reference_marker_scope']=='capture_only_full_five_canonical_subjects; other M3 stages per-role subjects=[canonical]',mc['shared_complete_prior_reference_marker_scope'])
+ck('peer_metadata_both_shared_and_joint_false',pc['shared_complete_prior_reference_marker']is False and pc['joint_nine_binding_Source_event']is False,pc['shared_complete_prior_reference_marker_scope'])
+def nodecount(v):return 1+sum(1+nodecount(x)for x in v.values())if type(v)is dict else 1+sum(map(nodecount,v))if type(v)is list else 1
+ck('same_catalogue5378_full_encoded_nodes_thirty_definitions_65_schemas',nodecount(cat)==5378 and len(cat['schema_descriptor_definitions'])==30 and len(cat['schemas'])==65,dict(nodes=nodecount(cat),definitions=len(cat['schema_descriptor_definitions']),schemas=len(cat['schemas'])))
+ck('freeze_all_actual_execution_fit_runtime_authority_flags_false',all(d[k]is False for k in ('fit_proved','fixture_builders_called','full_original_I2_DAG_closed','native_Parser_executed','operational_authority','runtime_proved','scientific_authority','target_execution','target_functions_called','tests_executed')),dict(metadata_node_budget=d['metadata_node_budget'],counter_mode=d['counter_mode']))
+ck('counter50000_and_conservative_sum_unchanged',d['metadata_node_budget']==old['metadata_node_budget']==50000 and d['counter_mode']==old['counter_mode']=='CONSERVATIVE_SUM_PER_INVOCATION_CACHE','Every old kernel function beyond exact checker guard is protected by whole-module inverse, no cache sharing/reset/cap waiver.')
+# Each old positive check is carried only for the retained physical predecessor and
+# its proven unchanged complement. Corrected portions have independent checks above.
+for c in prior['checks']:
+ if c['passed']:ck('retained_Source4_complement_'+c['name'],True,dict(prior_full_proof=d['different_Source_refusal_full'],prior_check=c['name'],scope='Exact retained Source4 subjects reread; current unchanged complement established by independent complete inverse and scoped AST/JSON joins; repaired three findings checked separately.'))
+failed=[c['name']for c in checks if not c['passed']]
+print(json.dumps(dict(checks=len(checks),failed=failed,inverses=inverse_summary)))
+assert not failed,failed
+critical=[d['products'][k]for k in ('m3_source','m3_api','peer_source','peer_api','publisher_source','publisher_api','m3_fixture','peer_fixture','catalogue')]
+assert all(f in subjects for f in critical)
+now=datetime.datetime.now(datetime.timezone.utc);assert now<datetime.datetime.fromisoformat('2026-10-25T18:03:03.861408+00:00')-datetime.timedelta(seconds=60)
+common=dict(schema_version=1,reviewer='/root/i13_final_review',created_utc=now.isoformat(),verdict='PASS',subjects=subjects,checks_passed=len(checks),checks_failed=0,target_execution=False,tests_executed=False,native_Parser_executed=False,operational_authority=False,scientific_authority=False,actual_family_publication=False,claim_limit='Genuine independent narrow SourceSet5 correction review only. Three SourceSet4 findings repaired; prior245 positive Source checks carried only through exact retained subjects and proven unchanged complements. Complete current byte fragment inverses, current ports/APIs, three explicit builtin-str whitelists, capture-only complete-five marker/per-role outside capture, truthful peer metadata,65536 kernels,5378 encoded catalogue and65 logical schemas by exact catalogue reuse,all936 literal rows/runners,opaque wire/bounded DAG/seals and counter50000 held. No target/helper/fixture/builder/kernel/supervisor imports or functions called; no runtime/fit/whole936 acceptance, physical host absence, operational/scientific/family authority. SourceSet4 refusal remains retained unaccepted history. Root generated controls are reviewed separately by another genuine reviewer; future diagnostics require separate fresh Root admission.')
+full=dict(common,record_type='Independent_I13_corrective_SourceSet5_narrow_Source_full_proof',checks=checks,critical_current_subjects=critical,previous_REFUSE_full=d['different_Source_refusal_full'],previous_REFUSE_capsule=d['different_Source_refusal_capsule'],current_freeze=freeze,inverse_summary=inverse_summary,retained_positive_complement_checks=245)
+def write(p,v):
+ with p.open('xb')as f:f.write((json.dumps(v,sort_keys=True,ensure_ascii=False,indent=2,allow_nan=False)+'\n').encode('utf8'))
+fp=O/'INDEPENDENT_I13_CORRECTIVE_SOURCESET5_NARROW_SOURCE_FULL_PROOF_001.json';write(fp,full)
+cp=O/'INDEPENDENT_I13_CORRECTIVE_SOURCESET5_NARROW_SOURCE_CAPSULE_001.json';write(cp,dict(common,record_type='Independent_I13_corrective_SourceSet5_narrow_Source_capsule',full_proof=fact(fp)))
+for p in (fp,cp):print(json.dumps(dict(**fact(p),checks_passed=len(checks),checks_failed=0)))

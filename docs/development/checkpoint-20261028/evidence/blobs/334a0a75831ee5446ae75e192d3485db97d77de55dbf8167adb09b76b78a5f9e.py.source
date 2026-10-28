@@ -1,0 +1,17 @@
+"""Retain actual saved tool return and timeout evidence, with no rerun."""
+import datetime as dt,hashlib,json
+from pathlib import Path
+R=Path(__file__).parent;C=R/'m3_peer_contracts_016';O=C/'owned_memory_runs/attempt005'
+def pin(p):
+ b=p.read_bytes();return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+toolp=O/'ROOT_ACTUAL_PARENT_EXEC_TOOL_RETURN_001.json';tool=json.loads(toolp.read_bytes());console=json.loads(tool['output']);assert tool['Root_observed_tool_exit_code']==1 and console['refusal']=='WAIT50_TIMEOUT'
+rp=O/'SUPERVISOR_RESULT_001.json';s=json.loads(rp.read_bytes());assert pin(rp)==console['supervisor_result'] and pin(rp)['sha256']=='14cfa78763d786a01f496fb6cc65a491ea8e0b0100e049132ebbe696ada9d01d'
+p=O/'PARENT_TOOL_STDOUT_RETAINED_001.txt'
+with p.open('xb')as h:h.write(tool['output'].encode())
+scopep=C/'ROOT_I13_ONCE_SYNTHETIC_MEMORY_SCOPE_005.json';sc=json.loads(scopep.read_bytes());plan=json.loads(Path(sc['partition_plan']['path']).read_bytes());row=next(x for x in plan['partitions']if x['partition_id']==sc['partition_id'])
+events=[json.loads(x)for x in(O/'CHILD_STDOUT_001.txt').read_text().splitlines()];cases=[x for x in events if x.get('event')in('CASE_PASS','CASE_FAIL')]
+assert len(cases)==12 and sum(x['event']=='CASE_PASS'for x in cases)==8 and sum(x['event']=='CASE_FAIL'for x in cases)==4 and[x['name']for x in cases]==row['case_names'][:12]
+w=dict(schema_version=1,record_type='Root_I13_once005_retained_parent_tool_console_and_exit_witness',author='/root',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),actual_parent_tool_return=pin(toolp),Root_observed_tool_exit_code=tool['Root_observed_tool_exit_code'],retained_parent_console=pin(p),retained_console_value=console,supervisor_result=pin(rp),supervisor=sc['supervisor'],scope=pin(scopep),scope_invocations_consumed=1,partition_id=sc['partition_id'],partition_cases=32,completed_case_events=12,known_pass_events=8,known_fail_events=4,case_outcomes_not_established=20,next_uncompleted_case=row['case_names'][12],child_result_absent=True,complete_diagnostics_absent=True,immediate_four_failure_details_retained=True,Root_partition_acceptance=False,Root_whole936_suite_acceptance=False,claim_reuse_permitted=False,no_rerun_performed=True,operational_authority=False,scientific_authority=False,target_execution=False,actual_family_publication=False,physical_host_or_PID_absence_proved=False)
+q=C/'ROOT_I13_ONCE005_PARENT_TOOL_CONSOLE_AND_EXIT_WITNESS_001.json'
+with q.open('xb')as h:h.write((json.dumps(w,sort_keys=True,indent=2)+'\n').encode())
+print(json.dumps(dict(witness=pin(q),actual_tool_return=pin(toolp),passed=8,failed=4,unestablished=20)))
